@@ -71,13 +71,17 @@ class _HomeScreenState extends State<HomeScreen> {
       _bluetoothOn = isOn;
       if (isOn) {
         _showBanner = false;
-      } else if (!_dialogShown) {
-        _dialogShown = true;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _showBluetoothOffDialog();
-        });
       } else {
-        _showBanner = true;
+        _dutyCycleTimer.stop();
+        widget.bleManager.stopScan();
+        if (!_dialogShown) {
+          _dialogShown = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _showBluetoothOffDialog();
+          });
+        } else {
+          _showBanner = true;
+        }
       }
     });
   }
