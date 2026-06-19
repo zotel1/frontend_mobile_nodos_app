@@ -32,6 +32,10 @@ import 'package:frontend_mobile_nodos_app/features/visualization/domain/reposito
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/usecases/build_graph.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/usecases/calculate_layout.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/history/domain/usecases/get_scan_sessions.dart';
+import 'package:frontend_mobile_nodos_app/features/history/domain/usecases/get_session_detail.dart';
+import 'package:frontend_mobile_nodos_app/features/history/domain/usecases/get_history_stats.dart';
+import 'package:frontend_mobile_nodos_app/features/history/presentation/bloc/history_bloc.dart';
 
 final sl = GetIt.instance;
 
@@ -94,6 +98,14 @@ Future<void> initDependencies() async {
   // Caso de uso: ejecuta Fruchterman-Reingold en un Isolate.
   sl.registerLazySingleton(() => const CalculateLayout());
 
+  // ── History ──
+  // Use cases para consultas de historial y estadísticas.
+  // Cada use case recibe AppDatabase directamente para queries SQL
+  // via Drift customSelect (COUNT, AVG, GROUP BY, JOINs).
+  sl.registerLazySingleton(() => GetScanSessions(sl()));
+  sl.registerLazySingleton(() => GetSessionDetail(sl()));
+  sl.registerLazySingleton(() => GetHistoryStats(sl()));
+
   // ── BLoCs (factory — new instance per BlocProvider) ──
   sl.registerFactory(() => BleBloc(repository: sl()));
   sl.registerFactory<NodeListBloc>(
@@ -108,6 +120,7 @@ Future<void> initDependencies() async {
       getProfile: sl(),
       updateName: sl(),
       updateColor: sl(),
+      userRepository: sl(),
     ),
   );
   // VisualizationBloc: orquesta BuildGraph + CalculateLayout con debounce.
@@ -116,6 +129,16 @@ Future<void> initDependencies() async {
     () => VisualizationBloc(
       buildGraph: sl(),
       calculateLayout: sl(),
+    ),
+  );
+
+  // HistoryBloc: gestiona historial de sesiones y estadísticas.
+  // Factory — cada BlocProvider obtiene su propia instancia.
+  sl.registerFactory<HistoryBloc>(
+    () => HistoryBloc(
+      getScanSessions: sl(),
+      getSessionDetail: sl(),
+      getHistoryStats: sl(),
     ),
   );
 }

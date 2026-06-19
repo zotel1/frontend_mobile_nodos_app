@@ -208,6 +208,16 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
     for (final node in processed.values) {
       await _nodeRepository.upsertNode(node);
     }
+
+    // F6: Suscribirse al stream Drift reactivo si no hay
+    // suscripción activa. Si ya existe, Drift .watch()
+    // emitirá automáticamente los cambios sin intervención.
+    // QUÉ problema resuelve: sin esta suscripción, los nodos
+    // persistidos nunca se reflejan en la UI porque el BLoC
+    // no escucha los cambios en la base de datos.
+    if (_nodesSubscription == null) {
+      await _subscribeToNodes(emit);
+    }
   }
 
   Future<void> _subscribeToNodes(Emitter<NodeListState> emit) async {

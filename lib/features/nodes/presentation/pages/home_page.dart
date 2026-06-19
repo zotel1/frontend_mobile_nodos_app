@@ -61,6 +61,10 @@ class _HomePageState extends State<HomePage> {
   /// nodo tocado en coordenadas de pantalla.
   final GlobalKey _graphViewKey = GlobalKey();
 
+  /// Referencia al BleBloc guardada en initState para usar en dispose()
+  /// cuando el context ya no es seguro para ancestor lookup.
+  BleBloc? _bleBloc;
+
   /// Entry del tooltip actualmente visible en el Overlay.
   /// null si no hay tooltip abierto.
   OverlayEntry? _tooltipEntry;
@@ -68,6 +72,13 @@ class _HomePageState extends State<HomePage> {
   /// ID del nodo para el cual el tooltip está actualmente visible.
   /// Previene re-apertura del tooltip para el mismo nodo.
   int? _tooltipNodeId;
+
+  /// T2.4: Timestamp del último escaneo BLE exitoso.
+  ///
+  /// Se actualiza cada vez que BleBloc emite [BleScanning] con
+  /// dispositivos detectados. Usado para mostrar "Ahora" / "Hace X min"
+  /// en la barra de info superior.
+  DateTime? _lastScanTime;
 
   /// Abre el tooltip para un nodo específico en el grafo.
   ///
@@ -130,10 +141,40 @@ class _HomePageState extends State<HomePage> {
     _tooltipNodeId = null;
   }
 
+  /// F4 + T1.8: Dispara LoadNodes y StartScan al inicializar la pantalla.
+  ///
+  /// QUÉ: LoadNodes inicia la suscripción al stream Drift de nodos.
+  /// StartScan inicia el escaneo BLE automáticamente sin FAB.
+  /// Guarda referencia a BleBloc para dispose() donde context no es seguro.
+  /// addPostFrameCallback asegura que el context ya tiene los BLoCs
+  /// disponibles desde el árbol de providers.
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final bleBloc = context.read<BleBloc>();
+      _bleBloc = bleBloc;
+      context.read<NodeListBloc>().add(const LoadNodes());
+      bleBloc.add(const StartScan());
+    });
+  }
+
+  /// T1.8: Detiene el escaneo BLE al destruir el widget.
+  ///
+  /// QUÉ: cuando el usuario navega a otra tab, el escaneo debe detenerse
+  /// para ahorrar batería y recursos de plataforma.
+  /// Usa _bleBloc (guardado en initState) porque context.read no es seguro
+  /// durante dispose — el widget ya está desmontado.
+  @override
+  void dispose() {
+    _bleBloc?.add(const StopScan());
+    _tooltipEntry?.remove();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bleBloc = context.read<BleBloc>();
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Nodos'),
@@ -181,6 +222,8 @@ class _HomePageState extends State<HomePage> {
             context
                 .read<NodeListBloc>()
                 .add(SyncBleDevices(bleState.devices));
+            // T2.4: Registrar timestamp del último escaneo con dispositivos
+            _lastScanTime = DateTime.now();
           }
           // Mostrar diálogo cuando BT está apagado.
           // El guard _dialogVisible previene stacking de múltiples diálogos.
@@ -214,39 +257,32 @@ class _HomePageState extends State<HomePage> {
             _updateViewMode(nodeListState.nodes, context);
           }
         },
-        child: BlocBuilder<BleBloc, BleState>(
-          builder: (context, bleState) {
-            return Column(
-              children: [
-                if (bleState is BluetoothOff)
-                  BluetoothOffBanner(
-                    onGoToSettings: () {
-                      const AndroidIntent(action: 'android.settings.BLUETOOTH_SETTINGS').launch();
+          child: BlocBuilder<BleBloc, BleState>(
+            builder: (context, bleState) {
+              return Column(
+                children: [
+                  if (bleState is BluetoothOff)
+                    BluetoothOffBanner(
+                      onGoToSettings: () {
+                        const AndroidIntent(action: 'android.settings.BLUETOOTH_SETTINGS').launch();
+                      },
+                    ),
+                  // T2.4: Info bar — conteo de nodos y hora último escaneo
+                  BlocBuilder<NodeListBloc, NodeListState>(
+                    builder: (context, nodeState) {
+                      if (nodeState is NodeListLoaded) {
+                        return _buildInfoBar(nodeState.nodes.length);
+                      }
+                      return const SizedBox.shrink();
                     },
                   ),
-                Expanded(child: _buildContent()),
-              ],
-            );
-          },
-        ),
-      ),
-      ),
-      ),
-      floatingActionButton: BlocBuilder<BleBloc, BleState>(
-        builder: (context, bleState) {
-          final isScanning = bleState is BleScanning;
-          return FloatingActionButton(
-            onPressed: () {
-              if (isScanning) {
-                bleBloc.add(const StopScan());
-              } else {
-                bleBloc.add(const StartScan());
-              }
+                  Expanded(child: _buildContent()),
+                ],
+              );
             },
-            tooltip: isScanning ? 'Detener escaneo' : 'Iniciar escaneo',
-            child: Icon(isScanning ? Icons.stop : Icons.bluetooth_searching),
-          );
-        },
+          ),
+      ),
+      ),
       ),
     );
   }
@@ -328,12 +364,64 @@ class _HomePageState extends State<HomePage> {
     ));
   }
 
+  /// T2.4: Construye la barra de info superior con conteo de nodos y
+  /// tiempo relativo del último escaneo.
+  ///
+  /// QUÉ: muestra "X nodos detectados · Ahora" o "X nodos · Hace 2 min".
+  /// Solo se muestra cuando hay nodos cargados (NodeListLoaded).
+  ///
+  /// POR QUÉ: el usuario necesita saber cuántos nodos se detectaron y
+  /// qué tan reciente fue el último escaneo, sin tener que contar los
+  /// elementos en la lista.
+  Widget _buildInfoBar(int nodeCount) {
+    final timeText = _formatRelativeTime(_lastScanTime);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+      child: Text(
+        '$nodeCount nodos detectados${timeText != null ? ' · $timeText' : ''}',
+        style: TextStyle(
+          fontSize: 13,
+          color: Theme.of(context).colorScheme.onPrimaryContainer,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  /// T2.4: Formatea una marca de tiempo a texto relativo legible.
+  ///
+  /// - null → null (sin texto de tiempo)
+  /// - < 1 minuto → "Ahora"
+  /// - 1 minuto → "Hace 1 min"
+  /// - >= 1 minuto → "Hace X min"
+  String? _formatRelativeTime(DateTime? time) {
+    if (time == null) return null;
+
+    final diff = DateTime.now().difference(time);
+    if (diff.inSeconds < 60) return 'Ahora';
+    final minutes = diff.inMinutes;
+    if (minutes == 1) return 'Hace 1 min';
+    return 'Hace $minutes min';
+  }
+
   /// Construye el contenido principal: ListView para lista,
   /// GraphView (con loading/error) para grafo, mediante AnimatedCrossFade.
   Widget _buildContent() {
     return BlocBuilder<NodeListBloc, NodeListState>(
       builder: (context, state) {
         return switch (state) {
+          // F5: Estado inicial — muestra mensaje visible al usuario
+          // en lugar de SizedBox.shrink (pantalla en blanco).
+          // QUÉ: informa que la app está buscando nodos activamente.
+          NodeListInitial() => const Center(
+              child: Text(
+                'Buscando nodos cercanos...',
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+            ),
           NodeListLoading() =>
             const Center(child: CircularProgressIndicator()),
           NodeListEmpty() => const Center(
