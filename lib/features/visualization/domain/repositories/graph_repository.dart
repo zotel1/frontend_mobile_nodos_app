@@ -1,5 +1,4 @@
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_edge.dart';
-import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_node.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
 
 /// Contrato para obtener datos del grafo desde las fuentes de datos.
