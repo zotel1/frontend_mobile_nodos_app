@@ -1,11 +1,21 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <!-- maxSdkVersion="30": BLUETOOTH está deprecado en Android 12+ (API 31). -->
+    <!-- BLUETOOTH_SCAN y BLUETOOTH_CONNECT lo reemplazan. -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
     <uses-permission
         android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission
+        android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="30" />
+    <!-- Declara soporte BLE para filtrado en Play Store sin requerirlo. -->
+    <uses-feature
+        android:name="android.hardware.bluetooth_le"
+        android:required="false" />
     <application
         android:label="frontend_mobile_nodos_app"
         android:name="${applicationName}"
