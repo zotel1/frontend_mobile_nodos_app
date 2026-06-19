@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:get_it/get_it.dart';
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart';
@@ -393,6 +395,110 @@ void main() {
 
       // Verify the BluetoothOffBanner text is shown.
       expect(find.textContaining('Bluetooth desactivado'), findsOneWidget);
+    });
+
+    testWidgets('BlocListener<BleBloc> dispatches SyncBleDevices on BleScanning',
+        (tester) async {
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+
+      final testDevice = BleDevice(
+        deviceId: 'AA:BB:CC:DD:EE:FF',
+        rssi: -60,
+        distance: 5.0,
+        proximity: ProximityLevel.medium,
+        timestamp: DateTime(2026, 6, 19),
+      );
+
+      when(mockNodeListBloc.state).thenReturn(const NodeListLoaded([]));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(const NodeListLoaded([])));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream).thenAnswer(
+        (_) => Stream.fromIterable([
+          BleScanning(devices: [testDevice]),
+        ]),
+      );
+      when(mockVizBloc.state).thenReturn(const VisualizationInitial());
+      when(mockVizBloc.stream)
+          .thenAnswer((_) => Stream.value(const VisualizationInitial()));
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      // Esperar que el BlocListener<BleBloc> procese el BleScanning.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Verifica que SyncBleDevices fue despachado al NodeListBloc.
+      verify(mockNodeListBloc.add(argThat(
+        predicate((e) => e is SyncBleDevices && e.devices.length == 1),
+      ))).called(1);
+    });
+
+    testWidgets('settings gear navigates to /settings using GoRouter',
+        (tester) async {
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+
+      when(mockNodeListBloc.state).thenReturn(const NodeListLoaded([]));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(const NodeListLoaded([])));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream)
+          .thenAnswer((_) => Stream.value(const BleStopped()));
+      when(mockVizBloc.state).thenReturn(const VisualizationInitial());
+      when(mockVizBloc.stream)
+          .thenAnswer((_) => Stream.value(const VisualizationInitial()));
+
+      // Usamos GoRouter para validar que la navegación usa GoRouter.
+      final testRouter = GoRouter(
+        initialLocation: '/',
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, _) => MultiBlocProvider(
+              providers: [
+                BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+                BlocProvider<BleBloc>.value(value: mockBleBloc),
+                BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+              ],
+              child: const HomePage(),
+            ),
+          ),
+          GoRoute(
+            path: '/settings',
+            builder: (_, _) => const Scaffold(
+              body: Center(child: Text('Settings Page')),
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(
+        routerConfig: testRouter,
+      ));
+
+      // El icono de settings debe estar presente.
+      expect(find.byIcon(Icons.settings), findsOneWidget);
+
+      // Tocar el engranaje y verificar que navega a /settings.
+      await tester.tap(find.byIcon(Icons.settings));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // La página de settings debe mostrarse.
+      expect(find.text('Settings Page'), findsOneWidget);
     });
   });
 }
