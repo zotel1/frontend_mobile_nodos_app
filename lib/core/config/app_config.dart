@@ -13,6 +13,15 @@ const int proximityThresholdClose = -70;
 /// RSSI threshold for "medium" proximity (dBm).
 const int proximityThresholdMedium = -85;
 
+/// Exponente de pérdida de trayectoria (n) para el modelo Friis.
+///
+/// Usado en distance_calc.dart para la fórmula:
+///   distancia = 10 ^ ((txPower - rssi) / (10 * pathLossExponent))
+///
+/// n = 2.0 asume espacio libre (free-space). En interiores, valores
+/// típicos van de 2.0 a 4.0. Este valor puede calibrarse en Phase 3.
+const double pathLossExponent = 2.0;
+
 /// BLE scan active duration per duty cycle period.
 const Duration dutyCycleScanDuration = Duration(seconds: 2);
 

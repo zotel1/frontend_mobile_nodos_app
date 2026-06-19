@@ -18,6 +18,8 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bl
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_event.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_state.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/widgets/graph_view.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/presentation/widgets/node_tooltip.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
 
 /// Pantalla principal: alterna entre lista de nodos (≤4) y grafo (>4).
 ///
@@ -54,6 +56,81 @@ class _HomePageState extends State<HomePage> {
   /// Este flag asegura que solo haya un diálogo visible a la vez.
   bool _dialogVisible = false;
 
+  /// GlobalKey del GraphView para calcular posiciones globales de nodos.
+  ///
+  /// Usado por NodeTooltip.show() para posicionar el tooltip cerca del
+  /// nodo tocado en coordenadas de pantalla.
+  final GlobalKey _graphViewKey = GlobalKey();
+
+  /// Entry del tooltip actualmente visible en el Overlay.
+  /// null si no hay tooltip abierto.
+  OverlayEntry? _tooltipEntry;
+
+  /// ID del nodo para el cual el tooltip está actualmente visible.
+  /// Previene re-apertura del tooltip para el mismo nodo.
+  int? _tooltipNodeId;
+
+  /// Abre el tooltip para un nodo específico en el grafo.
+  ///
+  /// QUÉ hace: busca el GraphNode por ID en el layout, calcula su
+  /// posición global usando el GlobalKey del GraphView, y llama a
+  /// NodeTooltip.show() para mostrar un overlay con la info del nodo.
+  ///
+  /// POR QUÉ: el usuario tocó un nodo en el grafo y necesita ver
+  /// detalles (nombre, proximidad, ID) sin navegar a otra pantalla.
+  ///
+  /// Guard: usa addPostFrameCallback para asegurar que el RenderBox
+  /// del GraphView esté disponible después del build.
+  void _showNodeTooltip(
+      BuildContext context, LayoutResult layout, int nodeId) {
+    if (_tooltipNodeId == nodeId) return; // ya visible para este nodo
+
+    final node = layout.nodes.firstWhere(
+      (n) => n.id == nodeId,
+      orElse: () => throw StateError('Nodo $nodeId no encontrado en layout'),
+    );
+
+    // addPostFrameCallback asegura que el RenderBox del GraphView
+    // esté disponible después del build del frame actual.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      final renderBox =
+          _graphViewKey.currentContext?.findRenderObject() as RenderBox?;
+      if (renderBox == null) return;
+
+      // Calcular posición global aproximada del nodo en pantalla.
+      // La posición del canvas (2000×2000) se transforma vía el RenderBox.
+      final localPos = Offset(node.x, node.y);
+      final globalPosition = renderBox.localToGlobal(localPos);
+
+      // Remover tooltip previo si existe
+      _tooltipEntry?.remove();
+      _tooltipEntry = null;
+
+      _tooltipEntry = NodeTooltip.show(
+        context: context,
+        node: node,
+        globalPosition: globalPosition,
+        onDismiss: () {
+          _tooltipEntry = null;
+          _tooltipNodeId = null;
+          if (mounted) {
+            context.read<VisualizationBloc>().add(const NodeDeselected());
+          }
+        },
+      );
+      _tooltipNodeId = nodeId;
+    });
+  }
+
+  /// Cierra el tooltip si está visible.
+  void _dismissTooltip() {
+    _tooltipEntry?.remove();
+    _tooltipEntry = null;
+    _tooltipNodeId = null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final bleBloc = context.read<BleBloc>();
@@ -68,7 +145,28 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      body: BlocListener<BleBloc, BleState>(
+      body: BlocListener<VisualizationBloc, VisualizationState>(
+        /// Escucha cambios en el VisualizationBloc para mostrar/ocultar el
+        /// NodeTooltip cuando cambia selectedNodeId.
+        ///
+        /// QUÉ hace: cuando GraphReady tiene selectedNodeId != null, busca
+        /// el nodo en el layout y muestra un tooltip flotante. Cuando
+        /// selectedNodeId es null, cierra cualquier tooltip activo.
+        ///
+        /// POR QUÉ: el tooltip es un efecto lateral (Overlay) que no debe
+        /// dispararse durante el build. El listener de BLoC es el lugar
+        /// correcto para side effects.
+        listener: (context, vizState) {
+          if (vizState is GraphReady) {
+            if (vizState.selectedNodeId != null) {
+              _showNodeTooltip(
+                  context, vizState.layout, vizState.selectedNodeId!);
+            } else {
+              _dismissTooltip();
+            }
+          }
+        },
+        child: BlocListener<BleBloc, BleState>(
         /// Puente BLE → Node: convierte resultados de escaneo BLE en
         /// entidades Node persistentes.
         ///
@@ -136,6 +234,7 @@ class _HomePageState extends State<HomePage> {
             );
           },
         ),
+      ),
       ),
       ),
       floatingActionButton: BlocBuilder<BleBloc, BleState>(
@@ -279,6 +378,7 @@ class _HomePageState extends State<HomePage> {
               const Center(child: CircularProgressIndicator()),
             GraphReady(:final layout, :final selectedNodeId) =>
               GraphView(
+                key: _graphViewKey,
                 layout: layout,
                 selectedNodeId: selectedNodeId,
                 onNodeTapped: (nodeId) {

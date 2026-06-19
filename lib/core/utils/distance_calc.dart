@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 
 /// Proximity levels classified from RSSI signal strength.
 enum ProximityLevel { close, medium, far }
@@ -6,10 +7,12 @@ enum ProximityLevel { close, medium, far }
 /// Converts BLE RSSI value to estimated distance in meters.
 ///
 /// Uses the simplified log-distance path loss model:
-///   distance = 10 ^ ((txPower - rssi) / (10 * n))
+///   distance = 10 ^ ((txPower - rssi) / (10 * pathLossExponent))
 ///
-/// Where txPower = -50 dBm (assumed RSSI at 1 meter) and n = 2.0
-/// (free-space path loss exponent).
+/// Where:
+/// - [txPower] is the assumed RSSI at 1 meter (from app_config.dart).
+/// - [pathLossExponent] is the n factor in the Friis formula (n=2.0 for
+///   free-space, higher for indoor environments).
 ///
 /// For rssi >= 0 (invalid/no signal), returns [double.infinity].
 double rssiToDistance(int rssi) {
@@ -17,7 +20,7 @@ double rssiToDistance(int rssi) {
   if (rssi >= 0) {
     return double.infinity;
   }
-  return pow(10, (-50 - rssi) / 20.0).toDouble();
+  return pow(10, (txPower - rssi) / (10 * pathLossExponent)).toDouble();
 }
 
 /// Classifies an RSSI reading into a [ProximityLevel].

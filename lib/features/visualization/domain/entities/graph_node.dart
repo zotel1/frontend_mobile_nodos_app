@@ -47,10 +47,17 @@ class GraphNode extends Equatable {
         ProximityLevel.far => const Color(0xFFF44336),
       };
 
+  /// Indica si el nodo tiene identidad conocida (nombre asignado).
+  ///
+  /// Nodos sin nombre (name == null) son dispositivos detectados a los que
+  /// el usuario aún no asignó una identidad. Se renderizan con estilo
+  /// visual distinto (gris, borde discontinuo) en el grafo.
+  bool get isKnown => name != null;
+
   /// Etiqueta a mostrar debajo del nodo.
   /// Usa el nombre si existe, sino "Desconocido".
   String get label => name ?? 'Desconocido';
 
   @override
-  List<Object?> get props => [id, x, y, proximity];
+  List<Object?> get props => [id, x, y, proximity, name];
 }
