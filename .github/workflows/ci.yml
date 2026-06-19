@@ -33,6 +33,13 @@ jobs:
       # Genera código de Drift (bases de datos) antes de ejecutar tests
       - run: dart run build_runner build --delete-conflicting-outputs
       - run: flutter test
+      # F17: genera reporte de cobertura LCOV y lo publica como artefacto.
+      - run: flutter test --coverage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          retention-days: 7
 
   build-apk:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'

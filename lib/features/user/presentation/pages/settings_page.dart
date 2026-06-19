@@ -66,15 +66,21 @@ class _SettingsPageState extends State<SettingsPage> {
     final currentThemeMode =
         (userBloc.state is UserLoaded) ? (userBloc.state as UserLoaded).themeMode : ThemeMode.system;
 
+    // QUÉ: Inicializa el controller SOLO si está vacío, para preservar
+    // ediciones no guardadas frente a reemisiones de UserLoaded.
+    // POR QUÉ: al usar controller en lugar de initialValue, el widget
+    // no reinicia el texto en cada rebuild; debemos hacerlo manualmente
+    // solo en la primera carga.
+    if (_nameController.text.isEmpty) {
+      _nameController.text = user.name;
+    }
+
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
         TextFormField(
-          initialValue: user.name,
+          controller: _nameController,
           decoration: const InputDecoration(labelText: 'Nombre'),
-          onChanged: (value) {
-            _nameController.text = value;
-          },
         ),
         const SizedBox(height: 24),
         // ─── Toggle de tema ──────────────────────────────────
