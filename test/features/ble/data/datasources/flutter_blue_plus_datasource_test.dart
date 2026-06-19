@@ -133,4 +133,69 @@ void main() {
       await dataSource.stopScan();
     });
   });
+
+  group('bluetoothState', () {
+    test('emite true cuando btStateStream emite true (adaptador encendido)',
+        () async {
+      final btController = StreamController<bool>.broadcast();
+      final dataSource = FlutterBluePlusDataSource.test(
+        Stream<List<BleDevice>>.empty(),
+        btStateStream: btController.stream,
+      );
+
+      final states = <bool>[];
+      final sub = dataSource.bluetoothState.listen(states.add);
+
+      btController.add(true);
+      await Future.delayed(Duration.zero);
+
+      expect(states, [true]);
+
+      await sub.cancel();
+      await btController.close();
+    });
+
+    test('emite false cuando btStateStream emite false (adaptador apagado)',
+        () async {
+      final btController = StreamController<bool>.broadcast();
+      final dataSource = FlutterBluePlusDataSource.test(
+        Stream<List<BleDevice>>.empty(),
+        btStateStream: btController.stream,
+      );
+
+      final states = <bool>[];
+      final sub = dataSource.bluetoothState.listen(states.add);
+
+      btController.add(false);
+      await Future.delayed(Duration.zero);
+
+      expect(states, [false]);
+
+      await sub.cancel();
+      await btController.close();
+    });
+
+    test('emite múltiples valores cuando btStateStream alterna', () async {
+      final btController = StreamController<bool>.broadcast();
+      final dataSource = FlutterBluePlusDataSource.test(
+        Stream<List<BleDevice>>.empty(),
+        btStateStream: btController.stream,
+      );
+
+      final states = <bool>[];
+      final sub = dataSource.bluetoothState.listen(states.add);
+
+      btController.add(true);
+      await Future.delayed(Duration.zero);
+      btController.add(false);
+      await Future.delayed(Duration.zero);
+      btController.add(true);
+      await Future.delayed(Duration.zero);
+
+      expect(states, [true, false, true]);
+
+      await sub.cancel();
+      await btController.close();
+    });
+  });
 }

@@ -43,6 +43,15 @@ class MockBleScannerDataSource extends _i1.Mock
           as _i3.Stream<List<_i4.BleDevice>>);
 
   @override
+  _i3.Stream<bool> get bluetoothState =>
+      (super.noSuchMethod(
+            Invocation.getter(#bluetoothState),
+            returnValue: _i3.Stream<bool>.empty(),
+            returnValueForMissingStub: _i3.Stream<bool>.empty(),
+          )
+          as _i3.Stream<bool>);
+
+  @override
   _i3.Future<void> startScan({List<String>? serviceUuids}) =>
       (super.noSuchMethod(
             Invocation.method(#startScan, [], {#serviceUuids: serviceUuids}),

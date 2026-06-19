@@ -107,15 +107,28 @@ void main() {
       verify(mockAdvertiser.stopAdvertise()).called(1);
     });
 
-    test('bluetoothState emits true', () async {
+    test('bluetoothState delega al scanner.bluetoothState', () async {
+      final btController = StreamController<bool>.broadcast();
+      // Configuramos el mock del scanner para que exponga un stream controlado.
+      when(mockScanner.bluetoothState).thenAnswer((_) => btController.stream);
+
       final states = <bool>[];
       final sub = repository.bluetoothState.listen(states.add);
 
+      // Emitimos false (simula BT apagado) — debe llegar al repositorio.
+      btController.add(false);
       await Future.delayed(Duration.zero);
 
-      expect(states, contains(true));
+      expect(states, [false]);
+
+      // Emitimos true (BT se enciende) — tambien debe propagarse.
+      btController.add(true);
+      await Future.delayed(Duration.zero);
+
+      expect(states, [false, true]);
 
       await sub.cancel();
+      await btController.close();
     });
   });
 }
