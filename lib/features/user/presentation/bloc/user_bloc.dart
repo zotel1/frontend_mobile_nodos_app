@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/entities/user.dart';
@@ -37,6 +38,18 @@ class UpdateUserColorEvent extends UserEvent {
   List<Object> get props => [color];
 }
 
+/// Cambia el modo de tema (sistema / claro / oscuro).
+///
+/// No persiste en DB — solo en memoria (deferido a Phase 3).
+class UpdateThemeMode extends UserEvent {
+  final ThemeMode mode;
+
+  const UpdateThemeMode(this.mode);
+
+  @override
+  List<Object> get props => [mode];
+}
+
 // ── States ──
 
 abstract class UserState extends Equatable {
@@ -56,11 +69,13 @@ class UserLoading extends UserState {
 
 class UserLoaded extends UserState {
   final User user;
+  /// Modo de tema actual. Por defecto [ThemeMode.system] (deferido al SO).
+  final ThemeMode themeMode;
 
-  const UserLoaded(this.user);
+  const UserLoaded(this.user, {this.themeMode = ThemeMode.system});
 
   @override
-  List<Object> get props => [user];
+  List<Object?> get props => [user, themeMode];
 }
 
 class UserError extends UserState {
@@ -87,6 +102,7 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     on<LoadProfile>(_onLoadProfile);
     on<UpdateUserNameEvent>(_onUpdateName);
     on<UpdateUserColorEvent>(_onUpdateColor);
+    on<UpdateThemeMode>(_onUpdateThemeMode);
   }
 
   Future<void> _onLoadProfile(
@@ -128,5 +144,18 @@ class UserBloc extends Bloc<UserEvent, UserState> {
       (failure) => emit(UserError(failure.message)),
       (user) => emit(UserLoaded(user)),
     );
+  }
+
+  /// Actualiza el modo de tema sin modificar datos del perfil.
+  ///
+  /// Solo cambia el campo [themeMode] en el estado actual.
+  /// No persiste en DB (deferido a Phase 3).
+  /// Si el estado actual no es [UserLoaded], ignora el evento.
+  void _onUpdateThemeMode(
+      UpdateThemeMode event, Emitter<UserState> emit) {
+    final currentState = state;
+    if (currentState is UserLoaded) {
+      emit(UserLoaded(currentState.user, themeMode: event.mode));
+    }
   }
 }
