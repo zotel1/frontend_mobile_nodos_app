@@ -14,6 +14,8 @@ final _now = DateTime(2026, 6, 15, 10, 0);
 Node _testNode({
   String? name,
   String? color,
+  String? suggestedName,
+  String? deviceType,
   List<int> rssiHistory = const [-40],
 }) {
   return Node(
@@ -24,6 +26,8 @@ Node _testNode({
     firstSeen: _now,
     lastSeen: _now,
     rssiHistory: rssiHistory,
+    suggestedName: suggestedName,
+    deviceType: deviceType,
   );
 }
 
@@ -82,6 +86,76 @@ void main() {
       // Verifica que el fondo usa rojo de proximidad (far → red con alpha 0.06).
       final card = tester.widget<Card>(find.byType(Card));
       expect(card.color, Colors.red.withValues(alpha: 0.06));
+    });
+
+    // ─── T1.8: suggestedName en el título ─────────────────────
+    // QUÉ: Cuando el nodo no tiene name pero sí suggestedName,
+    // muestra el suggestedName en lugar de "Desconocido".
+    // POR QUÉ: Phase 4 identity enrichment — los nombres de
+    // advertisement BLE enriquecen la UI sin acción del usuario.
+
+    testWidgets('muestra suggestedName cuando name es null', (tester) async {
+      final node = _testNode(suggestedName: 'AirPods Pro');
+
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: NodeTile(node: node)),
+      ));
+
+      expect(find.text('AirPods Pro'), findsOneWidget);
+      expect(find.text('Desconocido'), findsNothing);
+    });
+
+    testWidgets('prefiere name sobre suggestedName', (tester) async {
+      final node = _testNode(
+        name: 'Mis auris',
+        suggestedName: 'AirPods Pro',
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: NodeTile(node: node)),
+      ));
+
+      expect(find.text('Mis auris'), findsOneWidget);
+      expect(find.text('AirPods Pro'), findsNothing);
+    });
+
+    testWidgets('muestra Desconocido cuando ambos son null', (tester) async {
+      final node = _testNode();
+
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: NodeTile(node: node)),
+      ));
+
+      expect(find.text('Desconocido'), findsOneWidget);
+    });
+
+    // ─── T1.9: badge de device type ───────────────────────────
+    // QUÉ: Cuando el nodo tiene deviceType, se muestra un chip/badge
+    // con el tipo de dispositivo debajo del nombre.
+    // POR QUÉ: R3.5 — la UI debe mostrar el tipo clasificado del
+    // dispositivo junto al nombre.
+
+    testWidgets('muestra badge de device type cuando está presente',
+        (tester) async {
+      final node = _testNode(deviceType: 'Reloj/Fitness');
+
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: NodeTile(node: node)),
+      ));
+
+      expect(find.text('Reloj/Fitness'), findsOneWidget);
+    });
+
+    testWidgets('no muestra badge cuando deviceType es null', (tester) async {
+      final node = _testNode();
+
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: NodeTile(node: node)),
+      ));
+
+      // Solo label y elementos estáticos visibles
+      expect(find.text('Desconocido'), findsOneWidget);
+      expect(find.byIcon(Icons.devices), findsNothing);
     });
   });
 }
