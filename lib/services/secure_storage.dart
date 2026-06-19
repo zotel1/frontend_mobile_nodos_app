@@ -1,6 +1,6 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-import 'package:frontend_mobile_nodos_app/utils/uuid_generator.dart';
+import 'package:frontend_mobile_nodos_app/core/utils/uuid_generator.dart';
 
 /// Persistence contract for the device UUID.
 ///

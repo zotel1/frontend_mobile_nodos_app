@@ -3,7 +3,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart' hide ScanResult;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend_mobile_nodos_app/ble/ble_manager.dart';
 import 'package:frontend_mobile_nodos_app/screens/home_screen.dart';
-import 'package:frontend_mobile_nodos_app/utils/distance_calc.dart';
+import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 
 import '../helpers/fake_dependencies.dart';
 

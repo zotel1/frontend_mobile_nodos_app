@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
-import '../config/app_config.dart';
-import '../utils/distance_calc.dart';
+import '../core/config/app_config.dart';
+import '../core/utils/distance_calc.dart';
 
 /// A BLE scan result with our app-level metadata.
 class ScanResult {

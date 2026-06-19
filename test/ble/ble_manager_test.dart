@@ -4,8 +4,8 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     hide ScanResult;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend_mobile_nodos_app/ble/ble_manager.dart';
-import 'package:frontend_mobile_nodos_app/config/app_config.dart';
-import 'package:frontend_mobile_nodos_app/utils/distance_calc.dart';
+import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
+import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 
 /// A fake BLE adapter that emits controlled scan results and adapter states.
 class _FakeBleAdapter implements BleAdapter {

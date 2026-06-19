@@ -6,9 +6,9 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 
 import '../ble/ble_manager.dart';
 import '../ble/duty_cycle_timer.dart';
-import '../config/app_config.dart';
+import '../core/config/app_config.dart';
 import '../services/secure_storage.dart';
-import '../utils/distance_calc.dart';
+import '../core/utils/distance_calc.dart';
 
 /// Main screen of the Nodos app.
 ///
