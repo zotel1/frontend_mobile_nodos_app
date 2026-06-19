@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.nodos.frontend_mobile_nodos_app"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 34
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
