@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'package:frontend_mobile_nodos_app/core/utils/uuid_generator.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/entities/user.dart';
+import 'package:frontend_mobile_nodos_app/features/user/domain/repositories/user_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/usecases/get_user_profile.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/usecases/update_user_color.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/usecases/update_user_name.dart';
@@ -93,23 +95,58 @@ class UserBloc extends Bloc<UserEvent, UserState> {
   final GetUserProfile getProfile;
   final UpdateUserName updateName;
   final UpdateUserColor updateColor;
+  /// Repositorio inyectado para auto-crear el perfil default
+  /// cuando la DB está vacía (primera ejecución).
+  /// QUÉ: usado por _onLoadProfile para persistir el User default
+  /// en caso de que getUser() retorne null.
+  final UserRepository _userRepository;
 
   UserBloc({
     required this.getProfile,
     required this.updateName,
     required this.updateColor,
-  }) : super(const UserInitial()) {
+    required UserRepository userRepository,
+  }) : _userRepository = userRepository,
+       super(const UserInitial()) {
     on<LoadProfile>(_onLoadProfile);
     on<UpdateUserNameEvent>(_onUpdateName);
     on<UpdateUserColorEvent>(_onUpdateColor);
     on<UpdateThemeMode>(_onUpdateThemeMode);
   }
 
+  /// Carga el perfil del usuario desde Drift.
+  ///
+  /// F7: Si no existe perfil (primera ejecución), crea un User default
+  /// con UUIDv4, nombre "Mi dispositivo", color azul (#2196F3), y
+  /// deviceType "android". Luego recarga el perfil para obtener los
+  /// datos persistidos.
+  ///
+  /// QUÉ problema resuelve: sin este fallback, Settings mostraba
+  /// "Error: No user profile found" en primera ejecución porque
+  /// la DB de usuarios estaba vacía.
   Future<void> _onLoadProfile(
       LoadProfile event, Emitter<UserState> emit) async {
     emit(const UserLoading());
     final result = await getProfile(const NoParams());
-    result.fold(
+
+    if (result.isRight()) {
+      emit(UserLoaded(result.getOrElse(() => throw StateError('Imposible'))));
+      return;
+    }
+
+    // F7: Si no hay perfil, crear uno default automáticamente.
+    final defaultUser = User(
+      uuid: generateUuidV4(),
+      name: 'Mi dispositivo',
+      color: '#2196F3',
+      deviceType: 'android',
+      createdAt: DateTime.now(),
+    );
+    await _userRepository.createUser(defaultUser);
+
+    // Recargar perfil para obtener los datos persistidos.
+    final reloadResult = await getProfile(const NoParams());
+    reloadResult.fold(
       (failure) => emit(UserError(failure.message)),
       (user) => emit(UserLoaded(user)),
     );

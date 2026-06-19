@@ -82,20 +82,37 @@ class FlutterBluePlusDataSource implements BleScannerDataSource {
     if (_isScanning) return;
     _isScanning = true;
     if (_isTestMode) return;
-    await FlutterBluePlus.startScan(
-      withServices: serviceUuids?.map((u) => Guid(u)).toList() ?? [],
-      timeout: const Duration(seconds: 15),
-      androidUsesFineLocation: false,
-    );
+
+    // F2: Recrear listener de plataforma si fue cancelado en stopScan().
+    // _bindToPlatform() tiene guard interno (if (_scanSub != null) return)
+    // por lo que es seguro llamarlo incluso con listener activo.
+    if (_scanSub == null) _bindToPlatform();
+
+    // F3: try/catch — resetea _isScanning si la plataforma lanza error
+    // para no dejar el scanner en estado muerto.
+    try {
+      await FlutterBluePlus.startScan(
+        withServices: serviceUuids?.map((u) => Guid(u)).toList() ?? [],
+        timeout: const Duration(seconds: 15),
+        androidUsesFineLocation: false,
+      );
+    } catch (_) {
+      _isScanning = false;
+      rethrow;
+    }
   }
 
   @override
   Future<void> stopScan() async {
     if (!_isScanning) return;
-    _isScanning = false;
     await _scanSub?.cancel();
     _scanSub = null;
-    if (_isTestMode) return;
-    await FlutterBluePlus.stopScan();
+    if (!_isTestMode) {
+      await FlutterBluePlus.stopScan();
+    }
+    // F3: Reset explícito después del stop de plataforma.
+    // Garantiza que incluso si la plataforma lanza, _isScanning
+    // refleje el estado real para el próximo startScan().
+    _isScanning = false;
   }
 }
