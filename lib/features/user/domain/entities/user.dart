@@ -17,4 +17,20 @@ class User extends Equatable {
 
   @override
   List<Object> get props => [uuid, name, color, deviceType, createdAt];
+
+  User copyWith({
+    String? uuid,
+    String? name,
+    String? color,
+    String? deviceType,
+    DateTime? createdAt,
+  }) {
+    return User(
+      uuid: uuid ?? this.uuid,
+      name: name ?? this.name,
+      color: color ?? this.color,
+      deviceType: deviceType ?? this.deviceType,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
 }
