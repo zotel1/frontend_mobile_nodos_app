@@ -108,6 +108,7 @@ Future<void> initDependencies() async {
       getProfile: sl(),
       updateName: sl(),
       updateColor: sl(),
+      userRepository: sl(),
     ),
   );
   // VisualizationBloc: orquesta BuildGraph + CalculateLayout con debounce.

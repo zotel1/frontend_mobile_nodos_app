@@ -61,6 +61,10 @@ class _HomePageState extends State<HomePage> {
   /// nodo tocado en coordenadas de pantalla.
   final GlobalKey _graphViewKey = GlobalKey();
 
+  /// Referencia al BleBloc guardada en initState para usar en dispose()
+  /// cuando el context ya no es seguro para ancestor lookup.
+  BleBloc? _bleBloc;
+
   /// Entry del tooltip actualmente visible en el Overlay.
   /// null si no hay tooltip abierto.
   OverlayEntry? _tooltipEntry;
@@ -130,10 +134,40 @@ class _HomePageState extends State<HomePage> {
     _tooltipNodeId = null;
   }
 
+  /// F4 + T1.8: Dispara LoadNodes y StartScan al inicializar la pantalla.
+  ///
+  /// QUÉ: LoadNodes inicia la suscripción al stream Drift de nodos.
+  /// StartScan inicia el escaneo BLE automáticamente sin FAB.
+  /// Guarda referencia a BleBloc para dispose() donde context no es seguro.
+  /// addPostFrameCallback asegura que el context ya tiene los BLoCs
+  /// disponibles desde el árbol de providers.
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final bleBloc = context.read<BleBloc>();
+      _bleBloc = bleBloc;
+      context.read<NodeListBloc>().add(const LoadNodes());
+      bleBloc.add(const StartScan());
+    });
+  }
+
+  /// T1.8: Detiene el escaneo BLE al destruir el widget.
+  ///
+  /// QUÉ: cuando el usuario navega a otra tab, el escaneo debe detenerse
+  /// para ahorrar batería y recursos de plataforma.
+  /// Usa _bleBloc (guardado en initState) porque context.read no es seguro
+  /// durante dispose — el widget ya está desmontado.
+  @override
+  void dispose() {
+    _bleBloc?.add(const StopScan());
+    _tooltipEntry?.remove();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bleBloc = context.read<BleBloc>();
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Nodos'),
@@ -232,22 +266,6 @@ class _HomePageState extends State<HomePage> {
       ),
       ),
       ),
-      floatingActionButton: BlocBuilder<BleBloc, BleState>(
-        builder: (context, bleState) {
-          final isScanning = bleState is BleScanning;
-          return FloatingActionButton(
-            onPressed: () {
-              if (isScanning) {
-                bleBloc.add(const StopScan());
-              } else {
-                bleBloc.add(const StartScan());
-              }
-            },
-            tooltip: isScanning ? 'Detener escaneo' : 'Iniciar escaneo',
-            child: Icon(isScanning ? Icons.stop : Icons.bluetooth_searching),
-          );
-        },
-      ),
     );
   }
 
@@ -334,6 +352,15 @@ class _HomePageState extends State<HomePage> {
     return BlocBuilder<NodeListBloc, NodeListState>(
       builder: (context, state) {
         return switch (state) {
+          // F5: Estado inicial — muestra mensaje visible al usuario
+          // en lugar de SizedBox.shrink (pantalla en blanco).
+          // QUÉ: informa que la app está buscando nodos activamente.
+          NodeListInitial() => const Center(
+              child: Text(
+                'Buscando nodos cercanos...',
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+            ),
           NodeListLoading() =>
             const Center(child: CircularProgressIndicator()),
           NodeListEmpty() => const Center(

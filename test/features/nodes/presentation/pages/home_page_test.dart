@@ -321,7 +321,13 @@ void main() {
       expect(find.byIcon(Icons.settings), findsOneWidget);
     });
 
-    testWidgets('FAB toggles scan — dispatches StartScan when stopped',
+    // T1.8: Auto-scan — StartScan se despacha automáticamente en initState
+    // y StopScan en dispose. El FAB fue removido.
+    // QUÉ: al construir HomePage, el BLoC de BLE recibe StartScan sin
+    // interacción del usuario. Al destruir el widget, recibe StopScan.
+    // POR QUÉ: el escaneo debe ser automático en la tab Home, sin
+    // necesidad de que el usuario presione un botón cada vez.
+    testWidgets('dispatches StartScan automatically on init (auto-scan)',
         (tester) async {
       final mockBleBloc = MockBleBloc();
       final mockNodeListBloc = MockNodeListBloc();
@@ -330,9 +336,9 @@ void main() {
       when(mockBleBloc.state).thenReturn(const BleStopped());
       when(mockBleBloc.stream)
           .thenAnswer((_) => Stream.value(const BleStopped()));
-      when(mockNodeListBloc.state).thenReturn(const NodeListLoaded([]));
+      when(mockNodeListBloc.state).thenReturn(const NodeListInitial());
       when(mockNodeListBloc.stream)
-          .thenAnswer((_) => Stream.value(const NodeListLoaded([])));
+          .thenAnswer((_) => Stream.value(const NodeListInitial()));
       when(mockVizBloc.state).thenReturn(const VisualizationInitial());
       when(mockVizBloc.stream)
           .thenAnswer((_) => Stream.value(const VisualizationInitial()));
@@ -348,43 +354,22 @@ void main() {
         ),
       ));
 
-      await tester.tap(find.byType(FloatingActionButton));
+      // addPostFrameCallback ejecuta StartScan en el primer frame.
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
       verify(mockBleBloc.add(const StartScan())).called(1);
     });
 
-    testWidgets('FAB toggles scan — dispatches StopScan when scanning',
+    // T1.8: FAB removido — no debe existir FloatingActionButton en la UI.
+    testWidgets('FAB is removed from HomePage (auto-scan replaces it)',
         (tester) async {
-      final mockBleBloc = MockBleBloc();
-      final mockNodeListBloc = MockNodeListBloc();
-      final mockVizBloc = MockVisualizationBloc();
-
-      when(mockBleBloc.state).thenReturn(const BleScanning());
-      when(mockBleBloc.stream)
-          .thenAnswer((_) => Stream.value(const BleScanning()));
-      when(mockNodeListBloc.state).thenReturn(const NodeListLoaded([]));
-      when(mockNodeListBloc.stream)
-          .thenAnswer((_) => Stream.value(const NodeListLoaded([])));
-      when(mockVizBloc.state).thenReturn(const VisualizationInitial());
-      when(mockVizBloc.stream)
-          .thenAnswer((_) => Stream.value(const VisualizationInitial()));
-
-      await tester.pumpWidget(MaterialApp(
-        home: MultiBlocProvider(
-          providers: [
-            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
-            BlocProvider<BleBloc>.value(value: mockBleBloc),
-            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
-          ],
-          child: const HomePage(),
-        ),
+      await tester.pumpWidget(_pumpHomePage(
+        nodeListState: const NodeListInitial(),
+        visualizationState: const VisualizationInitial(),
       ));
 
-      await tester.tap(find.byType(FloatingActionButton));
-      await tester.pump();
-
-      verify(mockBleBloc.add(const StopScan())).called(1);
+      expect(find.byType(FloatingActionButton), findsNothing);
     });
 
     testWidgets('shows BluetoothOffBanner when Bluetooth is off',
@@ -733,6 +718,61 @@ void main() {
       expect(find.text('Nodo Beta'), findsOneWidget);
       expect(find.text('Medio'), findsOneWidget);
       expect(find.text('ID: 2'), findsOneWidget);
+    });
+
+    // T1.4 F4: Dispatch LoadNodes en initState.
+    // QUÉ: al construir HomePage, debe despachar LoadNodes al NodeListBloc
+    // para iniciar la suscripción al stream Drift de nodos.
+    // POR QUÉ: sin este dispatch, NodeListBloc nunca se suscribe y la
+    // pantalla queda en blanco (SizedBox.shrink para NodeListInitial).
+    testWidgets('dispatches LoadNodes on init via addPostFrameCallback',
+        (tester) async {
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+
+      when(mockNodeListBloc.state).thenReturn(const NodeListInitial());
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(const NodeListInitial()));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream)
+          .thenAnswer((_) => Stream.value(const BleStopped()));
+      when(mockVizBloc.state).thenReturn(const VisualizationInitial());
+      when(mockVizBloc.stream)
+          .thenAnswer((_) => Stream.value(const VisualizationInitial()));
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      // addPostFrameCallback se ejecuta después del primer frame.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Verifica que LoadNodes fue despachado al NodeListBloc.
+      verify(mockNodeListBloc.add(const LoadNodes())).called(1);
+    });
+
+    // T1.5 F5: NodeListInitial case → muestra texto "Buscando nodos cercanos..."
+    // QUÉ: cuando el estado es NodeListInitial, la UI debe mostrar un
+    // mensaje visible en lugar de SizedBox.shrink (pantalla en blanco).
+    // POR QUÉ: el fallback `_` renderizaba SizedBox.shrink → pantalla
+    // completamente en blanco, el usuario no sabía si la app funcionaba.
+    testWidgets('shows "Buscando nodos cercanos..." in NodeListInitial state',
+        (tester) async {
+      await tester.pumpWidget(_pumpHomePage(
+        nodeListState: const NodeListInitial(),
+        visualizationState: const VisualizationInitial(),
+      ));
+
+      expect(find.text('Buscando nodos cercanos...'), findsOneWidget);
     });
   });
 }

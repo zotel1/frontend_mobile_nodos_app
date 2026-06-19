@@ -6,6 +6,7 @@ import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:frontend_mobile_nodos_app/core/errors/failures.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/entities/user.dart';
+import 'package:frontend_mobile_nodos_app/features/user/domain/repositories/user_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/usecases/get_user_profile.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/usecases/update_user_color.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/usecases/update_user_name.dart';
@@ -15,6 +16,7 @@ import 'package:frontend_mobile_nodos_app/features/user/presentation/bloc/user_b
   MockSpec<GetUserProfile>(),
   MockSpec<UpdateUserName>(),
   MockSpec<UpdateUserColor>(),
+  MockSpec<UserRepository>(),
 ])
 import 'user_bloc_test.mocks.dart';
 
@@ -22,6 +24,7 @@ void main() {
   late MockGetUserProfile mockGetUserProfile;
   late MockUpdateUserName mockUpdateUserName;
   late MockUpdateUserColor mockUpdateUserColor;
+  late MockUserRepository mockUserRepository;
 
   final testUser = User(
     uuid: 'test-uuid-123',
@@ -35,6 +38,7 @@ void main() {
     mockGetUserProfile = MockGetUserProfile();
     mockUpdateUserName = MockUpdateUserName();
     mockUpdateUserColor = MockUpdateUserColor();
+    mockUserRepository = MockUserRepository();
   });
 
   group('UserBloc', () {
@@ -44,6 +48,7 @@ void main() {
         getProfile: mockGetUserProfile,
         updateName: mockUpdateUserName,
         updateColor: mockUpdateUserColor,
+        userRepository: mockUserRepository,
       ),
       verify: (bloc) => expect(bloc.state, isA<UserInitial>()),
     );
@@ -57,6 +62,7 @@ void main() {
           getProfile: mockGetUserProfile,
           updateName: mockUpdateUserName,
           updateColor: mockUpdateUserColor,
+          userRepository: mockUserRepository,
         );
       },
       act: (bloc) => bloc.add(LoadProfile()),
@@ -79,6 +85,7 @@ void main() {
           getProfile: mockGetUserProfile,
           updateName: mockUpdateUserName,
           updateColor: mockUpdateUserColor,
+          userRepository: mockUserRepository,
         );
       },
       act: (bloc) => bloc.add(LoadProfile()),
@@ -104,6 +111,7 @@ void main() {
           getProfile: mockGetUserProfile,
           updateName: mockUpdateUserName,
           updateColor: mockUpdateUserColor,
+          userRepository: mockUserRepository,
         );
       },
       act: (bloc) => bloc.add(const UpdateUserNameEvent('New Name')),
@@ -132,6 +140,7 @@ void main() {
           getProfile: mockGetUserProfile,
           updateName: mockUpdateUserName,
           updateColor: mockUpdateUserColor,
+          userRepository: mockUserRepository,
         );
       },
       act: (bloc) => bloc.add(const UpdateUserNameEvent('New Name')),
@@ -157,6 +166,7 @@ void main() {
           getProfile: mockGetUserProfile,
           updateName: mockUpdateUserName,
           updateColor: mockUpdateUserColor,
+          userRepository: mockUserRepository,
         );
       },
       act: (bloc) =>
@@ -186,6 +196,7 @@ void main() {
           getProfile: mockGetUserProfile,
           updateName: mockUpdateUserName,
           updateColor: mockUpdateUserColor,
+          userRepository: mockUserRepository,
         );
       },
       act: (bloc) =>
@@ -214,6 +225,7 @@ void main() {
           getProfile: mockGetUserProfile,
           updateName: mockUpdateUserName,
           updateColor: mockUpdateUserColor,
+          userRepository: mockUserRepository,
         );
       },
       act: (bloc) => bloc.add(LoadProfile()),
@@ -234,6 +246,7 @@ void main() {
         getProfile: mockGetUserProfile,
         updateName: mockUpdateUserName,
         updateColor: mockUpdateUserColor,
+        userRepository: mockUserRepository,
       ),
       act: (bloc) => bloc.add(const UpdateThemeMode(ThemeMode.dark)),
       expect: () => [
@@ -250,6 +263,7 @@ void main() {
         getProfile: mockGetUserProfile,
         updateName: mockUpdateUserName,
         updateColor: mockUpdateUserColor,
+        userRepository: mockUserRepository,
       ),
       act: (bloc) => bloc.add(const UpdateThemeMode(ThemeMode.light)),
       expect: () => [
@@ -266,6 +280,7 @@ void main() {
         getProfile: mockGetUserProfile,
         updateName: mockUpdateUserName,
         updateColor: mockUpdateUserColor,
+        userRepository: mockUserRepository,
       ),
       act: (bloc) => bloc.add(const UpdateThemeMode(ThemeMode.system)),
       expect: () => [
@@ -273,6 +288,62 @@ void main() {
             .having((s) => s.themeMode, 'themeMode', ThemeMode.system)
             .having((s) => s.user, 'user', testUser),
       ],
+    );
+
+    // T1.7 F7: Auto-creación de User default cuando no existe en DB.
+    // QUÉ: si getProfile retorna Left (no hay usuario), el BLoC debe
+    // crear un User default (UUIDv4, "Mi dispositivo", azul, android),
+    // persistirlo vía userRepository.createUser(), recargar el perfil
+    // y emitir UserLoaded con el nuevo usuario.
+    // POR QUÉ: en primera ejecución no hay perfil → Settings mostraba
+    // "Error: No user profile found". Con el default auto-creado, la
+    // app siempre tiene un perfil funcional.
+    blocTest<UserBloc, UserState>(
+      'creates default User when LoadProfile returns Left (no user in DB)',
+      build: () {
+        // Secuencia: primera llamada → Left (no hay perfil),
+        // segunda llamada (recarga tras createUser) → Right.
+        var callCount = 0;
+        when(mockGetUserProfile.call(any)).thenAnswer((_) async {
+          callCount++;
+          if (callCount == 1) {
+            return Left(CacheFailure('No user profile found'));
+          }
+          return Right(testUser.copyWith(
+            name: 'Mi dispositivo',
+            color: '#2196F3',
+            deviceType: 'android',
+          ));
+        });
+        // Configurar createUser en el repositorio.
+        when(mockUserRepository.createUser(any))
+            .thenAnswer((_) async {});
+        return UserBloc(
+          getProfile: mockGetUserProfile,
+          updateName: mockUpdateUserName,
+          updateColor: mockUpdateUserColor,
+          userRepository: mockUserRepository,
+        );
+      },
+      act: (bloc) => bloc.add(LoadProfile()),
+      expect: () => [
+        isA<UserLoading>(),
+        isA<UserLoaded>().having(
+          (s) => s.user.name,
+          'name',
+          'Mi dispositivo',
+        ),
+      ],
+      verify: (_) {
+        // Verifica que createUser fue llamado con los datos default.
+        verify(mockUserRepository.createUser(argThat(
+          predicate((u) =>
+              u is User &&
+              u.name == 'Mi dispositivo' &&
+              u.color == '#2196F3' &&
+              u.deviceType == 'android'),
+        ))).called(1);
+      },
     );
   });
 }

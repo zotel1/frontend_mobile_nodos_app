@@ -18,9 +18,17 @@ class BleRepositoryImpl implements BleRepository {
   @override
   Stream<List<BleDevice>> get scanResults => _scanner.scanResults;
 
+  /// Inicia escaneo promiscuo sin filtro UUID para detectar
+  /// cualquier dispositivo BLE en rango, no solo los que anuncian
+  /// el UUID Nodos.
+  ///
+  /// QUÉ cambió: serviceUuids: null en lugar de [serviceUuid].
+  /// POR QUÉ: flutter_ble_peripheral es stub — nadie anuncia
+  /// el UUID Nodos, por lo que el filtro previo resultaba en
+  /// cero detecciones. El escaneo promiscuo detecta todo BLE.
   @override
   Future<void> startScan() => _scanner.startScan(
-        serviceUuids: [serviceUuid],
+        serviceUuids: null,
       );
 
   @override
