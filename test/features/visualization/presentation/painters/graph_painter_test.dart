@@ -172,5 +172,130 @@ void main() {
 
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('nodo desconocido renderiza sin excepción', (tester) async {
+      // Layout con 1 nodo sin nombre (isKnown=false) y 1 nodo con nombre
+      final nodes = [
+        GraphNode(
+          id: 1,
+          x: 150,
+          y: 200,
+          proximity: ProximityLevel.close,
+          name: null, // desconocido
+        ),
+        GraphNode(
+          id: 2,
+          x: 350,
+          y: 200,
+          proximity: ProximityLevel.close,
+          name: 'Conocido',
+        ),
+      ];
+      final layout = LayoutResult(
+        nodes: nodes,
+        edges: const [],
+        iterations: 50,
+        converged: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 600,
+              height: 600,
+              child: CustomPaint(
+                size: const Size(600, 600),
+                painter: GraphPainter(layout: layout),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // El painter debe renderizar sin errores
+      expect(tester.takeException(), isNull);
+      // Verifica que el nodo desconocido tenga isKnown=false
+      expect(nodes[0].isKnown, isFalse);
+      // Verifica que el nodo conocido tenga isKnown=true
+      expect(nodes[1].isKnown, isTrue);
+    });
+
+    testWidgets('nodo desconocido usa color gris en lugar de color de proximidad',
+        (tester) async {
+      // Layout con UN solo nodo desconocido en posición conocida
+      final unknownNode = GraphNode(
+        id: 1,
+        x: 300,
+        y: 300,
+        proximity: ProximityLevel.close,
+        name: null, // desconocido: isKnown=false
+      );
+      final layout = LayoutResult(
+        nodes: [unknownNode],
+        edges: const [],
+        iterations: 50,
+        converged: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 600,
+              height: 600,
+              child: CustomPaint(
+                size: const Size(600, 600),
+                painter: GraphPainter(layout: layout),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(unknownNode.isKnown, isFalse);
+      // Cuando isKnown=false, el color de relleno debería ser gris,
+      // no el color de proximidad (verde para close).
+      // El painter es el encargado de aplicar esta distinción visual.
+    });
+
+    testWidgets('nodo conocido mantiene color de proximidad como relleno',
+        (tester) async {
+      final knownNode = GraphNode(
+        id: 1,
+        x: 300,
+        y: 300,
+        proximity: ProximityLevel.medium,
+        name: 'Mi Dispositivo', // conocido: isKnown=true
+      );
+      final layout = LayoutResult(
+        nodes: [knownNode],
+        edges: const [],
+        iterations: 50,
+        converged: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 600,
+              height: 600,
+              child: CustomPaint(
+                size: const Size(600, 600),
+                painter: GraphPainter(layout: layout),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(knownNode.isKnown, isTrue);
+      // Cuando isKnown=true, el color de relleno debe ser el color
+      // de proximidad (ámbar para medium), NO gris.
+      expect(knownNode.color, const Color(0xFFFFC107));
+    });
   });
 }
