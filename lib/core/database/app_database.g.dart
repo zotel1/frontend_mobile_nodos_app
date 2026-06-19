@@ -1267,12 +1267,313 @@ class ScanSessionsCompanion extends UpdateCompanion<ScanSession> {
   }
 }
 
+class $ScanSessionNodesTable extends ScanSessionNodes
+    with TableInfo<$ScanSessionNodesTable, ScanSessionNode> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ScanSessionNodesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _sessionIdMeta = const VerificationMeta(
+    'sessionId',
+  );
+  @override
+  late final GeneratedColumn<int> sessionId = GeneratedColumn<int>(
+    'session_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES scan_sessions (id)',
+    ),
+  );
+  static const VerificationMeta _nodeIdMeta = const VerificationMeta('nodeId');
+  @override
+  late final GeneratedColumn<int> nodeId = GeneratedColumn<int>(
+    'node_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES nodes (id)',
+    ),
+  );
+  static const VerificationMeta _rssiMeta = const VerificationMeta('rssi');
+  @override
+  late final GeneratedColumn<int> rssi = GeneratedColumn<int>(
+    'rssi',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, sessionId, nodeId, rssi];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'scan_session_nodes';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ScanSessionNode> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('session_id')) {
+      context.handle(
+        _sessionIdMeta,
+        sessionId.isAcceptableOrUnknown(data['session_id']!, _sessionIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sessionIdMeta);
+    }
+    if (data.containsKey('node_id')) {
+      context.handle(
+        _nodeIdMeta,
+        nodeId.isAcceptableOrUnknown(data['node_id']!, _nodeIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nodeIdMeta);
+    }
+    if (data.containsKey('rssi')) {
+      context.handle(
+        _rssiMeta,
+        rssi.isAcceptableOrUnknown(data['rssi']!, _rssiMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_rssiMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ScanSessionNode map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ScanSessionNode(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      sessionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}session_id'],
+      )!,
+      nodeId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}node_id'],
+      )!,
+      rssi: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}rssi'],
+      )!,
+    );
+  }
+
+  @override
+  $ScanSessionNodesTable createAlias(String alias) {
+    return $ScanSessionNodesTable(attachedDatabase, alias);
+  }
+}
+
+class ScanSessionNode extends DataClass implements Insertable<ScanSessionNode> {
+  final int id;
+  final int sessionId;
+  final int nodeId;
+  final int rssi;
+  const ScanSessionNode({
+    required this.id,
+    required this.sessionId,
+    required this.nodeId,
+    required this.rssi,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['session_id'] = Variable<int>(sessionId);
+    map['node_id'] = Variable<int>(nodeId);
+    map['rssi'] = Variable<int>(rssi);
+    return map;
+  }
+
+  ScanSessionNodesCompanion toCompanion(bool nullToAbsent) {
+    return ScanSessionNodesCompanion(
+      id: Value(id),
+      sessionId: Value(sessionId),
+      nodeId: Value(nodeId),
+      rssi: Value(rssi),
+    );
+  }
+
+  factory ScanSessionNode.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ScanSessionNode(
+      id: serializer.fromJson<int>(json['id']),
+      sessionId: serializer.fromJson<int>(json['sessionId']),
+      nodeId: serializer.fromJson<int>(json['nodeId']),
+      rssi: serializer.fromJson<int>(json['rssi']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'sessionId': serializer.toJson<int>(sessionId),
+      'nodeId': serializer.toJson<int>(nodeId),
+      'rssi': serializer.toJson<int>(rssi),
+    };
+  }
+
+  ScanSessionNode copyWith({int? id, int? sessionId, int? nodeId, int? rssi}) =>
+      ScanSessionNode(
+        id: id ?? this.id,
+        sessionId: sessionId ?? this.sessionId,
+        nodeId: nodeId ?? this.nodeId,
+        rssi: rssi ?? this.rssi,
+      );
+  ScanSessionNode copyWithCompanion(ScanSessionNodesCompanion data) {
+    return ScanSessionNode(
+      id: data.id.present ? data.id.value : this.id,
+      sessionId: data.sessionId.present ? data.sessionId.value : this.sessionId,
+      nodeId: data.nodeId.present ? data.nodeId.value : this.nodeId,
+      rssi: data.rssi.present ? data.rssi.value : this.rssi,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ScanSessionNode(')
+          ..write('id: $id, ')
+          ..write('sessionId: $sessionId, ')
+          ..write('nodeId: $nodeId, ')
+          ..write('rssi: $rssi')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, sessionId, nodeId, rssi);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ScanSessionNode &&
+          other.id == this.id &&
+          other.sessionId == this.sessionId &&
+          other.nodeId == this.nodeId &&
+          other.rssi == this.rssi);
+}
+
+class ScanSessionNodesCompanion extends UpdateCompanion<ScanSessionNode> {
+  final Value<int> id;
+  final Value<int> sessionId;
+  final Value<int> nodeId;
+  final Value<int> rssi;
+  const ScanSessionNodesCompanion({
+    this.id = const Value.absent(),
+    this.sessionId = const Value.absent(),
+    this.nodeId = const Value.absent(),
+    this.rssi = const Value.absent(),
+  });
+  ScanSessionNodesCompanion.insert({
+    this.id = const Value.absent(),
+    required int sessionId,
+    required int nodeId,
+    required int rssi,
+  }) : sessionId = Value(sessionId),
+       nodeId = Value(nodeId),
+       rssi = Value(rssi);
+  static Insertable<ScanSessionNode> custom({
+    Expression<int>? id,
+    Expression<int>? sessionId,
+    Expression<int>? nodeId,
+    Expression<int>? rssi,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (sessionId != null) 'session_id': sessionId,
+      if (nodeId != null) 'node_id': nodeId,
+      if (rssi != null) 'rssi': rssi,
+    });
+  }
+
+  ScanSessionNodesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? sessionId,
+    Value<int>? nodeId,
+    Value<int>? rssi,
+  }) {
+    return ScanSessionNodesCompanion(
+      id: id ?? this.id,
+      sessionId: sessionId ?? this.sessionId,
+      nodeId: nodeId ?? this.nodeId,
+      rssi: rssi ?? this.rssi,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (sessionId.present) {
+      map['session_id'] = Variable<int>(sessionId.value);
+    }
+    if (nodeId.present) {
+      map['node_id'] = Variable<int>(nodeId.value);
+    }
+    if (rssi.present) {
+      map['rssi'] = Variable<int>(rssi.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ScanSessionNodesCompanion(')
+          ..write('id: $id, ')
+          ..write('sessionId: $sessionId, ')
+          ..write('nodeId: $nodeId, ')
+          ..write('rssi: $rssi')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $UsersTable users = $UsersTable(this);
   late final $NodesTable nodes = $NodesTable(this);
   late final $ScanSessionsTable scanSessions = $ScanSessionsTable(this);
+  late final $ScanSessionNodesTable scanSessionNodes = $ScanSessionNodesTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1281,6 +1582,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     users,
     nodes,
     scanSessions,
+    scanSessionNodes,
   ];
   @override
   DriftDatabaseOptions get options =>
@@ -1520,6 +1822,31 @@ typedef $$NodesTableUpdateCompanionBuilder =
       Value<String?> rssiHistory,
     });
 
+final class $$NodesTableReferences
+    extends BaseReferences<_$AppDatabase, $NodesTable, NodeRow> {
+  $$NodesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$ScanSessionNodesTable, List<ScanSessionNode>>
+  _scanSessionNodesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.scanSessionNodes,
+    aliasName: 'nodes__id__scan_session_nodes__node_id',
+  );
+
+  $$ScanSessionNodesTableProcessedTableManager get scanSessionNodesRefs {
+    final manager = $$ScanSessionNodesTableTableManager(
+      $_db,
+      $_db.scanSessionNodes,
+    ).filter((f) => f.nodeId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _scanSessionNodesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
 class $$NodesTableFilterComposer extends Composer<_$AppDatabase, $NodesTable> {
   $$NodesTableFilterComposer({
     required super.$db,
@@ -1572,6 +1899,31 @@ class $$NodesTableFilterComposer extends Composer<_$AppDatabase, $NodesTable> {
     column: $table.rssiHistory,
     builder: (column) => ColumnFilters(column),
   );
+
+  Expression<bool> scanSessionNodesRefs(
+    Expression<bool> Function($$ScanSessionNodesTableFilterComposer f) f,
+  ) {
+    final $$ScanSessionNodesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.scanSessionNodes,
+      getReferencedColumn: (t) => t.nodeId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ScanSessionNodesTableFilterComposer(
+            $db: $db,
+            $table: $db.scanSessionNodes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$NodesTableOrderingComposer
@@ -1670,6 +2022,31 @@ class $$NodesTableAnnotationComposer
     column: $table.rssiHistory,
     builder: (column) => column,
   );
+
+  Expression<T> scanSessionNodesRefs<T extends Object>(
+    Expression<T> Function($$ScanSessionNodesTableAnnotationComposer a) f,
+  ) {
+    final $$ScanSessionNodesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.scanSessionNodes,
+      getReferencedColumn: (t) => t.nodeId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ScanSessionNodesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.scanSessionNodes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$NodesTableTableManager
@@ -1683,9 +2060,9 @@ class $$NodesTableTableManager
           $$NodesTableAnnotationComposer,
           $$NodesTableCreateCompanionBuilder,
           $$NodesTableUpdateCompanionBuilder,
-          (NodeRow, BaseReferences<_$AppDatabase, $NodesTable, NodeRow>),
+          (NodeRow, $$NodesTableReferences),
           NodeRow,
-          PrefetchHooks Function()
+          PrefetchHooks Function({bool scanSessionNodesRefs})
         > {
   $$NodesTableTableManager(_$AppDatabase db, $NodesTable table)
     : super(
@@ -1743,9 +2120,42 @@ class $$NodesTableTableManager
                 rssiHistory: rssiHistory,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) =>
+                    (e.readTable(table), $$NodesTableReferences(db, table, e)),
+              )
               .toList(),
-          prefetchHooksCallback: null,
+          prefetchHooksCallback: ({scanSessionNodesRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (scanSessionNodesRefs) db.scanSessionNodes,
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (scanSessionNodesRefs)
+                    await $_getPrefetchedData<
+                      NodeRow,
+                      $NodesTable,
+                      ScanSessionNode
+                    >(
+                      currentTable: table,
+                      referencedTable: $$NodesTableReferences
+                          ._scanSessionNodesRefsTable(db),
+                      managerFromTypedResult: (p0) => $$NodesTableReferences(
+                        db,
+                        table,
+                        p0,
+                      ).scanSessionNodesRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.nodeId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
         ),
       );
 }
@@ -1760,9 +2170,9 @@ typedef $$NodesTableProcessedTableManager =
       $$NodesTableAnnotationComposer,
       $$NodesTableCreateCompanionBuilder,
       $$NodesTableUpdateCompanionBuilder,
-      (NodeRow, BaseReferences<_$AppDatabase, $NodesTable, NodeRow>),
+      (NodeRow, $$NodesTableReferences),
       NodeRow,
-      PrefetchHooks Function()
+      PrefetchHooks Function({bool scanSessionNodesRefs})
     >;
 typedef $$ScanSessionsTableCreateCompanionBuilder =
     ScanSessionsCompanion Function({
@@ -1778,6 +2188,31 @@ typedef $$ScanSessionsTableUpdateCompanionBuilder =
       Value<DateTime?> endedAt,
       Value<int> nodesDetected,
     });
+
+final class $$ScanSessionsTableReferences
+    extends BaseReferences<_$AppDatabase, $ScanSessionsTable, ScanSession> {
+  $$ScanSessionsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$ScanSessionNodesTable, List<ScanSessionNode>>
+  _scanSessionNodesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.scanSessionNodes,
+    aliasName: 'scan_sessions__id__scan_session_nodes__session_id',
+  );
+
+  $$ScanSessionNodesTableProcessedTableManager get scanSessionNodesRefs {
+    final manager = $$ScanSessionNodesTableTableManager(
+      $_db,
+      $_db.scanSessionNodes,
+    ).filter((f) => f.sessionId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _scanSessionNodesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
 
 class $$ScanSessionsTableFilterComposer
     extends Composer<_$AppDatabase, $ScanSessionsTable> {
@@ -1807,6 +2242,31 @@ class $$ScanSessionsTableFilterComposer
     column: $table.nodesDetected,
     builder: (column) => ColumnFilters(column),
   );
+
+  Expression<bool> scanSessionNodesRefs(
+    Expression<bool> Function($$ScanSessionNodesTableFilterComposer f) f,
+  ) {
+    final $$ScanSessionNodesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.scanSessionNodes,
+      getReferencedColumn: (t) => t.sessionId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ScanSessionNodesTableFilterComposer(
+            $db: $db,
+            $table: $db.scanSessionNodes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$ScanSessionsTableOrderingComposer
@@ -1861,6 +2321,31 @@ class $$ScanSessionsTableAnnotationComposer
     column: $table.nodesDetected,
     builder: (column) => column,
   );
+
+  Expression<T> scanSessionNodesRefs<T extends Object>(
+    Expression<T> Function($$ScanSessionNodesTableAnnotationComposer a) f,
+  ) {
+    final $$ScanSessionNodesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.scanSessionNodes,
+      getReferencedColumn: (t) => t.sessionId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ScanSessionNodesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.scanSessionNodes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$ScanSessionsTableTableManager
@@ -1874,12 +2359,9 @@ class $$ScanSessionsTableTableManager
           $$ScanSessionsTableAnnotationComposer,
           $$ScanSessionsTableCreateCompanionBuilder,
           $$ScanSessionsTableUpdateCompanionBuilder,
-          (
-            ScanSession,
-            BaseReferences<_$AppDatabase, $ScanSessionsTable, ScanSession>,
-          ),
+          (ScanSession, $$ScanSessionsTableReferences),
           ScanSession,
-          PrefetchHooks Function()
+          PrefetchHooks Function({bool scanSessionNodesRefs})
         > {
   $$ScanSessionsTableTableManager(_$AppDatabase db, $ScanSessionsTable table)
     : super(
@@ -1917,9 +2399,45 @@ class $$ScanSessionsTableTableManager
                 nodesDetected: nodesDetected,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ScanSessionsTableReferences(db, table, e),
+                ),
+              )
               .toList(),
-          prefetchHooksCallback: null,
+          prefetchHooksCallback: ({scanSessionNodesRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (scanSessionNodesRefs) db.scanSessionNodes,
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (scanSessionNodesRefs)
+                    await $_getPrefetchedData<
+                      ScanSession,
+                      $ScanSessionsTable,
+                      ScanSessionNode
+                    >(
+                      currentTable: table,
+                      referencedTable: $$ScanSessionsTableReferences
+                          ._scanSessionNodesRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$ScanSessionsTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).scanSessionNodesRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.sessionId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
         ),
       );
 }
@@ -1934,12 +2452,398 @@ typedef $$ScanSessionsTableProcessedTableManager =
       $$ScanSessionsTableAnnotationComposer,
       $$ScanSessionsTableCreateCompanionBuilder,
       $$ScanSessionsTableUpdateCompanionBuilder,
-      (
-        ScanSession,
-        BaseReferences<_$AppDatabase, $ScanSessionsTable, ScanSession>,
-      ),
+      (ScanSession, $$ScanSessionsTableReferences),
       ScanSession,
-      PrefetchHooks Function()
+      PrefetchHooks Function({bool scanSessionNodesRefs})
+    >;
+typedef $$ScanSessionNodesTableCreateCompanionBuilder =
+    ScanSessionNodesCompanion Function({
+      Value<int> id,
+      required int sessionId,
+      required int nodeId,
+      required int rssi,
+    });
+typedef $$ScanSessionNodesTableUpdateCompanionBuilder =
+    ScanSessionNodesCompanion Function({
+      Value<int> id,
+      Value<int> sessionId,
+      Value<int> nodeId,
+      Value<int> rssi,
+    });
+
+final class $$ScanSessionNodesTableReferences
+    extends
+        BaseReferences<_$AppDatabase, $ScanSessionNodesTable, ScanSessionNode> {
+  $$ScanSessionNodesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $ScanSessionsTable _sessionIdTable(_$AppDatabase db) => db.scanSessions
+      .createAlias('scan_session_nodes__session_id__scan_sessions__id');
+
+  $$ScanSessionsTableProcessedTableManager get sessionId {
+    final $_column = $_itemColumn<int>('session_id')!;
+
+    final manager = $$ScanSessionsTableTableManager(
+      $_db,
+      $_db.scanSessions,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_sessionIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $NodesTable _nodeIdTable(_$AppDatabase db) =>
+      db.nodes.createAlias('scan_session_nodes__node_id__nodes__id');
+
+  $$NodesTableProcessedTableManager get nodeId {
+    final $_column = $_itemColumn<int>('node_id')!;
+
+    final manager = $$NodesTableTableManager(
+      $_db,
+      $_db.nodes,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_nodeIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ScanSessionNodesTableFilterComposer
+    extends Composer<_$AppDatabase, $ScanSessionNodesTable> {
+  $$ScanSessionNodesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get rssi => $composableBuilder(
+    column: $table.rssi,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ScanSessionsTableFilterComposer get sessionId {
+    final $$ScanSessionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sessionId,
+      referencedTable: $db.scanSessions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ScanSessionsTableFilterComposer(
+            $db: $db,
+            $table: $db.scanSessions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$NodesTableFilterComposer get nodeId {
+    final $$NodesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.nodeId,
+      referencedTable: $db.nodes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NodesTableFilterComposer(
+            $db: $db,
+            $table: $db.nodes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ScanSessionNodesTableOrderingComposer
+    extends Composer<_$AppDatabase, $ScanSessionNodesTable> {
+  $$ScanSessionNodesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get rssi => $composableBuilder(
+    column: $table.rssi,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ScanSessionsTableOrderingComposer get sessionId {
+    final $$ScanSessionsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sessionId,
+      referencedTable: $db.scanSessions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ScanSessionsTableOrderingComposer(
+            $db: $db,
+            $table: $db.scanSessions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$NodesTableOrderingComposer get nodeId {
+    final $$NodesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.nodeId,
+      referencedTable: $db.nodes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NodesTableOrderingComposer(
+            $db: $db,
+            $table: $db.nodes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ScanSessionNodesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ScanSessionNodesTable> {
+  $$ScanSessionNodesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get rssi =>
+      $composableBuilder(column: $table.rssi, builder: (column) => column);
+
+  $$ScanSessionsTableAnnotationComposer get sessionId {
+    final $$ScanSessionsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sessionId,
+      referencedTable: $db.scanSessions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ScanSessionsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.scanSessions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$NodesTableAnnotationComposer get nodeId {
+    final $$NodesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.nodeId,
+      referencedTable: $db.nodes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NodesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.nodes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ScanSessionNodesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ScanSessionNodesTable,
+          ScanSessionNode,
+          $$ScanSessionNodesTableFilterComposer,
+          $$ScanSessionNodesTableOrderingComposer,
+          $$ScanSessionNodesTableAnnotationComposer,
+          $$ScanSessionNodesTableCreateCompanionBuilder,
+          $$ScanSessionNodesTableUpdateCompanionBuilder,
+          (ScanSessionNode, $$ScanSessionNodesTableReferences),
+          ScanSessionNode,
+          PrefetchHooks Function({bool sessionId, bool nodeId})
+        > {
+  $$ScanSessionNodesTableTableManager(
+    _$AppDatabase db,
+    $ScanSessionNodesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ScanSessionNodesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ScanSessionNodesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ScanSessionNodesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> sessionId = const Value.absent(),
+                Value<int> nodeId = const Value.absent(),
+                Value<int> rssi = const Value.absent(),
+              }) => ScanSessionNodesCompanion(
+                id: id,
+                sessionId: sessionId,
+                nodeId: nodeId,
+                rssi: rssi,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int sessionId,
+                required int nodeId,
+                required int rssi,
+              }) => ScanSessionNodesCompanion.insert(
+                id: id,
+                sessionId: sessionId,
+                nodeId: nodeId,
+                rssi: rssi,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ScanSessionNodesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({sessionId = false, nodeId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (sessionId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.sessionId,
+                                referencedTable:
+                                    $$ScanSessionNodesTableReferences
+                                        ._sessionIdTable(db),
+                                referencedColumn:
+                                    $$ScanSessionNodesTableReferences
+                                        ._sessionIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+                    if (nodeId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.nodeId,
+                                referencedTable:
+                                    $$ScanSessionNodesTableReferences
+                                        ._nodeIdTable(db),
+                                referencedColumn:
+                                    $$ScanSessionNodesTableReferences
+                                        ._nodeIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ScanSessionNodesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ScanSessionNodesTable,
+      ScanSessionNode,
+      $$ScanSessionNodesTableFilterComposer,
+      $$ScanSessionNodesTableOrderingComposer,
+      $$ScanSessionNodesTableAnnotationComposer,
+      $$ScanSessionNodesTableCreateCompanionBuilder,
+      $$ScanSessionNodesTableUpdateCompanionBuilder,
+      (ScanSessionNode, $$ScanSessionNodesTableReferences),
+      ScanSessionNode,
+      PrefetchHooks Function({bool sessionId, bool nodeId})
     >;
 
 class $AppDatabaseManager {
@@ -1951,4 +2855,6 @@ class $AppDatabaseManager {
       $$NodesTableTableManager(_db, _db.nodes);
   $$ScanSessionsTableTableManager get scanSessions =>
       $$ScanSessionsTableTableManager(_db, _db.scanSessions);
+  $$ScanSessionNodesTableTableManager get scanSessionNodes =>
+      $$ScanSessionNodesTableTableManager(_db, _db.scanSessionNodes);
 }

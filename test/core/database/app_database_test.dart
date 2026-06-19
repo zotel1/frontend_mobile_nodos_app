@@ -327,4 +327,116 @@ void main() {
       expect(session.nodesDetected, 3);
     });
   });
+
+  group('Migration v1→v2', () {
+    test('creates scan_session_nodes table', () async {
+      final tables = await db.customSelect(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+        " AND name='scan_session_nodes'",
+      ).get();
+      expect(tables, hasLength(1));
+    });
+
+    test('creates index on scan_session_nodes.session_id', () async {
+      final indexes = await db.customSelect(
+        "SELECT name FROM sqlite_master WHERE type='index'"
+        " AND name='scan_session_nodes_session_id_idx'",
+      ).get();
+      expect(indexes, hasLength(1));
+    });
+
+    test('inserts and reads scan_session_nodes', () async {
+      final now = _truncateToMs(DateTime.now());
+
+      // Inserta una sesión
+      final sessionId = await db.into(db.scanSessions).insert(
+            ScanSessionsCompanion(
+              startedAt: Value(now),
+              nodesDetected: const Value(3),
+            ),
+          );
+
+      // Inserta nodos
+      final nodeId1 = await db.into(db.nodes).insert(
+            NodesCompanion(
+              bleAddress: const Value('AA:BB:CC:11:22:33'),
+              firstSeen: Value(now),
+              lastSeen: Value(now),
+              rssiHistory: const Value('[-55]'),
+            ),
+          );
+      final nodeId2 = await db.into(db.nodes).insert(
+            NodesCompanion(
+              bleAddress: const Value('AA:BB:CC:11:22:44'),
+              firstSeen: Value(now),
+              lastSeen: Value(now),
+              rssiHistory: const Value('[-65]'),
+            ),
+          );
+
+      // Inserta en scan_session_nodes
+      await db.into(db.scanSessionNodes).insert(
+            ScanSessionNodesCompanion(
+              sessionId: Value(sessionId),
+              nodeId: Value(nodeId1),
+              rssi: const Value(-55),
+            ),
+          );
+      await db.into(db.scanSessionNodes).insert(
+            ScanSessionNodesCompanion(
+              sessionId: Value(sessionId),
+              nodeId: Value(nodeId2),
+              rssi: const Value(-65),
+            ),
+          );
+
+      // Verifica
+      final rows = await db.select(db.scanSessionNodes).get();
+      expect(rows, hasLength(2));
+      expect(rows[0].sessionId, sessionId);
+      expect(rows[1].sessionId, sessionId);
+      expect(rows[0].rssi, -55);
+      expect(rows[1].rssi, -65);
+    });
+
+    test('previene duplicados por combinación sessionId+nodeId', () async {
+      final now = _truncateToMs(DateTime.now());
+
+      final sessionId = await db.into(db.scanSessions).insert(
+            ScanSessionsCompanion(
+              startedAt: Value(now),
+              nodesDetected: const Value(1),
+            ),
+          );
+
+      final nodeId = await db.into(db.nodes).insert(
+            NodesCompanion(
+              bleAddress: const Value('DD:EE:FF:00:11:22'),
+              firstSeen: Value(now),
+              lastSeen: Value(now),
+              rssiHistory: const Value('[-70]'),
+            ),
+          );
+
+      await db.into(db.scanSessionNodes).insert(
+            ScanSessionNodesCompanion(
+              sessionId: Value(sessionId),
+              nodeId: Value(nodeId),
+              rssi: const Value(-70),
+            ),
+          );
+
+      // Insert duplicado debe lanzar excepción (UNIQUE constraint)
+      expect(
+        () => db.into(db.scanSessionNodes).insert(
+              ScanSessionNodesCompanion(
+                sessionId: Value(sessionId),
+                nodeId: Value(nodeId),
+                rssi: const Value(-71),
+              ),
+            ),
+        throwsA(isA<Exception>()),
+      );
+    });
+  });
 }
