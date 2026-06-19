@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
+import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/usecases/observe_nodes.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/usecases/update_node_metadata.dart';
 
@@ -30,6 +32,26 @@ class NodeDetected extends NodeListEvent {
 
 class RefreshNodes extends NodeListEvent {
   const RefreshNodes();
+}
+
+/// Evento público que actúa como puente entre el escaneo BLE y la
+/// persistencia de nodos.
+///
+/// QUÉ resuelve: convierte cada [BleDevice] detectado por [BleBloc]
+/// en una entidad [Node] y la persiste mediante [NodeRepository.upsertNode].
+/// POR QUÉ: sin este evento, los resultados del escaneo BLE nunca se
+/// convierten en nodos visibles en la UI — el flujo de datos se rompe
+/// entre el datasource BLE y el repositorio de nodos.
+///
+/// Se despacha desde [HomePage] vía [BlocListener<BleBloc>] cuando
+/// [BleBloc] emite [BleScanning] con dispositivos detectados.
+class SyncBleDevices extends NodeListEvent {
+  final List<BleDevice> devices;
+
+  const SyncBleDevices(this.devices);
+
+  @override
+  List<Object> get props => [devices];
 }
 
 // ── States ──
@@ -73,18 +95,36 @@ class NodeListError extends NodeListState {
 
 // ── BLoC ──
 
+/// BLoC que gestiona el estado de la lista de nodos detectados.
+///
+/// Responsabilidades:
+/// - Recibir eventos [LoadNodes] y [RefreshNodes] para suscribirse
+///   al stream [watchNodes] del repositorio.
+/// - Procesar [SyncBleDevices] para convertir resultados de escaneo BLE
+///   en entidades [Node] persistentes (puente BLE→Node).
+/// - Emitir estados [NodeListLoaded], [NodeListEmpty], [NodeListError]
+///   según el resultado del stream o del handler de sincronización.
+///
+/// Dependencias:
+/// - [ObserveNodes]: use case que expone el stream de nodos desde Drift.
+/// - [UpdateNodeMetadata]: use case para actualizar nombre/color de un nodo.
+/// - [NodeRepository]: repositorio para persistir nodos (usado por SyncBleDevices).
 class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
   final ObserveNodes observeNodes;
   final UpdateNodeMetadata updateNodeMetadata;
+  final NodeRepository _nodeRepository;
   StreamSubscription<List<Node>>? _nodesSubscription;
 
   NodeListBloc({
     required this.observeNodes,
     required this.updateNodeMetadata,
-  }) : super(const NodeListInitial()) {
+    required NodeRepository nodeRepository,
+  }) : _nodeRepository = nodeRepository,
+       super(const NodeListInitial()) {
     on<LoadNodes>(_onLoadNodes);
     on<NodeDetected>(_onNodeDetected);
     on<RefreshNodes>(_onRefreshNodes);
+    on<SyncBleDevices>(_onSyncBleDevices);
     on<_NodesUpdated>(_onNodesUpdated);
     on<_NodesUpdatedEmpty>(_onNodesUpdatedEmpty);
     on<_NodesLoadError>(_onNodesLoadError);
@@ -103,6 +143,71 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
   Future<void> _onRefreshNodes(
       RefreshNodes event, Emitter<NodeListState> emit) async {
     await _subscribeToNodes(emit);
+  }
+
+  /// Convierte dispositivos BLE detectados en entidades [Node] y las persiste.
+  ///
+  /// QUÉ hace: itera cada [BleDevice], lo convierte a [Node] aplicando
+  /// reglas de mapeo (deviceId→bleAddress, rssi→rssiHistory), y llama
+  /// [NodeRepository.upsertNode] para persistir.
+  ///
+  /// POR QUÉ esta implementación:
+  /// - Dedup por bleAddress: Drift maneja inserción/reemplazo por clave única.
+  /// - rssiHistory limitado a 20: evita crecimiento ilimitado de la lista.
+  /// - RSSI >= 0 ignorado: señal inválida según especificación BLE.
+  /// - firstSeen preservado: nodos existentes mantienen su timestamp original.
+  ///
+  /// QUÉ problema resuelve: cierra la brecha entre el escaneo BLE (BleBloc)
+  /// y la UI de nodos (NodeListBloc). Sin este handler, los dispositivos
+  /// detectados nunca se convierten en nodos visibles.
+  Future<void> _onSyncBleDevices(
+    SyncBleDevices event,
+    Emitter<NodeListState> emit,
+  ) async {
+    if (event.devices.isEmpty) return;
+
+    // Mapa local de nodos procesados en este batch para soportar
+    // dedup dentro del mismo lote (mismo deviceId aparece varias veces).
+    final processed = <String, Node>{};
+
+    for (final device in event.devices) {
+      // Ignorar dispositivos con señal inválida (RSSI >= 0).
+      if (device.rssi >= 0) continue;
+
+      final existing = processed[device.deviceId];
+
+      if (existing != null) {
+        // Mismo deviceId ya procesado en este batch: append RSSI.
+        final updatedHistory = [...existing.rssiHistory, device.rssi];
+        if (updatedHistory.length > 20) {
+          updatedHistory.removeAt(0);
+        }
+        processed[device.deviceId] = Node(
+          id: existing.id,
+          bleAddress: existing.bleAddress,
+          name: existing.name,
+          color: existing.color,
+          firstSeen: existing.firstSeen,
+          lastSeen: DateTime.now(),
+          rssiHistory: updatedHistory,
+        );
+      } else {
+        // Nuevo nodo (o primera aparición en este batch).
+        processed[device.deviceId] = Node(
+          bleAddress: device.deviceId,
+          name: null,
+          color: null,
+          firstSeen: DateTime.now(),
+          lastSeen: DateTime.now(),
+          rssiHistory: [device.rssi],
+        );
+      }
+    }
+
+    // Persistir todos los nodos procesados.
+    for (final node in processed.values) {
+      await _nodeRepository.upsertNode(node);
+    }
   }
 
   Future<void> _subscribeToNodes(Emitter<NodeListState> emit) async {

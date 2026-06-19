@@ -25,11 +25,21 @@ class NodeTile extends StatelessWidget {
 
   ProximityLevel get _proximity => rssiToProximity(_lastRssi);
 
-  Color get _backgroundColor => switch (_proximity) {
-        ProximityLevel.close => Colors.green.withValues(alpha: 0.08),
-        ProximityLevel.medium => Colors.amber.withValues(alpha: 0.08),
-        ProximityLevel.far => Colors.red.withValues(alpha: 0.06),
-      };
+  // QUÉ: F14 — Usa node.color si existe, sino usa el color de proximidad.
+  // POR QUÉ: el usuario puede asignar un color personalizado al nodo desde
+  //   la UI; ese color debe reflejarse como fondo del Card en la lista.
+  Color get _backgroundColor {
+    // Si el nodo tiene color personalizado, usarlo como fondo.
+    if (node.color != null) {
+      return Color(int.parse(node.color!.replaceFirst('#', '0xFF')));
+    }
+    // Fallback: color de proximidad con alpha bajo.
+    return switch (_proximity) {
+      ProximityLevel.close => Colors.green.withValues(alpha: 0.08),
+      ProximityLevel.medium => Colors.amber.withValues(alpha: 0.08),
+      ProximityLevel.far => Colors.red.withValues(alpha: 0.06),
+    };
+  }
 
   @override
   Widget build(BuildContext context) {

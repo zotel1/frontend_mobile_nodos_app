@@ -4,10 +4,11 @@ on:
   pull_request:
     branches: [dev]
   push:
-    branches: [dev]
+    branches: [dev, main]
 
 jobs:
   analyze:
+    if: github.ref == 'refs/heads/dev' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,6 +21,7 @@ jobs:
       - run: flutter analyze
 
   test:
+    if: github.ref == 'refs/heads/dev' || github.event_name == 'pull_request'
     needs: analyze
     runs-on: ubuntu-latest
     steps:
@@ -31,9 +33,16 @@ jobs:
       # Genera código de Drift (bases de datos) antes de ejecutar tests
       - run: dart run build_runner build --delete-conflicting-outputs
       - run: flutter test
+      # F17: genera reporte de cobertura LCOV y lo publica como artefacto.
+      - run: flutter test --coverage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          retention-days: 7
 
   build-apk:
-    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

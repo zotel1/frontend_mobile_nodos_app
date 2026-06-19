@@ -62,15 +62,58 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _buildLoadedState(User user) {
     final userBloc = context.read<UserBloc>();
+    // Obtiene el themeMode actual del estado para reflejarlo en el toggle.
+    final currentThemeMode =
+        (userBloc.state is UserLoaded) ? (userBloc.state as UserLoaded).themeMode : ThemeMode.system;
+
+    // QUÉ: Inicializa el controller SOLO si está vacío, para preservar
+    // ediciones no guardadas frente a reemisiones de UserLoaded.
+    // POR QUÉ: al usar controller en lugar de initialValue, el widget
+    // no reinicia el texto en cada rebuild; debemos hacerlo manualmente
+    // solo en la primera carga.
+    if (_nameController.text.isEmpty) {
+      _nameController.text = user.name;
+    }
 
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
         TextFormField(
-          initialValue: user.name,
+          controller: _nameController,
           decoration: const InputDecoration(labelText: 'Nombre'),
-          onChanged: (value) {
-            _nameController.text = value;
+        ),
+        const SizedBox(height: 24),
+        // ─── Toggle de tema ──────────────────────────────────
+        // QUÉ: SegmentedButton con 3 opciones de ThemeMode.
+        // POR QUÉ: el usuario elige entre seguir al sistema,
+        //   forzar claro o forzar oscuro. El estado se mantiene
+        //   en memoria (UserBloc) sin persistir a DB (Phase 3).
+        const Text(
+          'Tema',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 12),
+        SegmentedButton<ThemeMode>(
+          segments: const [
+            ButtonSegment<ThemeMode>(
+              value: ThemeMode.system,
+              label: Text('Sistema'),
+              icon: Icon(Icons.brightness_auto),
+            ),
+            ButtonSegment<ThemeMode>(
+              value: ThemeMode.light,
+              label: Text('Claro'),
+              icon: Icon(Icons.brightness_5),
+            ),
+            ButtonSegment<ThemeMode>(
+              value: ThemeMode.dark,
+              label: Text('Oscuro'),
+              icon: Icon(Icons.brightness_2),
+            ),
+          ],
+          selected: {currentThemeMode},
+          onSelectionChanged: (selected) {
+            userBloc.add(UpdateThemeMode(selected.first));
           },
         ),
         const SizedBox(height: 24),

@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_node.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
@@ -105,24 +106,68 @@ class GraphPainter extends CustomPainter {
 
   /// Capa 3: Nodos como círculos rellenos con borde blanco.
   ///
-  /// Cada nodo se dibuja como un círculo relleno con el color derivado
-  /// de su nivel de proximidad, seguido de un borde blanco de 2px.
+  /// Nodos conocidos (isKnown=true): relleno con color de proximidad
+  /// y borde blanco sólido de 2px.
+  ///
+  /// Nodos desconocidos (isKnown=false): relleno gris (#9E9E9E) y
+  /// borde blanco discontinuo (dashed) de 1.5px — distinción visual
+  /// para que el usuario sepa qué dispositivos aún no identificó.
   void _drawNodes(Canvas canvas) {
     for (final node in layout.nodes) {
       final center = Offset(node.x, node.y);
 
-      // Relleno con color de proximidad
-      final fillPaint = Paint()
-        ..color = node.color
-        ..style = PaintingStyle.fill;
-      canvas.drawCircle(center, node.radius, fillPaint);
+      if (node.isKnown) {
+        // Relleno con color de proximidad
+        final fillPaint = Paint()
+          ..color = node.color
+          ..style = PaintingStyle.fill;
+        canvas.drawCircle(center, node.radius, fillPaint);
 
-      // Borde blanco de 2px
-      final strokePaint = Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0;
-      canvas.drawCircle(center, node.radius, strokePaint);
+        // Borde blanco sólido de 2px
+        final strokePaint = Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.0;
+        canvas.drawCircle(center, node.radius, strokePaint);
+      } else {
+        // Relleno gris para nodo desconocido
+        final fillPaint = Paint()
+          ..color = const Color(0xFF9E9E9E)
+          ..style = PaintingStyle.fill;
+        canvas.drawCircle(center, node.radius, fillPaint);
+
+        // Borde blanco discontinuo (dashed) de 1.5px
+        final strokePaint = Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5;
+        _drawDashedCircle(canvas, center, node.radius, strokePaint);
+      }
+    }
+  }
+
+  /// Dibuja un borde discontinuo (dashed) alrededor de una circunferencia.
+  ///
+  /// Flutter CustomPainter no soporta dash pattern nativo. Esta función
+  /// computa manualmente segmentos dash-gap usando [PathMetrics] sobre
+  /// un [Path] circular. Patrón: dash 4px, gap 3px.
+  ///
+  /// QUÉ problema resuelve: los nodos desconocidos necesitan un borde
+  /// visualmente distinto del borde sólido de los nodos conocidos.
+  void _drawDashedCircle(
+      Canvas canvas, Offset center, double radius, Paint paint) {
+    final path = Path()
+      ..addOval(Rect.fromCircle(center: center, radius: radius));
+    final metrics = path.computeMetrics();
+
+    for (final metric in metrics) {
+      double distance = 0;
+      while (distance < metric.length) {
+        final dashEnd = min(distance + 4.0, metric.length);
+        final extractPath = metric.extractPath(distance, dashEnd);
+        canvas.drawPath(extractPath, paint);
+        distance += 4.0 + 3.0; // dash + gap
+      }
     }
   }
 

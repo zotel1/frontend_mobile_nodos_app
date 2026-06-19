@@ -1,4 +1,6 @@
+import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 
 void main() {
@@ -6,6 +8,22 @@ void main() {
     test('rssi = -65 returns distance ~5.6m', () {
       final distance = rssiToDistance(-65);
       expect(distance, closeTo(5.6, 0.2));
+    });
+
+    test('usa txPower de app_config en lugar de literal', () {
+      // Approval test: verifica que la fórmula use txPower de
+      // app_config. Si txPower cambia, este test lo detecta.
+      final expected =
+          pow(10, (txPower - (-65)) / (10 * pathLossExponent)).toDouble();
+      expect(rssiToDistance(-65), closeTo(expected, 0.2));
+    });
+
+    test('usa pathLossExponent de app_config en lugar de literal', () {
+      // Approval test: verifica que la fórmula use pathLossExponent
+      // de app_config en el divisor 10*n.
+      final expectedForRssi = pow(10, (-50 - (-78)) / (10 * pathLossExponent))
+          .toDouble();
+      expect(rssiToDistance(-78), closeTo(expectedForRssi, 0.5));
     });
 
     test('rssi = -78 returns distance ~25.1m', () {

@@ -5,16 +5,22 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
+import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/usecases/observe_nodes.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/usecases/update_node_metadata.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/bloc/node_list_bloc.dart';
 
-@GenerateNiceMocks([MockSpec<ObserveNodes>(), MockSpec<UpdateNodeMetadata>()])
+@GenerateNiceMocks([
+  MockSpec<ObserveNodes>(),
+  MockSpec<UpdateNodeMetadata>(),
+  MockSpec<NodeRepository>(),
+])
 import 'node_list_bloc_test.mocks.dart';
 
 void main() {
   late MockObserveNodes mockObserveNodes;
   late MockUpdateNodeMetadata mockUpdateNodeMetadata;
+  late MockNodeRepository mockNodeRepository;
 
   final now = DateTime(2026, 1, 1);
 
@@ -42,6 +48,7 @@ void main() {
   setUp(() {
     mockObserveNodes = MockObserveNodes();
     mockUpdateNodeMetadata = MockUpdateNodeMetadata();
+    mockNodeRepository = MockNodeRepository();
   });
 
   group('NodeListBloc', () {
@@ -50,6 +57,7 @@ void main() {
       build: () => NodeListBloc(
         observeNodes: mockObserveNodes,
         updateNodeMetadata: mockUpdateNodeMetadata,
+        nodeRepository: mockNodeRepository,
       ),
       verify: (bloc) => expect(bloc.state, isA<NodeListInitial>()),
     );
@@ -63,6 +71,7 @@ void main() {
         return NodeListBloc(
           observeNodes: mockObserveNodes,
           updateNodeMetadata: mockUpdateNodeMetadata,
+          nodeRepository: mockNodeRepository,
         );
       },
       act: (bloc) => bloc.add(LoadNodes()),
@@ -85,6 +94,7 @@ void main() {
         return NodeListBloc(
           observeNodes: mockObserveNodes,
           updateNodeMetadata: mockUpdateNodeMetadata,
+          nodeRepository: mockNodeRepository,
         );
       },
       act: (bloc) => bloc.add(LoadNodes()),
@@ -102,6 +112,7 @@ void main() {
         return NodeListBloc(
           observeNodes: mockObserveNodes,
           updateNodeMetadata: mockUpdateNodeMetadata,
+          nodeRepository: mockNodeRepository,
         );
       },
       act: (bloc) => bloc.add(LoadNodes()),
@@ -120,6 +131,7 @@ void main() {
       build: () => NodeListBloc(
         observeNodes: mockObserveNodes,
         updateNodeMetadata: mockUpdateNodeMetadata,
+        nodeRepository: mockNodeRepository,
       ),
       act: (bloc) => bloc.add(NodeDetected(testNodes[0])),
       expect: () => [
@@ -140,6 +152,7 @@ void main() {
         return NodeListBloc(
           observeNodes: mockObserveNodes,
           updateNodeMetadata: mockUpdateNodeMetadata,
+          nodeRepository: mockNodeRepository,
         );
       },
       act: (bloc) => bloc.add(RefreshNodes()),
@@ -162,6 +175,7 @@ void main() {
         return NodeListBloc(
           observeNodes: mockObserveNodes,
           updateNodeMetadata: mockUpdateNodeMetadata,
+          nodeRepository: mockNodeRepository,
         );
       },
       act: (bloc) => bloc.add(RefreshNodes()),

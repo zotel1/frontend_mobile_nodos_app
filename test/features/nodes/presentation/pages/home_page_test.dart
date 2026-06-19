@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:get_it/get_it.dart';
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart';
@@ -37,8 +41,8 @@ Node _testNode(int id, String addr) => Node(
 
 final _testLayout = LayoutResult(
   nodes: [
-    GraphNode(id: 1, x: 100, y: 100, proximity: ProximityLevel.close),
-    GraphNode(id: 2, x: 300, y: 200, proximity: ProximityLevel.medium),
+    GraphNode(id: 1, x: 100, y: 100, proximity: ProximityLevel.close, name: 'Nodo Alpha'),
+    GraphNode(id: 2, x: 300, y: 200, proximity: ProximityLevel.medium, name: 'Nodo Beta'),
     GraphNode(id: 3, x: 500, y: 300, proximity: ProximityLevel.far),
     GraphNode(id: 4, x: 200, y: 500, proximity: ProximityLevel.close),
     GraphNode(id: 5, x: 400, y: 400, proximity: ProximityLevel.medium),
@@ -393,6 +397,342 @@ void main() {
 
       // Verify the BluetoothOffBanner text is shown.
       expect(find.textContaining('Bluetooth desactivado'), findsOneWidget);
+    });
+
+    testWidgets('BlocListener<BleBloc> dispatches SyncBleDevices on BleScanning',
+        (tester) async {
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+
+      final testDevice = BleDevice(
+        deviceId: 'AA:BB:CC:DD:EE:FF',
+        rssi: -60,
+        distance: 5.0,
+        proximity: ProximityLevel.medium,
+        timestamp: DateTime(2026, 6, 19),
+      );
+
+      when(mockNodeListBloc.state).thenReturn(const NodeListLoaded([]));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(const NodeListLoaded([])));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream).thenAnswer(
+        (_) => Stream.fromIterable([
+          BleScanning(devices: [testDevice]),
+        ]),
+      );
+      when(mockVizBloc.state).thenReturn(const VisualizationInitial());
+      when(mockVizBloc.stream)
+          .thenAnswer((_) => Stream.value(const VisualizationInitial()));
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      // Esperar que el BlocListener<BleBloc> procese el BleScanning.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Verifica que SyncBleDevices fue despachado al NodeListBloc.
+      verify(mockNodeListBloc.add(argThat(
+        predicate((e) => e is SyncBleDevices && e.devices.length == 1),
+      ))).called(1);
+    });
+
+    testWidgets('settings gear navigates to /settings using GoRouter',
+        (tester) async {
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+
+      when(mockNodeListBloc.state).thenReturn(const NodeListLoaded([]));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(const NodeListLoaded([])));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream)
+          .thenAnswer((_) => Stream.value(const BleStopped()));
+      when(mockVizBloc.state).thenReturn(const VisualizationInitial());
+      when(mockVizBloc.stream)
+          .thenAnswer((_) => Stream.value(const VisualizationInitial()));
+
+      // Usamos GoRouter para validar que la navegación usa GoRouter.
+      final testRouter = GoRouter(
+        initialLocation: '/',
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, _) => MultiBlocProvider(
+              providers: [
+                BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+                BlocProvider<BleBloc>.value(value: mockBleBloc),
+                BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+              ],
+              child: const HomePage(),
+            ),
+          ),
+          GoRoute(
+            path: '/settings',
+            builder: (_, _) => const Scaffold(
+              body: Center(child: Text('Settings Page')),
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(
+        routerConfig: testRouter,
+      ));
+
+      // El icono de settings debe estar presente.
+      expect(find.byIcon(Icons.settings), findsOneWidget);
+
+      // Tocar el engranaje y verificar que navega a /settings.
+      await tester.tap(find.byIcon(Icons.settings));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // La página de settings debe mostrarse.
+      expect(find.text('Settings Page'), findsOneWidget);
+    });
+
+    testWidgets('muestra BluetoothOffDialog cuando BleBloc emite BluetoothOff',
+        (tester) async {
+      final bleController = StreamController<BleState>.broadcast();
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+
+      when(mockNodeListBloc.state).thenReturn(const NodeListLoaded([]));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(const NodeListLoaded([])));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream).thenAnswer((_) => bleController.stream);
+      when(mockVizBloc.state).thenReturn(const VisualizationInitial());
+      when(mockVizBloc.stream)
+          .thenAnswer((_) => Stream.value(const VisualizationInitial()));
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      // Emitir BluetoothOff desde el stream del BleBloc.
+      bleController.add(const BluetoothOff());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Verificar que el AlertDialog de BluetoothOffDialog aparece.
+      expect(find.text('Bluetooth requerido'), findsOneWidget);
+      expect(find.text('Ir a Configuración'), findsOneWidget);
+
+      bleController.close();
+    });
+
+    testWidgets(
+        'no muestra segundo dialogo si BleBloc emite BluetoothOff dos veces',
+        (tester) async {
+      final bleController = StreamController<BleState>.broadcast();
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+
+      when(mockNodeListBloc.state).thenReturn(const NodeListLoaded([]));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(const NodeListLoaded([])));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream).thenAnswer((_) => bleController.stream);
+      when(mockVizBloc.state).thenReturn(const VisualizationInitial());
+      when(mockVizBloc.stream)
+          .thenAnswer((_) => Stream.value(const VisualizationInitial()));
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      // Primer BluetoothOff → dialog aparece.
+      bleController.add(const BluetoothOff());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Bluetooth requerido'), findsOneWidget);
+
+      // Segundo BluetoothOff → dialog NO se duplica.
+      bleController.add(const BluetoothOff());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Solo debe haber UNA instancia del texto del diálogo.
+      expect(find.text('Bluetooth requerido'), findsOneWidget);
+
+      bleController.close();
+    });
+
+    testWidgets(
+        'BluetoothOffDialog onGoToSettings y onCancel resetean el guard',
+        (tester) async {
+      final bleController = StreamController<BleState>.broadcast();
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+
+      when(mockNodeListBloc.state).thenReturn(const NodeListLoaded([]));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(const NodeListLoaded([])));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream).thenAnswer((_) => bleController.stream);
+      when(mockVizBloc.state).thenReturn(const VisualizationInitial());
+      when(mockVizBloc.stream)
+          .thenAnswer((_) => Stream.value(const VisualizationInitial()));
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      // Mostrar diálogo.
+      bleController.add(const BluetoothOff());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Bluetooth requerido'), findsOneWidget);
+
+      // Cerrar diálogo con Cancelar.
+      await tester.tap(find.text('Cancelar'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Dialog cerrado — el guard debería estar reseteado.
+      expect(find.text('Bluetooth requerido'), findsNothing);
+
+      // Emitir BluetoothOff nuevamente — debería mostrarse.
+      bleController.add(const BluetoothOff());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Bluetooth requerido'), findsOneWidget);
+
+      bleController.close();
+    });
+
+    testWidgets('muestra NodeTooltip cuando GraphReady tiene selectedNodeId',
+        (tester) async {
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+
+      final nodes = List.generate(
+        6,
+        (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
+      );
+
+      when(mockNodeListBloc.state).thenReturn(NodeListLoaded(nodes));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(NodeListLoaded(nodes)));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream)
+          .thenAnswer((_) => Stream.value(const BleStopped()));
+      when(mockVizBloc.state).thenReturn(
+        GraphReady(_testLayout, selectedNodeId: 1),
+      );
+      when(mockVizBloc.stream).thenAnswer(
+        (_) => Stream.value(GraphReady(_testLayout, selectedNodeId: 1)),
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      // Esperar que la UI se estabilice y postFrameCallback se ejecute
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // El tooltip debe mostrar el nombre del nodo (Nodo Alpha, id=1)
+      expect(find.text('Nodo Alpha'), findsOneWidget);
+      // El tooltip muestra la etiqueta de proximidad
+      expect(find.text('Cerca'), findsOneWidget);
+      // El tooltip muestra el ID
+      expect(find.text('ID: 1'), findsOneWidget);
+    });
+
+    testWidgets('NodeTooltip muestra contenido correcto para nodo conocido',
+        (tester) async {
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+
+      final nodes = List.generate(
+        6,
+        (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
+      );
+
+      when(mockNodeListBloc.state).thenReturn(NodeListLoaded(nodes));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(NodeListLoaded(nodes)));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream)
+          .thenAnswer((_) => Stream.value(const BleStopped()));
+      // Nodo 2 = Nodo Beta, proximity=medium → "Medio"
+      when(mockVizBloc.state).thenReturn(
+        GraphReady(_testLayout, selectedNodeId: 2),
+      );
+      when(mockVizBloc.stream).thenAnswer(
+        (_) => Stream.value(GraphReady(_testLayout, selectedNodeId: 2)),
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Verifica contenido del tooltip para Nodo Beta
+      expect(find.text('Nodo Beta'), findsOneWidget);
+      expect(find.text('Medio'), findsOneWidget);
+      expect(find.text('ID: 2'), findsOneWidget);
     });
   });
 }
