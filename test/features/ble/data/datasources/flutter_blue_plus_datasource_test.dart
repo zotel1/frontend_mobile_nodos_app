@@ -1,15 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:frontend_mobile_nodos_app/ble/ble_manager.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_scanner_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/flutter_blue_plus_datasource.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart';
 
 void main() {
   final now = DateTime(2026, 6, 18, 12, 0, 0);
 
-  ScanResult createResult({
+  BleDevice createBleDevice({
     String deviceId = 'AA:BB:CC:DD:EE:FF',
     String? deviceUuid,
     int rssi = -50,
@@ -17,7 +17,7 @@ void main() {
     ProximityLevel proximity = ProximityLevel.close,
     DateTime? timestamp,
   }) {
-    return ScanResult(
+    return BleDevice(
       deviceId: deviceId,
       deviceUuid: deviceUuid,
       rssi: rssi,
@@ -28,10 +28,10 @@ void main() {
   }
 
   group('FlutterBluePlusDataSource', () {
-    late StreamController<List<ScanResult>> streamController;
+    late StreamController<List<BleDevice>> streamController;
 
     setUp(() {
-      streamController = StreamController<List<ScanResult>>.broadcast();
+      streamController = StreamController<List<BleDevice>>.broadcast();
     });
 
     tearDown(() async {
@@ -39,7 +39,8 @@ void main() {
     });
 
     test('implements BleScannerDataSource', () {
-      final dataSource = FlutterBluePlusDataSource.test(streamController.stream);
+      final dataSource =
+          FlutterBluePlusDataSource.test(streamController.stream);
       expect(dataSource, isA<BleScannerDataSource>());
     });
 
@@ -48,13 +49,13 @@ void main() {
         streamController.stream,
       );
 
-      final emitted = <List<ScanResult>>[];
+      final emitted = <List<BleDevice>>[];
       final subscription = dataSource.scanResults.listen(emitted.add);
 
-      final result = createResult(deviceId: 'AA:BB:CC:DD:EE:FF', rssi: -55);
-      streamController.add([result]);
+      final device =
+          createBleDevice(deviceId: 'AA:BB:CC:DD:EE:FF', rssi: -55);
+      streamController.add([device]);
 
-      // Allow microtask to process stream event
       await Future.delayed(Duration.zero);
 
       expect(emitted.length, 1);
@@ -71,15 +72,15 @@ void main() {
         streamController.stream,
       );
 
-      final emitted = <List<ScanResult>>[];
+      final emitted = <List<BleDevice>>[];
       final subscription = dataSource.scanResults.listen(emitted.add);
 
-      final result1 = createResult(deviceId: 'AA', rssi: -50);
-      final result2 = createResult(deviceId: 'BB', rssi: -60);
+      final device1 = createBleDevice(deviceId: 'AA', rssi: -50);
+      final device2 = createBleDevice(deviceId: 'BB', rssi: -60);
 
-      streamController.add([result1]);
+      streamController.add([device1]);
       await Future.delayed(Duration.zero);
-      streamController.add([result2]);
+      streamController.add([device2]);
       await Future.delayed(Duration.zero);
 
       expect(emitted.length, 2);
@@ -94,7 +95,7 @@ void main() {
         streamController.stream,
       );
 
-      final emitted = <List<ScanResult>>[];
+      final emitted = <List<BleDevice>>[];
       final subscription = dataSource.scanResults.listen(emitted.add);
 
       streamController.add([]);
@@ -110,7 +111,6 @@ void main() {
         streamController.stream,
       );
 
-      // startScan should not throw when called
       await dataSource.startScan(serviceUuids: [
         '4fafc201-1fb5-459e-8fcc-c5c9c331914b',
       ]);

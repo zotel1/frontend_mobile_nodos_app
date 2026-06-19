@@ -3,28 +3,28 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show FlutterBluePlus, Guid;
-import 'package:frontend_mobile_nodos_app/ble/ble_manager.dart';
 import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_scanner_datasource.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart';
 
 class FlutterBluePlusDataSource implements BleScannerDataSource {
-  final StreamController<List<ScanResult>> _controller;
+  final StreamController<List<BleDevice>> _controller;
   StreamSubscription? _scanSub;
   bool _isScanning = false;
   final bool _isTestMode;
 
   /// Production constructor — binds to [FlutterBluePlus] platform.
   FlutterBluePlusDataSource()
-      : _controller = StreamController<List<ScanResult>>.broadcast(),
+      : _controller = StreamController<List<BleDevice>>.broadcast(),
         _isTestMode = false {
     _bindToPlatform();
   }
 
   /// Test constructor — inject a pre-built scan results stream.
   @visibleForTesting
-  FlutterBluePlusDataSource.test(Stream<List<ScanResult>> stream)
-      : _controller = StreamController<List<ScanResult>>.broadcast(),
+  FlutterBluePlusDataSource.test(Stream<List<BleDevice>> stream)
+      : _controller = StreamController<List<BleDevice>>.broadcast(),
         _isTestMode = true {
     stream.listen((results) {
       if (results.isNotEmpty) {
@@ -37,7 +37,7 @@ class FlutterBluePlusDataSource implements BleScannerDataSource {
     _scanSub = FlutterBluePlus.onScanResults.listen((results) {
       if (results.isEmpty) return;
       final mapped = results
-          .map((r) => ScanResult(
+          .map((r) => BleDevice(
                 deviceId: r.device.remoteId.toString(),
                 deviceUuid: null,
                 rssi: r.rssi,
@@ -54,7 +54,7 @@ class FlutterBluePlusDataSource implements BleScannerDataSource {
   }
 
   @override
-  Stream<List<ScanResult>> get scanResults => _controller.stream;
+  Stream<List<BleDevice>> get scanResults => _controller.stream;
 
   @override
   Future<void> startScan({List<String>? serviceUuids}) async {
