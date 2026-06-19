@@ -10,12 +10,10 @@ class BleRepositoryImpl implements BleRepository {
   final BleScannerDataSource _scanner;
   final BleAdvertiserDataSource _advertiser;
 
-  // ignore: prefer_initializing_formals
   BleRepositoryImpl({
-    required BleScannerDataSource scanner,
-    required BleAdvertiserDataSource advertiser,
-  })  : _scanner = scanner,
-        _advertiser = advertiser;
+    required this._scanner,
+    required this._advertiser,
+  });
 
   @override
   Stream<List<BleDevice>> get scanResults => _scanner.scanResults.map(
