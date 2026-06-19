@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
 import 'package:frontend_mobile_nodos_app/core/di/injection_container.dart';
@@ -50,11 +51,29 @@ class _HomePageState extends State<HomePage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
-            onPressed: () => Navigator.pushNamed(context, '/settings'),
+            onPressed: () => context.push('/settings'),
           ),
         ],
       ),
-      body: BlocListener<NodeListBloc, NodeListState>(
+      body: BlocListener<BleBloc, BleState>(
+        /// Puente BLE → Node: convierte resultados de escaneo BLE en
+        /// entidades Node persistentes.
+        ///
+        /// QUÉ hace: escucha BleBloc y cuando emite BleScanning con
+        /// dispositivos detectados, despacha SyncBleDevices al NodeListBloc
+        /// para que persista cada BleDevice como un Node en Drift.
+        ///
+        /// POR QUÉ: sin este listener la app escanea dispositivos pero
+        /// nunca los muestra en la UI. El BlocListener<NodeListBloc> (abajo)
+        /// maneja los cambios de vista cuando los nodos ya están persistidos.
+        listener: (context, bleState) {
+          if (bleState is BleScanning && bleState.devices.isNotEmpty) {
+            context
+                .read<NodeListBloc>()
+                .add(SyncBleDevices(bleState.devices));
+          }
+        },
+        child: BlocListener<NodeListBloc, NodeListState>(
         // Dispara la construcción del grafo cuando la lista cambia.
         // Usa listener (no builder) para side effects — no dispara
         // reconstrucciones innecesarias.
@@ -78,6 +97,7 @@ class _HomePageState extends State<HomePage> {
             );
           },
         ),
+      ),
       ),
       floatingActionButton: BlocBuilder<BleBloc, BleState>(
         builder: (context, bleState) {
