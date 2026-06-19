@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:frontend_mobile_nodos_app/core/di/injection_container.dart';
 import 'package:frontend_mobile_nodos_app/core/theme/app_theme.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/bloc/node_list_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/pages/home_page.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/pages/node_detail_page.dart';
@@ -34,9 +35,13 @@ class _PlaceholderTab extends StatelessWidget {
 /// QUÉ: envuelve el [StatefulNavigationShell] de GoRouter en un Scaffold
 /// con BottomNavigationBar para navegación entre Home, Historial y Stats.
 ///
+/// T2.5: Controla el ciclo de vida del escaneo BLE según la tab activa.
+/// Al entrar en Home (índice 0) → StartScan. Al salir de Home → StopScan.
+///
 /// POR QUÉ: StatefulShellRoute.indexedStack preserva el estado de cada tab
 /// mediante IndexedStack, evitando que los BLoCs se destruyan al cambiar
-/// de pestaña.
+/// de pestaña. Pero el escaneo continuo en Home drenaría batería si no
+/// se pausa al cambiar a otras tabs.
 class ScaffoldWithNavBar extends StatelessWidget {
   final StatefulNavigationShell navigationShell;
 
@@ -44,14 +49,29 @@ class ScaffoldWithNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // T2.5: Acceder al BleBloc para controlar el escaneo por tab.
+    // Se captura en build() porque onTap es un callback sin context propio.
+    final bleBloc = context.read<BleBloc>();
+
     return Scaffold(
       body: navigationShell,
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: navigationShell.currentIndex,
-        onTap: (index) => navigationShell.goBranch(
-          index,
-          initialLocation: index == navigationShell.currentIndex,
-        ),
+        onTap: (index) {
+          // T2.5: Auto-scan lifecycle por tab
+          // Si el usuario entra a Home (índice 0), inicia el escaneo.
+          // Si sale de Home (currentIndex era 0), detiene el escaneo.
+          if (index == 0) {
+            bleBloc.add(const StartScan());
+          } else if (navigationShell.currentIndex == 0) {
+            bleBloc.add(const StopScan());
+          }
+
+          navigationShell.goBranch(
+            index,
+            initialLocation: index == navigationShell.currentIndex,
+          );
+        },
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home),
