@@ -33,8 +33,9 @@ class BleRepositoryImpl implements BleRepository {
   @override
   Future<void> stopAdvertise() => _advertiser.stopAdvertise();
 
+  /// Delegación directa al scanner: el stream de estado BT viene
+  /// de [FlutterBluePlusDataSource.bluetoothState], que a su vez
+  /// deriva de [FlutterBluePlus.adapterState].
   @override
-  Stream<bool> get bluetoothState async* {
-    yield true;
-  }
+  Stream<bool> get bluetoothState => _scanner.bluetoothState;
 }
