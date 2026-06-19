@@ -5,11 +5,12 @@
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 import 'dart:async' as _i3;
 
-import 'package:frontend_mobile_nodos_app/ble/ble_manager.dart' as _i4;
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_advertiser_datasource.dart'
     as _i5;
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_scanner_datasource.dart'
     as _i2;
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart'
+    as _i4;
 import 'package:mockito/mockito.dart' as _i1;
 
 // ignore_for_file: type=lint
@@ -33,13 +34,13 @@ import 'package:mockito/mockito.dart' as _i1;
 class MockBleScannerDataSource extends _i1.Mock
     implements _i2.BleScannerDataSource {
   @override
-  _i3.Stream<List<_i4.ScanResult>> get scanResults =>
+  _i3.Stream<List<_i4.BleDevice>> get scanResults =>
       (super.noSuchMethod(
             Invocation.getter(#scanResults),
-            returnValue: _i3.Stream<List<_i4.ScanResult>>.empty(),
-            returnValueForMissingStub: _i3.Stream<List<_i4.ScanResult>>.empty(),
+            returnValue: _i3.Stream<List<_i4.BleDevice>>.empty(),
+            returnValueForMissingStub: _i3.Stream<List<_i4.BleDevice>>.empty(),
           )
-          as _i3.Stream<List<_i4.ScanResult>>);
+          as _i3.Stream<List<_i4.BleDevice>>);
 
   @override
   _i3.Future<void> startScan({List<String>? serviceUuids}) =>

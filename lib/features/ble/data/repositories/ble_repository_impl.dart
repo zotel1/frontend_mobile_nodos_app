@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:frontend_mobile_nodos_app/ble/ble_manager.dart';
 import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_advertiser_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_scanner_datasource.dart';
@@ -11,17 +10,18 @@ class BleRepositoryImpl implements BleRepository {
   final BleAdvertiserDataSource _advertiser;
 
   BleRepositoryImpl({
-    required this._scanner,
-    required this._advertiser,
-  });
+    required BleScannerDataSource scanner,
+    required BleAdvertiserDataSource advertiser,
+  })  : _scanner = scanner,
+        _advertiser = advertiser;
 
   @override
-  Stream<List<BleDevice>> get scanResults => _scanner.scanResults.map(
-        (results) => results.map(_toBleDevice).toList(),
+  Stream<List<BleDevice>> get scanResults => _scanner.scanResults;
+
+  @override
+  Future<void> startScan() => _scanner.startScan(
+        serviceUuids: [serviceUuid],
       );
-
-  @override
-  Future<void> startScan() => _scanner.startScan();
 
   @override
   Future<void> stopScan() => _scanner.stopScan();
@@ -37,13 +37,4 @@ class BleRepositoryImpl implements BleRepository {
   Stream<bool> get bluetoothState async* {
     yield true;
   }
-
-  BleDevice _toBleDevice(ScanResult r) => BleDevice(
-        deviceId: r.deviceId,
-        deviceUuid: r.deviceUuid,
-        rssi: r.rssi,
-        distance: r.distance,
-        proximity: r.proximity,
-        timestamp: r.timestamp,
-      );
 }

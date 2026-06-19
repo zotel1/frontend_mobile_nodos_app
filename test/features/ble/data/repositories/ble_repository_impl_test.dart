@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/mockito.dart';
 import 'package:mockito/annotations.dart';
-import 'package:frontend_mobile_nodos_app/ble/ble_manager.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_advertiser_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_scanner_datasource.dart';
@@ -39,16 +38,16 @@ void main() {
     });
 
     test(
-        'scanResults maps BleScannerDataSource scan results to BleDevice entities',
+        'scanResults passes through BleScannerDataSource scan results',
         () async {
       final scanResultsCtrl =
-          StreamController<List<ScanResult>>.broadcast();
+          StreamController<List<BleDevice>>.broadcast();
       when(mockScanner.scanResults).thenAnswer((_) => scanResultsCtrl.stream);
 
       final emitted = <List<BleDevice>>[];
       final sub = repository.scanResults.listen(emitted.add);
 
-      final scanResult = ScanResult(
+      final device = BleDevice(
         deviceId: 'AA:BB:CC:DD:EE:FF',
         deviceUuid: 'uuid-123',
         rssi: -50,
@@ -56,18 +55,18 @@ void main() {
         proximity: ProximityLevel.close,
         timestamp: now,
       );
-      scanResultsCtrl.add([scanResult]);
+      scanResultsCtrl.add([device]);
 
       await Future.delayed(Duration.zero);
 
       expect(emitted.length, 1);
       expect(emitted.first.length, 1);
-      final device = emitted.first.first;
-      expect(device.deviceId, 'AA:BB:CC:DD:EE:FF');
-      expect(device.deviceUuid, 'uuid-123');
-      expect(device.rssi, -50);
-      expect(device.distance, 1.0);
-      expect(device.proximity, ProximityLevel.close);
+      final result = emitted.first.first;
+      expect(result.deviceId, 'AA:BB:CC:DD:EE:FF');
+      expect(result.deviceUuid, 'uuid-123');
+      expect(result.rssi, -50);
+      expect(result.distance, 1.0);
+      expect(result.proximity, ProximityLevel.close);
 
       await sub.cancel();
       await scanResultsCtrl.close();
