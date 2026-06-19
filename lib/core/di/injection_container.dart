@@ -27,6 +27,11 @@ import 'package:frontend_mobile_nodos_app/features/user/domain/usecases/get_user
 import 'package:frontend_mobile_nodos_app/features/user/domain/usecases/update_user_name.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/usecases/update_user_color.dart';
 import 'package:frontend_mobile_nodos_app/features/user/presentation/bloc/user_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/data/repositories/graph_repository_impl.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/repositories/graph_repository.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/usecases/build_graph.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/usecases/calculate_layout.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_bloc.dart';
 
 final sl = GetIt.instance;
 
@@ -78,6 +83,17 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton(() => UpdateUserName(sl()));
   sl.registerLazySingleton(() => UpdateUserColor(sl()));
 
+  // ── Graph ──
+  // Registra el repositorio de grafos que deriva aristas desde
+  // la tabla scan_session_nodes y nodos desde NodeRepository.
+  sl.registerLazySingleton<GraphRepository>(
+    () => GraphRepositoryImpl(sl(), sl()),
+  );
+  // Caso de uso: construye el LayoutResult inicial desde el repositorio.
+  sl.registerLazySingleton(() => BuildGraph(sl()));
+  // Caso de uso: ejecuta Fruchterman-Reingold en un Isolate.
+  sl.registerLazySingleton(() => const CalculateLayout());
+
   // ── BLoCs (factory — new instance per BlocProvider) ──
   sl.registerFactory(() => BleBloc(repository: sl()));
   sl.registerFactory<NodeListBloc>(
@@ -91,6 +107,14 @@ Future<void> initDependencies() async {
       getProfile: sl(),
       updateName: sl(),
       updateColor: sl(),
+    ),
+  );
+  // VisualizationBloc: orquesta BuildGraph + CalculateLayout con debounce.
+  // Se registra como factory para que cada BlocProvider obtenga su instancia.
+  sl.registerFactory<VisualizationBloc>(
+    () => VisualizationBloc(
+      buildGraph: sl(),
+      calculateLayout: sl(),
     ),
   );
 }
