@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:frontend_mobile_nodos_app/utils/uuid_generator.dart';
+import 'package:frontend_mobile_nodos_app/core/utils/uuid_generator.dart';
 
 void main() {
   group('generateUuidV4', () {

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:frontend_mobile_nodos_app/utils/distance_calc.dart';
+import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 
 void main() {
   group('rssiToDistance', () {

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:frontend_mobile_nodos_app/config/app_config.dart';
+import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 
 void main() {
   group('AppConfig constants', () {
