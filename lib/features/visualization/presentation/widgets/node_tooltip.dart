@@ -1,0 +1,210 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_node.dart';
+
+/// Tooltip flotante que muestra información del nodo tocado en el grafo.
+///
+/// Se renderiza como un OverlayEntry posicionado cerca del nodo tocado.
+/// Muestra: nombre (o "Desconocido"), nivel de proximidad con indicador
+/// de color, y el ID del nodo.
+///
+/// Auto-dismiss: se cierra automáticamente después de 5 segundos o
+/// cuando el usuario toca fuera del tooltip.
+///
+/// NOTA: lastSeen y RSSI no están disponibles en GraphNode actualmente.
+/// Se agregarán cuando la entidad incluya esos campos.
+class NodeTooltip extends StatefulWidget {
+  final GraphNode node;
+  final Offset globalPosition; // posición del nodo en coordenadas globales
+  final VoidCallback onDismiss;
+
+  const NodeTooltip({
+    super.key,
+    required this.node,
+    required this.globalPosition,
+    required this.onDismiss,
+  });
+
+  /// Abre el tooltip como overlay y retorna el OverlayEntry para control externo.
+  static OverlayEntry show({
+    required BuildContext context,
+    required GraphNode node,
+    required Offset globalPosition,
+    required VoidCallback onDismiss,
+  }) {
+    // Usamos late para romper la referencia circular: el builder necesita
+    // la referencia a entry, que aún no está declarada.
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (overlayContext) => _TooltipContent(
+        node: node,
+        globalPosition: globalPosition,
+        onDismiss: () {
+          entry.remove();
+          onDismiss();
+        },
+      ),
+    );
+    Overlay.of(context).insert(entry);
+    return entry;
+  }
+
+  @override
+  State<NodeTooltip> createState() => _NodeTooltipState();
+}
+
+class _NodeTooltipState extends State<NodeTooltip> {
+  Timer? _autoDismissTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _autoDismissTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted) {
+        widget.onDismiss();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _autoDismissTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // No renderiza nada directamente — usa el método estático show()
+    // para crear un OverlayEntry.
+    return const SizedBox.shrink();
+  }
+}
+
+/// Contenido visual del tooltip renderizado dentro del Overlay.
+///
+/// Muestra una Card con la información del nodo, posicionada cerca
+/// de la posición global del nodo en pantalla.
+class _TooltipContent extends StatefulWidget {
+  final GraphNode node;
+  final Offset globalPosition;
+  final VoidCallback onDismiss;
+
+  const _TooltipContent({
+    required this.node,
+    required this.globalPosition,
+    required this.onDismiss,
+  });
+
+  @override
+  State<_TooltipContent> createState() => _TooltipContentState();
+}
+
+class _TooltipContentState extends State<_TooltipContent> {
+  Timer? _autoDismissTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Cierra automáticamente después de 5 segundos
+    _autoDismissTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted) widget.onDismiss();
+    });
+  }
+
+  @override
+  void dispose() {
+    _autoDismissTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Indicador textual del nivel de proximidad
+    final proximityLabel = switch (widget.node.proximity) {
+      ProximityLevel.close => 'Cerca',
+      ProximityLevel.medium => 'Medio',
+      ProximityLevel.far => 'Lejos',
+    };
+
+    return Stack(
+      children: [
+        // Fondo transparente que captura taps para dismiss
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: widget.onDismiss,
+            child: Container(color: Colors.transparent),
+          ),
+        ),
+        // Card posicionada cerca del nodo
+        Positioned(
+          left: (widget.globalPosition.dx - 80).clamp(0.0, 500),
+          top: widget.globalPosition.dy - 110,
+          child: Material(
+            elevation: 4,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              width: 160,
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E1E2E),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: widget.node.color, width: 1),
+              ),
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Nombre del nodo
+                  Text(
+                    widget.node.label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 6),
+                  // Indicador de proximidad con punto de color
+                  Row(
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: widget.node.color,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        proximityLabel,
+                        style: TextStyle(
+                          color: widget.node.color,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  // ID del nodo
+                  Text(
+                    'ID: ${widget.node.id ?? "—"}',
+                    style: const TextStyle(
+                      color: Colors.grey,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
