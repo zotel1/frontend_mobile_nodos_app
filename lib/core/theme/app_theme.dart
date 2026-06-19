@@ -18,4 +18,18 @@ class AppTheme {
           centerTitle: true,
         ),
       );
+
+  /// Tema oscuro adaptativo al sistema.
+  ///
+  /// Usa la misma semilla [Color(0xFF2196F3)] que el tema claro
+  /// para mantener la identidad visual Nodos.
+  /// Solo cambia [Brightness.dark] para fondos oscuros y texto claro.
+  static ThemeData get dark => ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: _primarySeed,
+          brightness: Brightness.dark,
+        ),
+        appBarTheme: const AppBarTheme(centerTitle: true),
+      );
 }

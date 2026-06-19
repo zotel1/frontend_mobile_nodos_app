@@ -1,5 +1,6 @@
 import 'package:bloc_test/bloc_test.dart';
 import 'package:dartz/dartz.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
@@ -196,6 +197,81 @@ void main() {
           'message',
           contains('Save failed'),
         ),
+      ],
+    );
+
+    // ─── Tema (ThemeMode) ──────────────────────────────────
+    // QUÉ: verifica que UpdateThemeMode cambia el modo de tema
+    // POR QUÉ: el usuario puede elegir entre sistema/claro/oscuro
+    //   desde SettingsPage. El estado debe reflejar la elección.
+
+    blocTest<UserBloc, UserState>(
+      'initial LoadProfile emits UserLoaded with themeMode=system',
+      build: () {
+        when(mockGetUserProfile.call(any))
+            .thenAnswer((_) async => Right(testUser));
+        return UserBloc(
+          getProfile: mockGetUserProfile,
+          updateName: mockUpdateUserName,
+          updateColor: mockUpdateUserColor,
+        );
+      },
+      act: (bloc) => bloc.add(LoadProfile()),
+      expect: () => [
+        isA<UserLoading>(),
+        isA<UserLoaded>().having(
+          (s) => s.themeMode,
+          'themeMode',
+          ThemeMode.system,
+        ),
+      ],
+    );
+
+    blocTest<UserBloc, UserState>(
+      'UpdateThemeMode to dark changes themeMode in state',
+      seed: () => UserLoaded(testUser),
+      build: () => UserBloc(
+        getProfile: mockGetUserProfile,
+        updateName: mockUpdateUserName,
+        updateColor: mockUpdateUserColor,
+      ),
+      act: (bloc) => bloc.add(const UpdateThemeMode(ThemeMode.dark)),
+      expect: () => [
+        isA<UserLoaded>()
+            .having((s) => s.themeMode, 'themeMode', ThemeMode.dark)
+            .having((s) => s.user, 'user', testUser),
+      ],
+    );
+
+    blocTest<UserBloc, UserState>(
+      'UpdateThemeMode to light changes themeMode in state',
+      seed: () => UserLoaded(testUser),
+      build: () => UserBloc(
+        getProfile: mockGetUserProfile,
+        updateName: mockUpdateUserName,
+        updateColor: mockUpdateUserColor,
+      ),
+      act: (bloc) => bloc.add(const UpdateThemeMode(ThemeMode.light)),
+      expect: () => [
+        isA<UserLoaded>()
+            .having((s) => s.themeMode, 'themeMode', ThemeMode.light)
+            .having((s) => s.user, 'user', testUser),
+      ],
+    );
+
+    blocTest<UserBloc, UserState>(
+      'UpdateThemeMode to system changes themeMode in state',
+      seed: () => UserLoaded(testUser, themeMode: ThemeMode.dark),
+      build: () => UserBloc(
+        getProfile: mockGetUserProfile,
+        updateName: mockUpdateUserName,
+        updateColor: mockUpdateUserColor,
+      ),
+      act: (bloc) => bloc.add(const UpdateThemeMode(ThemeMode.system)),
+      expect: () => [
+        isA<UserLoaded>()
+            .having((s) => s.themeMode, 'themeMode', ThemeMode.system)
+            .having((s) => s.user, 'user', testUser),
       ],
     );
   });

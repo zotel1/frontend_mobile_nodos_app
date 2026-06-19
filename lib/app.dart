@@ -27,10 +27,23 @@ class NodosApp extends StatelessWidget {
           create: (_) => sl<VisualizationBloc>(),
         ),
       ],
-      child: MaterialApp.router(
-        title: 'Nodos',
-        theme: AppTheme.light,
-        routerConfig: _router,
+      child: BlocBuilder<UserBloc, UserState>(
+        builder: (context, state) {
+          // Lee el themeMode del estado del UserBloc.
+          // Si el perfil aún no cargó, usa system como fallback.
+          final themeMode = (state is UserLoaded)
+              ? state.themeMode
+              : ThemeMode.system;
+
+          return MaterialApp.router(
+            title: 'Nodos',
+            theme: AppTheme.light,
+            // Tema oscuro: misma semilla de color, solo cambia el brillo.
+            darkTheme: AppTheme.dark,
+            themeMode: themeMode,
+            routerConfig: _router,
+          );
+        },
       ),
     );
   }
