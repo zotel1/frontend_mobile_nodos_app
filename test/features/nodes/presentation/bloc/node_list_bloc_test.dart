@@ -4,6 +4,8 @@ import 'package:bloc_test/bloc_test.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart';
+import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/usecases/observe_nodes.dart';
@@ -182,6 +184,50 @@ void main() {
       expect: () => [
         isA<NodeListLoading>(),
         isA<NodeListEmpty>(),
+      ],
+    );
+
+    // T1.6 F6: SyncBleDevices debe suscribirse al stream Drift
+    // si no hay suscripción activa, emitiendo NodeListLoaded
+    // con los nodos persistidos.
+    // QUÉ: cuando SyncBleDevices persiste nodos y no hay
+    // _nodesSubscription activo, el BLoC debe llamar a
+    // _subscribeToNodes para iniciar el watcher Drift.
+    // POR QUÉ: sin esta suscripción, los nodos persistidos
+    // nunca se reflejan en la UI.
+    blocTest<NodeListBloc, NodeListState>(
+      'emits [NodeListLoaded] after SyncBleDevices when Drift stream emits nodes',
+      build: () {
+        // Configurar el mock de NodeRepository para upsertNode.
+        when(mockNodeRepository.upsertNode(any))
+            .thenAnswer((_) async {});
+        // Configurar ObserveNodes para emitir la lista de nodos.
+        when(mockObserveNodes.call())
+            .thenAnswer((_) => Stream.value(testNodes));
+        return NodeListBloc(
+          observeNodes: mockObserveNodes,
+          updateNodeMetadata: mockUpdateNodeMetadata,
+          nodeRepository: mockNodeRepository,
+        );
+      },
+      act: (bloc) => bloc.add(SyncBleDevices([
+        BleDevice(
+          deviceId: 'AA:BB:CC:DD:EE:FF',
+          rssi: -45,
+          distance: 1.0,
+          proximity: ProximityLevel.close,
+          timestamp: now,
+        ),
+      ])),
+      // La suscripción al stream se activa al final de _onSyncBleDevices,
+      // emitiendo NodeListLoaded con los nodos del stream Drift.
+      expect: () => [
+        isA<NodeListLoading>(),
+        isA<NodeListLoaded>().having(
+          (s) => s.nodes.length,
+          'nodes.length',
+          2, // testNodes tiene 2 nodos
+        ),
       ],
     );
   });

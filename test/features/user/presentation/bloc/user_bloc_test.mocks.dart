@@ -169,3 +169,44 @@ class MockUpdateUserColor extends _i1.Mock implements _i10.UpdateUserColor {
           )
           as _i5.Future<_i3.Either<_i6.Failure, void>>);
 }
+
+/// A class which mocks [UserRepository].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockUserRepository extends _i1.Mock implements _i2.UserRepository {
+  @override
+  _i5.Future<_i7.User?> getUserProfile() =>
+      (super.noSuchMethod(
+            Invocation.method(#getUserProfile, []),
+            returnValue: _i5.Future<_i7.User?>.value(),
+            returnValueForMissingStub: _i5.Future<_i7.User?>.value(),
+          )
+          as _i5.Future<_i7.User?>);
+
+  @override
+  _i5.Future<void> updateName(String? name) =>
+      (super.noSuchMethod(
+            Invocation.method(#updateName, [name]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<void> updateColor(String? color) =>
+      (super.noSuchMethod(
+            Invocation.method(#updateColor, [color]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<void> createUser(_i7.User? user) =>
+      (super.noSuchMethod(
+            Invocation.method(#createUser, [user]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+}

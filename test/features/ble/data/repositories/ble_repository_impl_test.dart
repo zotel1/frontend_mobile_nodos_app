@@ -82,6 +82,20 @@ void main() {
           .called(1);
     });
 
+    // T1.1 F1: Escaneo promiscuo sin filtro UUID.
+    // QUÉ: startScan() debe llamar al datasource con serviceUuids: null
+    // para detectar cualquier dispositivo BLE, no solo los que anuncian el UUID Nodos.
+    // POR QUÉ: flutter_ble_peripheral es stub → nadie anuncia el UUID Nodos.
+    test('startScan calls datasource with null serviceUuids (promiscuous scan)',
+        () async {
+      when(mockScanner.startScan(serviceUuids: null))
+          .thenAnswer((_) async {});
+
+      await repository.startScan();
+
+      verify(mockScanner.startScan(serviceUuids: null)).called(1);
+    });
+
     test('stopScan delegates to scanner', () async {
       when(mockScanner.stopScan()).thenAnswer((_) async {});
 
