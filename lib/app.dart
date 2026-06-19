@@ -9,6 +9,7 @@ import 'package:frontend_mobile_nodos_app/features/nodes/presentation/pages/home
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/pages/node_detail_page.dart';
 import 'package:frontend_mobile_nodos_app/features/user/presentation/bloc/user_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/user/presentation/pages/settings_page.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_bloc.dart';
 
 class NodosApp extends StatelessWidget {
   const NodosApp({super.key});
@@ -20,6 +21,11 @@ class NodosApp extends StatelessWidget {
         BlocProvider<BleBloc>(create: (_) => sl<BleBloc>()),
         BlocProvider<NodeListBloc>(create: (_) => sl<NodeListBloc>()),
         BlocProvider<UserBloc>(create: (_) => sl<UserBloc>()),
+        // VisualizationBloc: construye y posiciona el grafo de nodos
+        // cuando hay 5+ dispositivos BLE detectados.
+        BlocProvider<VisualizationBloc>(
+          create: (_) => sl<VisualizationBloc>(),
+        ),
       ],
       child: MaterialApp.router(
         title: 'Nodos',
