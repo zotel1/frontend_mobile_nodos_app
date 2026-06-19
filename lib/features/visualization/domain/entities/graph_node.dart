@@ -23,12 +23,17 @@ class GraphNode extends Equatable {
   /// Nombre asignado por el usuario, si existe.
   final String? name;
 
+  /// Nombre sugerido desde el advertisement BLE (Phase 4 enrichment).
+  /// Se usa como fallback cuando el usuario no asignó nombre.
+  final String? suggestedName;
+
   const GraphNode({
     this.id,
     required this.x,
     required this.y,
     required this.proximity,
     this.name,
+    this.suggestedName,
   });
 
   /// Radio del círculo según nivel de proximidad.
@@ -55,9 +60,9 @@ class GraphNode extends Equatable {
   bool get isKnown => name != null;
 
   /// Etiqueta a mostrar debajo del nodo.
-  /// Usa el nombre si existe, sino "Desconocido".
-  String get label => name ?? 'Desconocido';
+  /// Prioridad: name > suggestedName > "Desconocido" (T1.8).
+  String get label => name ?? suggestedName ?? 'Desconocido';
 
   @override
-  List<Object?> get props => [id, x, y, proximity, name];
+  List<Object?> get props => [id, x, y, proximity, name, suggestedName];
 }

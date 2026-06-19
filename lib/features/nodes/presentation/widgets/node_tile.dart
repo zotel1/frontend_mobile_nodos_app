@@ -49,7 +49,7 @@ class NodeTile extends StatelessWidget {
       child: ListTile(
         leading: ProximityBadge(proximity: _proximity),
         title: Text(
-          node.isKnown ? node.name! : 'Desconocido',
+          node.isKnown ? node.name! : (node.suggestedName ?? 'Desconocido'),
           style: TextStyle(
             fontWeight: node.isKnown ? FontWeight.w600 : FontWeight.w400,
             color: node.isKnown ? null : Colors.grey.shade600,
@@ -58,6 +58,12 @@ class NodeTile extends StatelessWidget {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // T1.9: badge de tipo de dispositivo
+            if (node.deviceType != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: _DeviceTypeBadge(type: node.deviceType!),
+              ),
             Text(
               'RSSI: $_lastRssi dBm',
               style: Theme.of(context).textTheme.bodySmall,
@@ -83,5 +89,52 @@ class NodeTile extends StatelessWidget {
     if (diff.inMinutes < 60) return 'Hace ${diff.inMinutes} min';
     if (diff.inHours < 24) return 'Hace ${diff.inHours}h';
     return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
+  }
+}
+
+/// Badge compacto que muestra el tipo de dispositivo clasificado.
+///
+/// QUÉ hace: renderiza un chip pequeño con ícono y texto indicando
+/// la categoría del dispositivo (ej: "⌚ Reloj/Fitness", "🎧 Auriculares").
+///
+/// POR QUÉ: R3.5 — la UI debe comunicar visualmente el tipo de
+/// dispositivo clasificado para enriquecer la identidad.
+class _DeviceTypeBadge extends StatelessWidget {
+  final String type;
+
+  const _DeviceTypeBadge({required this.type});
+
+  IconData get _icon => switch (type) {
+        'Reloj/Fitness' => Icons.watch,
+        'Batería' => Icons.battery_std,
+        'Teclado' => Icons.keyboard,
+        'Nodo' => Icons.sensors,
+        _ => Icons.devices,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.blue.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(_icon, size: 12, color: Colors.blue.shade700),
+          const SizedBox(width: 3),
+          Text(
+            type,
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.blue.shade700,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

@@ -501,6 +501,28 @@ class $NodesTable extends Nodes with TableInfo<$NodesTable, NodeRow> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _suggestedNameMeta = const VerificationMeta(
+    'suggestedName',
+  );
+  @override
+  late final GeneratedColumn<String> suggestedName = GeneratedColumn<String>(
+    'suggested_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _deviceTypeMeta = const VerificationMeta(
+    'deviceType',
+  );
+  @override
+  late final GeneratedColumn<String> deviceType = GeneratedColumn<String>(
+    'device_type',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -512,6 +534,8 @@ class $NodesTable extends Nodes with TableInfo<$NodesTable, NodeRow> {
     lastRssi,
     proximityZone,
     rssiHistory,
+    suggestedName,
+    deviceType,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -588,6 +612,21 @@ class $NodesTable extends Nodes with TableInfo<$NodesTable, NodeRow> {
         ),
       );
     }
+    if (data.containsKey('suggested_name')) {
+      context.handle(
+        _suggestedNameMeta,
+        suggestedName.isAcceptableOrUnknown(
+          data['suggested_name']!,
+          _suggestedNameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('device_type')) {
+      context.handle(
+        _deviceTypeMeta,
+        deviceType.isAcceptableOrUnknown(data['device_type']!, _deviceTypeMeta),
+      );
+    }
     return context;
   }
 
@@ -633,6 +672,14 @@ class $NodesTable extends Nodes with TableInfo<$NodesTable, NodeRow> {
         DriftSqlType.string,
         data['${effectivePrefix}rssi_history'],
       ),
+      suggestedName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}suggested_name'],
+      ),
+      deviceType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}device_type'],
+      ),
     );
   }
 
@@ -652,6 +699,8 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
   final int? lastRssi;
   final String? proximityZone;
   final String? rssiHistory;
+  final String? suggestedName;
+  final String? deviceType;
   const NodeRow({
     required this.id,
     required this.bleAddress,
@@ -662,6 +711,8 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
     this.lastRssi,
     this.proximityZone,
     this.rssiHistory,
+    this.suggestedName,
+    this.deviceType,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -685,6 +736,12 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
     if (!nullToAbsent || rssiHistory != null) {
       map['rssi_history'] = Variable<String>(rssiHistory);
     }
+    if (!nullToAbsent || suggestedName != null) {
+      map['suggested_name'] = Variable<String>(suggestedName);
+    }
+    if (!nullToAbsent || deviceType != null) {
+      map['device_type'] = Variable<String>(deviceType);
+    }
     return map;
   }
 
@@ -707,6 +764,12 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
       rssiHistory: rssiHistory == null && nullToAbsent
           ? const Value.absent()
           : Value(rssiHistory),
+      suggestedName: suggestedName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(suggestedName),
+      deviceType: deviceType == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deviceType),
     );
   }
 
@@ -725,6 +788,8 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
       lastRssi: serializer.fromJson<int?>(json['lastRssi']),
       proximityZone: serializer.fromJson<String?>(json['proximityZone']),
       rssiHistory: serializer.fromJson<String?>(json['rssiHistory']),
+      suggestedName: serializer.fromJson<String?>(json['suggestedName']),
+      deviceType: serializer.fromJson<String?>(json['deviceType']),
     );
   }
   @override
@@ -740,6 +805,8 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
       'lastRssi': serializer.toJson<int?>(lastRssi),
       'proximityZone': serializer.toJson<String?>(proximityZone),
       'rssiHistory': serializer.toJson<String?>(rssiHistory),
+      'suggestedName': serializer.toJson<String?>(suggestedName),
+      'deviceType': serializer.toJson<String?>(deviceType),
     };
   }
 
@@ -753,6 +820,8 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
     Value<int?> lastRssi = const Value.absent(),
     Value<String?> proximityZone = const Value.absent(),
     Value<String?> rssiHistory = const Value.absent(),
+    Value<String?> suggestedName = const Value.absent(),
+    Value<String?> deviceType = const Value.absent(),
   }) => NodeRow(
     id: id ?? this.id,
     bleAddress: bleAddress ?? this.bleAddress,
@@ -765,6 +834,10 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
         ? proximityZone.value
         : this.proximityZone,
     rssiHistory: rssiHistory.present ? rssiHistory.value : this.rssiHistory,
+    suggestedName: suggestedName.present
+        ? suggestedName.value
+        : this.suggestedName,
+    deviceType: deviceType.present ? deviceType.value : this.deviceType,
   );
   NodeRow copyWithCompanion(NodesCompanion data) {
     return NodeRow(
@@ -783,6 +856,12 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
       rssiHistory: data.rssiHistory.present
           ? data.rssiHistory.value
           : this.rssiHistory,
+      suggestedName: data.suggestedName.present
+          ? data.suggestedName.value
+          : this.suggestedName,
+      deviceType: data.deviceType.present
+          ? data.deviceType.value
+          : this.deviceType,
     );
   }
 
@@ -797,7 +876,9 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
           ..write('lastSeen: $lastSeen, ')
           ..write('lastRssi: $lastRssi, ')
           ..write('proximityZone: $proximityZone, ')
-          ..write('rssiHistory: $rssiHistory')
+          ..write('rssiHistory: $rssiHistory, ')
+          ..write('suggestedName: $suggestedName, ')
+          ..write('deviceType: $deviceType')
           ..write(')'))
         .toString();
   }
@@ -813,6 +894,8 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
     lastRssi,
     proximityZone,
     rssiHistory,
+    suggestedName,
+    deviceType,
   );
   @override
   bool operator ==(Object other) =>
@@ -826,7 +909,9 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
           other.lastSeen == this.lastSeen &&
           other.lastRssi == this.lastRssi &&
           other.proximityZone == this.proximityZone &&
-          other.rssiHistory == this.rssiHistory);
+          other.rssiHistory == this.rssiHistory &&
+          other.suggestedName == this.suggestedName &&
+          other.deviceType == this.deviceType);
 }
 
 class NodesCompanion extends UpdateCompanion<NodeRow> {
@@ -839,6 +924,8 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
   final Value<int?> lastRssi;
   final Value<String?> proximityZone;
   final Value<String?> rssiHistory;
+  final Value<String?> suggestedName;
+  final Value<String?> deviceType;
   const NodesCompanion({
     this.id = const Value.absent(),
     this.bleAddress = const Value.absent(),
@@ -849,6 +936,8 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
     this.lastRssi = const Value.absent(),
     this.proximityZone = const Value.absent(),
     this.rssiHistory = const Value.absent(),
+    this.suggestedName = const Value.absent(),
+    this.deviceType = const Value.absent(),
   });
   NodesCompanion.insert({
     this.id = const Value.absent(),
@@ -860,6 +949,8 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
     this.lastRssi = const Value.absent(),
     this.proximityZone = const Value.absent(),
     this.rssiHistory = const Value.absent(),
+    this.suggestedName = const Value.absent(),
+    this.deviceType = const Value.absent(),
   }) : bleAddress = Value(bleAddress),
        firstSeen = Value(firstSeen),
        lastSeen = Value(lastSeen);
@@ -873,6 +964,8 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
     Expression<int>? lastRssi,
     Expression<String>? proximityZone,
     Expression<String>? rssiHistory,
+    Expression<String>? suggestedName,
+    Expression<String>? deviceType,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -884,6 +977,8 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
       if (lastRssi != null) 'last_rssi': lastRssi,
       if (proximityZone != null) 'proximity_zone': proximityZone,
       if (rssiHistory != null) 'rssi_history': rssiHistory,
+      if (suggestedName != null) 'suggested_name': suggestedName,
+      if (deviceType != null) 'device_type': deviceType,
     });
   }
 
@@ -897,6 +992,8 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
     Value<int?>? lastRssi,
     Value<String?>? proximityZone,
     Value<String?>? rssiHistory,
+    Value<String?>? suggestedName,
+    Value<String?>? deviceType,
   }) {
     return NodesCompanion(
       id: id ?? this.id,
@@ -908,6 +1005,8 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
       lastRssi: lastRssi ?? this.lastRssi,
       proximityZone: proximityZone ?? this.proximityZone,
       rssiHistory: rssiHistory ?? this.rssiHistory,
+      suggestedName: suggestedName ?? this.suggestedName,
+      deviceType: deviceType ?? this.deviceType,
     );
   }
 
@@ -941,6 +1040,12 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
     if (rssiHistory.present) {
       map['rssi_history'] = Variable<String>(rssiHistory.value);
     }
+    if (suggestedName.present) {
+      map['suggested_name'] = Variable<String>(suggestedName.value);
+    }
+    if (deviceType.present) {
+      map['device_type'] = Variable<String>(deviceType.value);
+    }
     return map;
   }
 
@@ -955,7 +1060,9 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
           ..write('lastSeen: $lastSeen, ')
           ..write('lastRssi: $lastRssi, ')
           ..write('proximityZone: $proximityZone, ')
-          ..write('rssiHistory: $rssiHistory')
+          ..write('rssiHistory: $rssiHistory, ')
+          ..write('suggestedName: $suggestedName, ')
+          ..write('deviceType: $deviceType')
           ..write(')'))
         .toString();
   }
@@ -1808,6 +1915,8 @@ typedef $$NodesTableCreateCompanionBuilder =
       Value<int?> lastRssi,
       Value<String?> proximityZone,
       Value<String?> rssiHistory,
+      Value<String?> suggestedName,
+      Value<String?> deviceType,
     });
 typedef $$NodesTableUpdateCompanionBuilder =
     NodesCompanion Function({
@@ -1820,6 +1929,8 @@ typedef $$NodesTableUpdateCompanionBuilder =
       Value<int?> lastRssi,
       Value<String?> proximityZone,
       Value<String?> rssiHistory,
+      Value<String?> suggestedName,
+      Value<String?> deviceType,
     });
 
 final class $$NodesTableReferences
@@ -1897,6 +2008,16 @@ class $$NodesTableFilterComposer extends Composer<_$AppDatabase, $NodesTable> {
 
   ColumnFilters<String> get rssiHistory => $composableBuilder(
     column: $table.rssiHistory,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get suggestedName => $composableBuilder(
+    column: $table.suggestedName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deviceType => $composableBuilder(
+    column: $table.deviceType,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1979,6 +2100,16 @@ class $$NodesTableOrderingComposer
     column: $table.rssiHistory,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get suggestedName => $composableBuilder(
+    column: $table.suggestedName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get deviceType => $composableBuilder(
+    column: $table.deviceType,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$NodesTableAnnotationComposer
@@ -2020,6 +2151,16 @@ class $$NodesTableAnnotationComposer
 
   GeneratedColumn<String> get rssiHistory => $composableBuilder(
     column: $table.rssiHistory,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get suggestedName => $composableBuilder(
+    column: $table.suggestedName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get deviceType => $composableBuilder(
+    column: $table.deviceType,
     builder: (column) => column,
   );
 
@@ -2086,6 +2227,8 @@ class $$NodesTableTableManager
                 Value<int?> lastRssi = const Value.absent(),
                 Value<String?> proximityZone = const Value.absent(),
                 Value<String?> rssiHistory = const Value.absent(),
+                Value<String?> suggestedName = const Value.absent(),
+                Value<String?> deviceType = const Value.absent(),
               }) => NodesCompanion(
                 id: id,
                 bleAddress: bleAddress,
@@ -2096,6 +2239,8 @@ class $$NodesTableTableManager
                 lastRssi: lastRssi,
                 proximityZone: proximityZone,
                 rssiHistory: rssiHistory,
+                suggestedName: suggestedName,
+                deviceType: deviceType,
               ),
           createCompanionCallback:
               ({
@@ -2108,6 +2253,8 @@ class $$NodesTableTableManager
                 Value<int?> lastRssi = const Value.absent(),
                 Value<String?> proximityZone = const Value.absent(),
                 Value<String?> rssiHistory = const Value.absent(),
+                Value<String?> suggestedName = const Value.absent(),
+                Value<String?> deviceType = const Value.absent(),
               }) => NodesCompanion.insert(
                 id: id,
                 bleAddress: bleAddress,
@@ -2118,6 +2265,8 @@ class $$NodesTableTableManager
                 lastRssi: lastRssi,
                 proximityZone: proximityZone,
                 rssiHistory: rssiHistory,
+                suggestedName: suggestedName,
+                deviceType: deviceType,
               ),
           withReferenceMapper: (p0) => p0
               .map(
