@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:drift/drift.dart' hide Column;
-import 'package:app_settings/app_settings.dart'
-    show AppSettings, AppSettingsType;
+import 'package:android_intent_plus/android_intent.dart';
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
 import 'package:frontend_mobile_nodos_app/core/di/injection_container.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
@@ -193,9 +192,7 @@ class _HomePageState extends State<HomePage> {
               builder: (ctx) => BluetoothOffDialog(
                 onGoToSettings: () {
                   _dialogVisible = false;
-                  AppSettings.openAppSettings(
-                    type: AppSettingsType.bluetooth,
-                  );
+                  const AndroidIntent(action: 'android.settings.BLUETOOTH_SETTINGS').launch();
                 },
                 onCancel: () {
                   _dialogVisible = false;
@@ -224,9 +221,7 @@ class _HomePageState extends State<HomePage> {
                 if (bleState is BluetoothOff)
                   BluetoothOffBanner(
                     onGoToSettings: () {
-                      AppSettings.openAppSettings(
-                        type: AppSettingsType.bluetooth,
-                      );
+                      const AndroidIntent(action: 'android.settings.BLUETOOTH_SETTINGS').launch();
                     },
                   ),
                 Expanded(child: _buildContent()),
