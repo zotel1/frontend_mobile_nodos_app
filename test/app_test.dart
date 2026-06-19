@@ -12,6 +12,8 @@ import 'package:frontend_mobile_nodos_app/features/nodes/presentation/bloc/node_
 import 'package:frontend_mobile_nodos_app/features/user/presentation/bloc/user_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_state.dart';
+import 'package:frontend_mobile_nodos_app/features/history/presentation/bloc/history_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/history/domain/entities/history_stats.dart';
 
 import 'package:frontend_mobile_nodos_app/app.dart';
 
@@ -20,6 +22,7 @@ import 'package:frontend_mobile_nodos_app/app.dart';
   MockSpec<NodeListBloc>(),
   MockSpec<UserBloc>(),
   MockSpec<VisualizationBloc>(),
+  MockSpec<HistoryBloc>(),
 ])
 import 'app_test.mocks.dart';
 
@@ -28,6 +31,7 @@ void main() {
   late MockNodeListBloc mockNodeListBloc;
   late MockUserBloc mockUserBloc;
   late MockVisualizationBloc mockVizBloc;
+  late MockHistoryBloc mockHistoryBloc;
   late AppDatabase testDb;
 
   setUp(() async {
@@ -35,6 +39,7 @@ void main() {
     mockNodeListBloc = MockNodeListBloc();
     mockUserBloc = MockUserBloc();
     mockVizBloc = MockVisualizationBloc();
+    mockHistoryBloc = MockHistoryBloc();
 
     // Configurar mocks para evitar crashes
     when(mockBleBloc.state).thenReturn(const BleStopped());
@@ -49,6 +54,26 @@ void main() {
     when(mockVizBloc.state).thenReturn(const VisualizationInitial());
     when(mockVizBloc.stream)
         .thenAnswer((_) => Stream.value(const VisualizationInitial()));
+    when(mockHistoryBloc.state).thenReturn(const HistoryLoaded(
+      sessions: [],
+      stats: HistoryStats(
+        totalSessions: 0,
+        uniqueNodes: 0,
+        averageDuration: Duration.zero,
+      ),
+      filters: HistoryFilters(),
+    ));
+    when(mockHistoryBloc.stream).thenAnswer(
+      (_) => Stream.value(const HistoryLoaded(
+        sessions: [],
+        stats: HistoryStats(
+          totalSessions: 0,
+          uniqueNodes: 0,
+          averageDuration: Duration.zero,
+        ),
+        filters: HistoryFilters(),
+      )),
+    );
 
     // Registrar mocks en GetIt para que NodosApp los resuelva.
     if (!GetIt.instance.isRegistered<BleBloc>()) {
@@ -62,6 +87,9 @@ void main() {
     }
     if (!GetIt.instance.isRegistered<VisualizationBloc>()) {
       GetIt.instance.registerFactory<VisualizationBloc>(() => mockVizBloc);
+    }
+    if (!GetIt.instance.isRegistered<HistoryBloc>()) {
+      GetIt.instance.registerFactory<HistoryBloc>(() => mockHistoryBloc);
     }
 
     testDb = AppDatabase.inMemory();
@@ -87,6 +115,9 @@ void main() {
     }
     if (GetIt.instance.isRegistered<VisualizationBloc>()) {
       GetIt.instance.unregister<VisualizationBloc>();
+    }
+    if (GetIt.instance.isRegistered<HistoryBloc>()) {
+      GetIt.instance.unregister<HistoryBloc>();
     }
   });
 
@@ -124,8 +155,8 @@ void main() {
       expect(find.text('Buscando nodos cercanos...'), findsOneWidget);
     });
 
-    // T1.10: Los tabs Historial y Stats muestran placeholder.
-    testWidgets('Historial tab shows placeholder text', (tester) async {
+    // T3.4/T3.6: Los tabs Historial y Stats muestran contenido real.
+    testWidgets('Historial tab shows real HistoryTab content', (tester) async {
       await tester.pumpWidget(buildApp());
       await tester.pump();
 
@@ -134,10 +165,12 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(find.text('Próximamente...'), findsOneWidget);
+      // Con HistoryLoaded(vacío), HistoryTab muestra "Sin sesiones"
+      // y los chips de filtro
+      expect(find.text('Sin sesiones'), findsOneWidget);
     });
 
-    testWidgets('Stats tab shows placeholder text', (tester) async {
+    testWidgets('Stats tab shows real StatsTab content', (tester) async {
       await tester.pumpWidget(buildApp());
       await tester.pump();
 
@@ -146,7 +179,9 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(find.text('Próximamente...'), findsOneWidget);
+      // StatsTab muestra las tarjetas de estadísticas
+      expect(find.text('Total sesiones'), findsOneWidget);
+      expect(find.text('Nodos únicos'), findsOneWidget);
     });
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
