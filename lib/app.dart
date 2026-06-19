@@ -11,24 +11,9 @@ import 'package:frontend_mobile_nodos_app/features/nodes/presentation/pages/node
 import 'package:frontend_mobile_nodos_app/features/user/presentation/bloc/user_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/user/presentation/pages/settings_page.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_bloc.dart';
-
-/// Placeholder para tabs que aún no están implementadas.
-///
-/// T1.9: Cada tab del BottomNavigationBar necesita un builder.
-/// Historial y Stats muestran este placeholder hasta que se implementen
-/// en PR2 y PR3.
-class _PlaceholderTab extends StatelessWidget {
-  final String label;
-  const _PlaceholderTab({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(label)),
-      body: const Center(child: Text('Próximamente...')),
-    );
-  }
-}
+import 'package:frontend_mobile_nodos_app/features/history/presentation/bloc/history_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/history/presentation/pages/history_tab.dart';
+import 'package:frontend_mobile_nodos_app/features/history/presentation/pages/stats_tab.dart';
 
 /// Scaffold con BottomNavigationBar de 3 tabs usando StatefulShellRoute.
 ///
@@ -106,6 +91,9 @@ class NodosApp extends StatelessWidget {
         BlocProvider<VisualizationBloc>(
           create: (_) => sl<VisualizationBloc>(),
         ),
+        // HistoryBloc: orquesta el historial de sesiones y estadísticas.
+        // Compartido entre HistoryTab y StatsTab via BlocProvider.
+        BlocProvider<HistoryBloc>(create: (_) => sl<HistoryBloc>()),
       ],
       child: BlocBuilder<UserBloc, UserState>(
         builder: (context, state) {
@@ -147,21 +135,21 @@ final _router = GoRouter(
             ),
           ],
         ),
-        // Tab 1: Historial — sesiones pasadas (placeholder por ahora).
+        // Tab 1: Historial — sesiones pasadas y filtros.
         StatefulShellBranch(
           routes: [
             GoRoute(
               path: '/history',
-              builder: (_, _) => const _PlaceholderTab(label: 'Historial'),
+              builder: (_, _) => const HistoryTab(),
             ),
           ],
         ),
-        // Tab 2: Stats — estadísticas (placeholder por ahora).
+        // Tab 2: Stats — estadísticas agregadas.
         StatefulShellBranch(
           routes: [
             GoRoute(
               path: '/stats',
-              builder: (_, _) => const _PlaceholderTab(label: 'Stats'),
+              builder: (_, _) => const StatsTab(),
             ),
           ],
         ),
