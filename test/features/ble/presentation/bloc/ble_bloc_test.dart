@@ -187,5 +187,57 @@ void main() {
           verify(mockRepository.startAdvertise('another-uuid-123'))
               .called(1),
     );
+
+    blocTest<BleBloc, BleState>(
+      'emite BluetoothOff cuando repository.bluetoothState emite false',
+      build: () {
+        final btController = StreamController<bool>.broadcast();
+        when(mockRepository.bluetoothState)
+            .thenAnswer((_) => btController.stream);
+        // Emitir false después de la construcción para simular BT apagado.
+        Future.microtask(() => btController.add(false));
+        return BleBloc(repository: mockRepository);
+      },
+      expect: () => [
+        isA<BluetoothOff>(),
+      ],
+      tearDown: () async {},
+    );
+
+    blocTest<BleBloc, BleState>(
+      'emite BleStopped cuando repository.bluetoothState emite true (BT encendido)',
+      build: () {
+        final btController = StreamController<bool>.broadcast();
+        when(mockRepository.bluetoothState)
+            .thenAnswer((_) => btController.stream);
+        Future.microtask(() => btController.add(true));
+        return BleBloc(repository: mockRepository);
+      },
+      expect: () => [
+        isA<BleStopped>(),
+      ],
+      tearDown: () async {},
+    );
+
+    blocTest<BleBloc, BleState>(
+      'cancela _btSubscription al cerrar el bloc',
+      build: () {
+        final btController = StreamController<bool>.broadcast();
+        when(mockRepository.bluetoothState)
+            .thenAnswer((_) => btController.stream);
+        return BleBloc(repository: mockRepository);
+      },
+      act: (bloc) async {
+        await bloc.close();
+      },
+      verify: (_) {
+        // Verificamos que el stream de bluetoothState fue consultado
+        // (el constructor se suscribió a él).
+        verify(mockRepository.bluetoothState).called(1);
+      },
+      // No esperamos estados extra al cerrar.
+      expect: () => [],
+      tearDown: () async {},
+    );
   });
 }

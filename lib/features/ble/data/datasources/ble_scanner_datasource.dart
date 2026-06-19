@@ -2,6 +2,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_devic
 
 abstract class BleScannerDataSource {
   Stream<List<BleDevice>> get scanResults;
+  Stream<bool> get bluetoothState;
   Future<void> startScan({List<String>? serviceUuids});
   Future<void> stopScan();
 }

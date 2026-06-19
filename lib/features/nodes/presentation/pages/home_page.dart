@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:drift/drift.dart' hide Column;
+import 'package:app_settings/app_settings.dart'
+    show AppSettings, AppSettingsType;
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
 import 'package:frontend_mobile_nodos_app/core/di/injection_container.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/widgets/bluetooth_off_banner.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/presentation/widgets/bluetooth_off_dialog.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/bloc/node_list_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/widgets/node_tile.dart';
@@ -41,6 +44,16 @@ class _HomePageState extends State<HomePage> {
   /// Se crea bajo demanda cuando se transiciona a modo grafo.
   int? _scanSessionId;
 
+  /// Guard contra stacking de [BluetoothOffDialog].
+  ///
+  /// QUÉ hace: previene que se muestren múltiples diálogos
+  /// superpuestos cuando BleBloc emite [BluetoothOff] repetidamente.
+  ///
+  /// POR QUÉ: cada emisión del stream de estado BT (por ej. durante
+  /// un toggle rápido encendido/apagado) podría disparar showDialog.
+  /// Este flag asegura que solo haya un diálogo visible a la vez.
+  bool _dialogVisible = false;
+
   @override
   Widget build(BuildContext context) {
     final bleBloc = context.read<BleBloc>();
@@ -72,6 +85,30 @@ class _HomePageState extends State<HomePage> {
                 .read<NodeListBloc>()
                 .add(SyncBleDevices(bleState.devices));
           }
+          // Mostrar diálogo cuando BT está apagado.
+          // El guard _dialogVisible previene stacking de múltiples diálogos.
+          if (bleState is BluetoothOff && !_dialogVisible) {
+            _dialogVisible = true;
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (ctx) => BluetoothOffDialog(
+                onGoToSettings: () {
+                  _dialogVisible = false;
+                  AppSettings.openAppSettings(
+                    type: AppSettingsType.bluetooth,
+                  );
+                },
+                onCancel: () {
+                  _dialogVisible = false;
+                },
+              ),
+            );
+          }
+          // Si BT vuelve a estar disponible, reseteamos el guard.
+          if (bleState is BleStopped || bleState is BleScanning) {
+            _dialogVisible = false;
+          }
         },
         child: BlocListener<NodeListBloc, NodeListState>(
         // Dispara la construcción del grafo cuando la lista cambia.
@@ -89,7 +126,9 @@ class _HomePageState extends State<HomePage> {
                 if (bleState is BluetoothOff)
                   BluetoothOffBanner(
                     onGoToSettings: () {
-                      // Placeholder — system Bluetooth settings not opened here.
+                      AppSettings.openAppSettings(
+                        type: AppSettingsType.bluetooth,
+                      );
                     },
                   ),
                 Expanded(child: _buildContent()),

@@ -19,6 +19,21 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     on<BluetoothStateChanged>(_onBluetoothStateChanged);
     on<_ScanResultsUpdated>(_onScanResultsUpdated);
     on<_ScanError>(_onScanError);
+
+    /// Suscripción al estado real del adaptador Bluetooth.
+    ///
+    /// QUÉ hace: escucha [repository.bluetoothState] y despacha
+    /// [BluetoothStateChanged] por cada cambio. El handler
+    /// [_onBluetoothStateChanged] mapea true→BleStopped, false→BluetoothOff.
+    ///
+    /// POR QUÉ resuelve el problema: antes _btSubscription se declaraba
+    /// pero NUNCA se asignaba, así que el stream de estado BT era
+    /// completamente ignorado y BluetoothOff era inalcanzable.
+    _btSubscription = repository.bluetoothState.listen((isOn) {
+      if (!isClosed) {
+        add(BluetoothStateChanged(isOn));
+      }
+    });
   }
 
   Future<void> _onStartScan(StartScan event, Emitter<BleState> emit) async {

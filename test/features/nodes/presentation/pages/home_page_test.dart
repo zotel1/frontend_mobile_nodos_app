@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -499,6 +501,144 @@ void main() {
 
       // La página de settings debe mostrarse.
       expect(find.text('Settings Page'), findsOneWidget);
+    });
+
+    testWidgets('muestra BluetoothOffDialog cuando BleBloc emite BluetoothOff',
+        (tester) async {
+      final bleController = StreamController<BleState>.broadcast();
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+
+      when(mockNodeListBloc.state).thenReturn(const NodeListLoaded([]));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(const NodeListLoaded([])));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream).thenAnswer((_) => bleController.stream);
+      when(mockVizBloc.state).thenReturn(const VisualizationInitial());
+      when(mockVizBloc.stream)
+          .thenAnswer((_) => Stream.value(const VisualizationInitial()));
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      // Emitir BluetoothOff desde el stream del BleBloc.
+      bleController.add(const BluetoothOff());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Verificar que el AlertDialog de BluetoothOffDialog aparece.
+      expect(find.text('Bluetooth requerido'), findsOneWidget);
+      expect(find.text('Ir a Configuración'), findsOneWidget);
+
+      bleController.close();
+    });
+
+    testWidgets(
+        'no muestra segundo dialogo si BleBloc emite BluetoothOff dos veces',
+        (tester) async {
+      final bleController = StreamController<BleState>.broadcast();
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+
+      when(mockNodeListBloc.state).thenReturn(const NodeListLoaded([]));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(const NodeListLoaded([])));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream).thenAnswer((_) => bleController.stream);
+      when(mockVizBloc.state).thenReturn(const VisualizationInitial());
+      when(mockVizBloc.stream)
+          .thenAnswer((_) => Stream.value(const VisualizationInitial()));
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      // Primer BluetoothOff → dialog aparece.
+      bleController.add(const BluetoothOff());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Bluetooth requerido'), findsOneWidget);
+
+      // Segundo BluetoothOff → dialog NO se duplica.
+      bleController.add(const BluetoothOff());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Solo debe haber UNA instancia del texto del diálogo.
+      expect(find.text('Bluetooth requerido'), findsOneWidget);
+
+      bleController.close();
+    });
+
+    testWidgets(
+        'BluetoothOffDialog onGoToSettings y onCancel resetean el guard',
+        (tester) async {
+      final bleController = StreamController<BleState>.broadcast();
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+
+      when(mockNodeListBloc.state).thenReturn(const NodeListLoaded([]));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(const NodeListLoaded([])));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream).thenAnswer((_) => bleController.stream);
+      when(mockVizBloc.state).thenReturn(const VisualizationInitial());
+      when(mockVizBloc.stream)
+          .thenAnswer((_) => Stream.value(const VisualizationInitial()));
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      // Mostrar diálogo.
+      bleController.add(const BluetoothOff());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Bluetooth requerido'), findsOneWidget);
+
+      // Cerrar diálogo con Cancelar.
+      await tester.tap(find.text('Cancelar'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Dialog cerrado — el guard debería estar reseteado.
+      expect(find.text('Bluetooth requerido'), findsNothing);
+
+      // Emitir BluetoothOff nuevamente — debería mostrarse.
+      bleController.add(const BluetoothOff());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Bluetooth requerido'), findsOneWidget);
+
+      bleController.close();
     });
   });
 }
