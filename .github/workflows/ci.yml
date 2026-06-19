@@ -15,6 +15,8 @@ jobs:
         with:
           flutter-version: '3.44.0'
       - run: flutter pub get
+      # Genera código de Drift (bases de datos) antes del análisis estático
+      - run: dart run build_runner build --delete-conflicting-outputs
       - run: flutter analyze
 
   test:
@@ -26,6 +28,8 @@ jobs:
         with:
           flutter-version: '3.44.0'
       - run: flutter pub get
+      # Genera código de Drift (bases de datos) antes de ejecutar tests
+      - run: dart run build_runner build --delete-conflicting-outputs
       - run: flutter test
 
   build-apk:
@@ -37,6 +41,8 @@ jobs:
         with:
           flutter-version: '3.44.0'
       - run: flutter pub get
+      # Genera código de Drift (bases de datos) antes de compilar el APK
+      - run: dart run build_runner build --delete-conflicting-outputs
       - run: flutter build apk --debug
       - uses: actions/upload-artifact@v4
         with:
