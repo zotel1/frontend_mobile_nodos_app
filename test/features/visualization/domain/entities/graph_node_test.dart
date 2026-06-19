@@ -157,7 +157,84 @@ void main() {
         name: 'Test',
       );
 
-      expect(node.props, [5, 150.0, 250.0, ProximityLevel.medium]);
+      // name debe estar en props: dos nodos con mismo id/pos/proximidad
+      // pero diferente nombre NO deben ser considerados iguales.
+      expect(node.props, [5, 150.0, 250.0, ProximityLevel.medium, 'Test']);
+    });
+
+    test('isKnown returns true when node has a name', () {
+      final node = GraphNode(
+        id: 1,
+        x: 100.0,
+        y: 200.0,
+        proximity: ProximityLevel.close,
+        name: 'Mi Nodo',
+      );
+
+      expect(node.isKnown, isTrue);
+    });
+
+    test('isKnown returns false when node has no name', () {
+      final node = GraphNode(
+        id: 1,
+        x: 100.0,
+        y: 200.0,
+        proximity: ProximityLevel.close,
+      );
+
+      expect(node.isKnown, isFalse);
+    });
+
+    test('isKnown returns false when name is explicitly null', () {
+      final node = GraphNode(
+        id: 1,
+        x: 100.0,
+        y: 200.0,
+        proximity: ProximityLevel.close,
+        name: null,
+      );
+
+      expect(node.isKnown, isFalse);
+    });
+
+    test('nodes with same position and same name are equal', () {
+      final nodeA = GraphNode(
+        id: 1,
+        x: 100.0,
+        y: 200.0,
+        proximity: ProximityLevel.close,
+        name: 'Nodo A',
+      );
+      final nodeB = GraphNode(
+        id: 1,
+        x: 100.0,
+        y: 200.0,
+        proximity: ProximityLevel.close,
+        name: 'Nodo A',
+      );
+
+      expect(nodeA, equals(nodeB));
+    });
+
+    test('nodes with same position but different names are not equal', () {
+      final nodeA = GraphNode(
+        id: 1,
+        x: 100.0,
+        y: 200.0,
+        proximity: ProximityLevel.close,
+        name: 'Nodo A',
+      );
+      final nodeB = GraphNode(
+        id: 1,
+        x: 100.0,
+        y: 200.0,
+        proximity: ProximityLevel.close,
+        name: 'Nodo B',
+      );
+
+      // BUG fix: dos nodos con distinto nombre NO deben ser iguales.
+      // Antes del fix, name no estaba en props y eran considerados iguales.
+      expect(nodeA, isNot(equals(nodeB)));
     });
   });
 }

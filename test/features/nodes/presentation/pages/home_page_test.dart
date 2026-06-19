@@ -41,8 +41,8 @@ Node _testNode(int id, String addr) => Node(
 
 final _testLayout = LayoutResult(
   nodes: [
-    GraphNode(id: 1, x: 100, y: 100, proximity: ProximityLevel.close),
-    GraphNode(id: 2, x: 300, y: 200, proximity: ProximityLevel.medium),
+    GraphNode(id: 1, x: 100, y: 100, proximity: ProximityLevel.close, name: 'Nodo Alpha'),
+    GraphNode(id: 2, x: 300, y: 200, proximity: ProximityLevel.medium, name: 'Nodo Beta'),
     GraphNode(id: 3, x: 500, y: 300, proximity: ProximityLevel.far),
     GraphNode(id: 4, x: 200, y: 500, proximity: ProximityLevel.close),
     GraphNode(id: 5, x: 400, y: 400, proximity: ProximityLevel.medium),
@@ -639,6 +639,100 @@ void main() {
       expect(find.text('Bluetooth requerido'), findsOneWidget);
 
       bleController.close();
+    });
+
+    testWidgets('muestra NodeTooltip cuando GraphReady tiene selectedNodeId',
+        (tester) async {
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+
+      final nodes = List.generate(
+        6,
+        (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
+      );
+
+      when(mockNodeListBloc.state).thenReturn(NodeListLoaded(nodes));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(NodeListLoaded(nodes)));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream)
+          .thenAnswer((_) => Stream.value(const BleStopped()));
+      when(mockVizBloc.state).thenReturn(
+        GraphReady(_testLayout, selectedNodeId: 1),
+      );
+      when(mockVizBloc.stream).thenAnswer(
+        (_) => Stream.value(GraphReady(_testLayout, selectedNodeId: 1)),
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      // Esperar que la UI se estabilice y postFrameCallback se ejecute
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // El tooltip debe mostrar el nombre del nodo (Nodo Alpha, id=1)
+      expect(find.text('Nodo Alpha'), findsOneWidget);
+      // El tooltip muestra la etiqueta de proximidad
+      expect(find.text('Cerca'), findsOneWidget);
+      // El tooltip muestra el ID
+      expect(find.text('ID: 1'), findsOneWidget);
+    });
+
+    testWidgets('NodeTooltip muestra contenido correcto para nodo conocido',
+        (tester) async {
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+
+      final nodes = List.generate(
+        6,
+        (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
+      );
+
+      when(mockNodeListBloc.state).thenReturn(NodeListLoaded(nodes));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(NodeListLoaded(nodes)));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream)
+          .thenAnswer((_) => Stream.value(const BleStopped()));
+      // Nodo 2 = Nodo Beta, proximity=medium → "Medio"
+      when(mockVizBloc.state).thenReturn(
+        GraphReady(_testLayout, selectedNodeId: 2),
+      );
+      when(mockVizBloc.stream).thenAnswer(
+        (_) => Stream.value(GraphReady(_testLayout, selectedNodeId: 2)),
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Verifica contenido del tooltip para Nodo Beta
+      expect(find.text('Nodo Beta'), findsOneWidget);
+      expect(find.text('Medio'), findsOneWidget);
+      expect(find.text('ID: 2'), findsOneWidget);
     });
   });
 }
