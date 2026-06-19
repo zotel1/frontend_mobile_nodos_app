@@ -774,5 +774,37 @@ void main() {
 
       expect(find.text('Buscando nodos cercanos...'), findsOneWidget);
     });
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // T2.4: Info bar superior — "X nodos detectados" + hora último escaneo
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    testWidgets('T2.4: muestra "X nodos detectados" cuando hay nodos cargados',
+        (tester) async {
+      final nodes = [
+        _testNode(1, 'AA:BB:CC:DD:EE:01'),
+        _testNode(2, 'AA:BB:CC:DD:EE:02'),
+        _testNode(3, 'AA:BB:CC:DD:EE:03'),
+      ];
+      await tester.pumpWidget(_pumpHomePage(
+        nodeListState: NodeListLoaded(nodes),
+        visualizationState: const VisualizationInitial(),
+      ));
+      await tester.pump();
+
+      // Verifica que el info bar muestra "3 nodos detectados"
+      expect(find.text('3 nodos detectados'), findsOneWidget);
+    });
+
+    testWidgets(
+        'T2.4: no muestra info bar cuando no hay nodos (NodeListEmpty)',
+        (tester) async {
+      await tester.pumpWidget(_pumpHomePage(
+        nodeListState: const NodeListEmpty(),
+        visualizationState: const VisualizationInitial(),
+      ));
+
+      expect(find.textContaining('nodos detectados'), findsNothing);
+    });
   });
 }

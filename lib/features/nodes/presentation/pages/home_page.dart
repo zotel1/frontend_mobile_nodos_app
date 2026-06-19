@@ -73,6 +73,13 @@ class _HomePageState extends State<HomePage> {
   /// Previene re-apertura del tooltip para el mismo nodo.
   int? _tooltipNodeId;
 
+  /// T2.4: Timestamp del último escaneo BLE exitoso.
+  ///
+  /// Se actualiza cada vez que BleBloc emite [BleScanning] con
+  /// dispositivos detectados. Usado para mostrar "Ahora" / "Hace X min"
+  /// en la barra de info superior.
+  DateTime? _lastScanTime;
+
   /// Abre el tooltip para un nodo específico en el grafo.
   ///
   /// QUÉ hace: busca el GraphNode por ID en el layout, calcula su
@@ -215,6 +222,8 @@ class _HomePageState extends State<HomePage> {
             context
                 .read<NodeListBloc>()
                 .add(SyncBleDevices(bleState.devices));
+            // T2.4: Registrar timestamp del último escaneo con dispositivos
+            _lastScanTime = DateTime.now();
           }
           // Mostrar diálogo cuando BT está apagado.
           // El guard _dialogVisible previene stacking de múltiples diálogos.
@@ -248,21 +257,30 @@ class _HomePageState extends State<HomePage> {
             _updateViewMode(nodeListState.nodes, context);
           }
         },
-        child: BlocBuilder<BleBloc, BleState>(
-          builder: (context, bleState) {
-            return Column(
-              children: [
-                if (bleState is BluetoothOff)
-                  BluetoothOffBanner(
-                    onGoToSettings: () {
-                      const AndroidIntent(action: 'android.settings.BLUETOOTH_SETTINGS').launch();
+          child: BlocBuilder<BleBloc, BleState>(
+            builder: (context, bleState) {
+              return Column(
+                children: [
+                  if (bleState is BluetoothOff)
+                    BluetoothOffBanner(
+                      onGoToSettings: () {
+                        const AndroidIntent(action: 'android.settings.BLUETOOTH_SETTINGS').launch();
+                      },
+                    ),
+                  // T2.4: Info bar — conteo de nodos y hora último escaneo
+                  BlocBuilder<NodeListBloc, NodeListState>(
+                    builder: (context, nodeState) {
+                      if (nodeState is NodeListLoaded) {
+                        return _buildInfoBar(nodeState.nodes.length);
+                      }
+                      return const SizedBox.shrink();
                     },
                   ),
-                Expanded(child: _buildContent()),
-              ],
-            );
-          },
-        ),
+                  Expanded(child: _buildContent()),
+                ],
+              );
+            },
+          ),
       ),
       ),
       ),
@@ -344,6 +362,49 @@ class _HomePageState extends State<HomePage> {
       scanSessionId: sessionId,
       nodes: nodes,
     ));
+  }
+
+  /// T2.4: Construye la barra de info superior con conteo de nodos y
+  /// tiempo relativo del último escaneo.
+  ///
+  /// QUÉ: muestra "X nodos detectados · Ahora" o "X nodos · Hace 2 min".
+  /// Solo se muestra cuando hay nodos cargados (NodeListLoaded).
+  ///
+  /// POR QUÉ: el usuario necesita saber cuántos nodos se detectaron y
+  /// qué tan reciente fue el último escaneo, sin tener que contar los
+  /// elementos en la lista.
+  Widget _buildInfoBar(int nodeCount) {
+    final timeText = _formatRelativeTime(_lastScanTime);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+      child: Text(
+        '$nodeCount nodos detectados${timeText != null ? ' · $timeText' : ''}',
+        style: TextStyle(
+          fontSize: 13,
+          color: Theme.of(context).colorScheme.onPrimaryContainer,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  /// T2.4: Formatea una marca de tiempo a texto relativo legible.
+  ///
+  /// - null → null (sin texto de tiempo)
+  /// - < 1 minuto → "Ahora"
+  /// - 1 minuto → "Hace 1 min"
+  /// - >= 1 minuto → "Hace X min"
+  String? _formatRelativeTime(DateTime? time) {
+    if (time == null) return null;
+
+    final diff = DateTime.now().difference(time);
+    if (diff.inSeconds < 60) return 'Ahora';
+    final minutes = diff.inMinutes;
+    if (minutes == 1) return 'Hace 1 min';
+    return 'Hace $minutes min';
   }
 
   /// Construye el contenido principal: ListView para lista,
