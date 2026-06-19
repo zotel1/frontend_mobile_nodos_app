@@ -100,6 +100,7 @@ Future<void> initDependencies() async {
     () => NodeListBloc(
       observeNodes: sl(),
       updateNodeMetadata: sl(),
+      nodeRepository: sl(),
     ),
   );
   sl.registerFactory<UserBloc>(
