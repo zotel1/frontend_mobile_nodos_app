@@ -69,7 +69,8 @@ class GraphRepositoryImpl implements GraphRepository {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   @override
-  Future<LayoutResult> buildGraph(int scanSessionId) async {
+  Future<LayoutResult> buildGraph(int scanSessionId,
+      {String? myDeviceUuid}) async {
     // 1. Obtener todos los nodos detectados en esta sesión
     final sessionRows = await (_db.select(_db.scanSessionNodes)
           ..where((t) => t.sessionId.equals(scanSessionId)))
@@ -87,38 +88,9 @@ class GraphRepositoryImpl implements GraphRepository {
     // 2. Obtener entidades Node para cada scan_session_node
     final nodeIds = sessionRows.map((r) => r.nodeId).toSet().toList();
     final nodePromises = nodeIds.map((id) => _nodeRepository.getNodeById(id));
-    final nodes = await Future.wait(nodePromises);
+    final nodeEntities = await Future.wait(nodePromises);
 
-    // 3. Crear GraphNode con posiciones iniciales en círculo
-    final graphNodes = <GraphNode>[];
-    final nodeIdToIndex = <int, int>{};
-    for (var i = 0; i < nodes.length; i++) {
-      final node = nodes[i];
-      if (node == null) continue;
-
-      // Posición inicial circular (será refinada por FR en PR2)
-      final angle = (2 * pi * i) / nodes.length;
-      final centerX = 1000.0;
-      final centerY = 1000.0;
-      final radius = 300.0;
-      final x = centerX + radius * cos(angle);
-      final y = centerY + radius * sin(angle);
-
-      // Proximidad desde último RSSI
-      final lastRssi = node.rssiHistory.isNotEmpty ? node.rssiHistory.last : -100;
-      final proximity = rssiToProximity(lastRssi);
-
-      graphNodes.add(GraphNode(
-        id: node.id,
-        x: x,
-        y: y,
-        proximity: proximity,
-        name: node.name,
-      ));
-      nodeIdToIndex[node.id!] = i;
-    }
-
-    // 4. Derivar aristas desde co-detecciones reales (T2.2-T2.3).
+    // 3. Derivar aristas desde co-detecciones reales.
     //    Ya NO es un clique completo — solo pares con count > 0.
     //    El grosor de cada arista usa thicknessFromCount() con el
     //    conteo real de co-detecciones.
@@ -140,6 +112,49 @@ class GraphRepositoryImpl implements GraphRepository {
           thickness: GraphEdge.thicknessFromCount(entry.value),
         ));
       }
+    }
+
+    // 4. Calcular connectionCount: cuántas aristas tiene cada nodo.
+    //    LinkedIn Maps style — determina el radio del nodo.
+    final connectionCounts = <int, int>{};
+    for (final edge in edges) {
+      connectionCounts[edge.fromId] =
+          (connectionCounts[edge.fromId] ?? 0) + 1;
+      connectionCounts[edge.toId] =
+          (connectionCounts[edge.toId] ?? 0) + 1;
+    }
+
+    // 5. Crear GraphNode con posiciones iniciales en círculo y
+    //    connectionCount computado.
+    final graphNodes = <GraphNode>[];
+    final nodeIdToIndex = <int, int>{};
+    final validNodeEntities = nodeEntities.where((n) => n != null).toList();
+    for (var i = 0; i < validNodeEntities.length; i++) {
+      final node = validNodeEntities[i]!;
+
+      // Posición inicial circular (será refinada por FR en PR2)
+      final angle = (2 * pi * i) / validNodeEntities.length;
+      final centerX = 1000.0;
+      final centerY = 1000.0;
+      final radius = 300.0;
+      final x = centerX + radius * cos(angle);
+      final y = centerY + radius * sin(angle);
+
+      // Proximidad desde último RSSI
+      final lastRssi = node.rssiHistory.isNotEmpty ? node.rssiHistory.last : -100;
+      final proximity = rssiToProximity(lastRssi);
+
+      graphNodes.add(GraphNode(
+        id: node.id,
+        x: x,
+        y: y,
+        proximity: proximity,
+        name: node.name,
+        suggestedName: node.suggestedName,
+        connectionCount: connectionCounts[node.id!] ?? 0,
+        isSelf: myDeviceUuid != null && node.bleAddress == myDeviceUuid,
+      ));
+      nodeIdToIndex[node.id!] = i;
     }
 
     return LayoutResult(
