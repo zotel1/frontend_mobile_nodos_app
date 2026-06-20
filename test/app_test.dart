@@ -14,6 +14,7 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bl
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_state.dart';
 import 'package:frontend_mobile_nodos_app/features/history/presentation/bloc/history_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/history/domain/entities/history_stats.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
 
 import 'package:frontend_mobile_nodos_app/app.dart';
 
@@ -23,15 +24,20 @@ import 'package:frontend_mobile_nodos_app/app.dart';
   MockSpec<UserBloc>(),
   MockSpec<VisualizationBloc>(),
   MockSpec<HistoryBloc>(),
+  MockSpec<BleConnectionBloc>(),
 ])
 import 'app_test.mocks.dart';
 
 void main() {
+  // Mockito no puede generar dummy values para sealed classes.
+  provideDummy<BleConnectionState>(const BleConnectionInitial());
+
   late MockBleBloc mockBleBloc;
   late MockNodeListBloc mockNodeListBloc;
   late MockUserBloc mockUserBloc;
   late MockVisualizationBloc mockVizBloc;
   late MockHistoryBloc mockHistoryBloc;
+  late MockBleConnectionBloc mockBleConnectionBloc;
   late AppDatabase testDb;
 
   setUp(() async {
@@ -40,6 +46,7 @@ void main() {
     mockUserBloc = MockUserBloc();
     mockVizBloc = MockVisualizationBloc();
     mockHistoryBloc = MockHistoryBloc();
+    mockBleConnectionBloc = MockBleConnectionBloc();
 
     // Configurar mocks para evitar crashes
     when(mockBleBloc.state).thenReturn(const BleStopped());
@@ -74,6 +81,9 @@ void main() {
         filters: HistoryFilters(),
       )),
     );
+    when(mockBleConnectionBloc.state).thenReturn(const BleConnectionInitial());
+    when(mockBleConnectionBloc.stream)
+        .thenAnswer((_) => Stream.value(const BleConnectionInitial()));
 
     // Registrar mocks en GetIt para que NodosApp los resuelva.
     if (!GetIt.instance.isRegistered<BleBloc>()) {
@@ -90,6 +100,10 @@ void main() {
     }
     if (!GetIt.instance.isRegistered<HistoryBloc>()) {
       GetIt.instance.registerFactory<HistoryBloc>(() => mockHistoryBloc);
+    }
+    if (!GetIt.instance.isRegistered<BleConnectionBloc>()) {
+      GetIt.instance
+          .registerFactory<BleConnectionBloc>(() => mockBleConnectionBloc);
     }
 
     testDb = AppDatabase.inMemory();
@@ -118,6 +132,9 @@ void main() {
     }
     if (GetIt.instance.isRegistered<HistoryBloc>()) {
       GetIt.instance.unregister<HistoryBloc>();
+    }
+    if (GetIt.instance.isRegistered<BleConnectionBloc>()) {
+      GetIt.instance.unregister<BleConnectionBloc>();
     }
   });
 

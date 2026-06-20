@@ -10,10 +10,14 @@ import 'package:frontend_mobile_nodos_app/features/nodes/presentation/widgets/pr
 /// Receives the node id from the GoRouter route parameter `:id`.
 /// Displays name, BLE address, first/last seen timestamps, proximity badge,
 /// and RSSI history chart (placeholder).
+///
+/// T3.7: Acepta un callback [onEnlazar] opcional que se dispara al presionar
+/// el botón "Enlazar". Recibe el [bleAddress] del nodo como parámetro.
 class NodeDetailPage extends StatelessWidget {
   final int id;
+  final void Function(String bleAddress)? onEnlazar;
 
-  const NodeDetailPage({super.key, required this.id});
+  const NodeDetailPage({super.key, required this.id, this.onEnlazar});
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +30,7 @@ class NodeDetailPage extends StatelessWidget {
 
         return Scaffold(
           appBar: AppBar(
-            title: Text(node?.name ?? 'Detalle del nodo'),
+            title: Text(node?.name ?? node?.suggestedName ?? 'Detalle del nodo'),
           ),
           body: node == null
               ? const Center(child: Text('Nodo no encontrado'))
@@ -58,8 +62,15 @@ class NodeDetailPage extends StatelessWidget {
         ListTile(
           leading: const Icon(Icons.devices),
           title: const Text('Nombre'),
-          subtitle: Text(node.name ?? 'Desconocido'),
+          subtitle: Text(node.name ?? node.suggestedName ?? 'Desconocido'),
         ),
+        // T1.9: Device Type row
+        if (node.deviceType != null)
+          ListTile(
+            leading: const Icon(Icons.category),
+            title: const Text('Tipo de dispositivo'),
+            subtitle: Text(node.deviceType!),
+          ),
         // BLE Address
         ListTile(
           leading: const Icon(Icons.bluetooth),
@@ -127,6 +138,22 @@ class NodeDetailPage extends StatelessWidget {
             ),
           ),
         ],
+        // T3.7: Botón "Enlazar" — inicia conexión GATT con este dispositivo
+        if (onEnlazar != null)
+          Padding(
+          padding: const EdgeInsets.only(top: 24),
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+                onPressed: () => onEnlazar?.call(node.bleAddress),
+              icon: const Icon(Icons.link),
+              label: const Text('Enlazar'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }

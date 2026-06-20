@@ -1,8 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart'
-    show FlutterBluePlus, Guid, BluetoothAdapterState;
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_scanner_datasource.dart';
@@ -47,20 +46,44 @@ class FlutterBluePlusDataSource implements BleScannerDataSource {
     _scanSub = FlutterBluePlus.onScanResults.listen((results) {
       if (results.isEmpty) return;
       final mapped = results
-          .map((r) => BleDevice(
-                deviceId: r.device.remoteId.toString(),
-                deviceUuid: null,
-                rssi: r.rssi,
-                distance: rssiToDistance(r.rssi),
-                proximity: rssiToProximity(r.rssi),
-                timestamp: r.timeStamp,
-              ))
+          .map(mapScanResultToDevice)
           .where((s) => s.rssi >= proximityThresholdMedium)
           .toList();
       if (mapped.isNotEmpty) {
         _controller.add(mapped);
       }
     });
+  }
+
+  /// Convierte un [ScanResult] de flutter_blue_plus en un [BleDevice] de dominio.
+  ///
+  /// QUÉ hace: extrae todos los campos relevantes del advertisement BLE y los
+  /// mapea a la entidad de dominio, incluyendo txPowerLevel para cálculo de
+  /// distancia más preciso, advName/platformName para identidad, y
+  /// serviceUuids/connectable para clasificación.
+  ///
+  /// POR QUÉ es estático y público: permite testear el mapeo unitariamente
+  /// sin depender de FlutterBluePlus platform (Extract-Before-Mock).
+  @visibleForTesting
+  static BleDevice mapScanResultToDevice(ScanResult r) {
+    return BleDevice(
+      deviceId: r.device.remoteId.toString(),
+      deviceUuid: null,
+      rssi: r.rssi,
+      distance: rssiToDistance(r.rssi,
+          txPowerLevel: r.advertisementData.txPowerLevel),
+      proximity: rssiToProximity(r.rssi),
+      timestamp: r.timeStamp,
+      advName: r.advertisementData.advName,
+      platformName: r.device.platformName,
+      txPowerLevel: r.advertisementData.txPowerLevel,
+      connectable: r.advertisementData.connectable,
+      serviceUuids: r.advertisementData.serviceUuids.isNotEmpty
+          ? r.advertisementData.serviceUuids
+              .map((g) => g.toString())
+              .toList()
+          : null,
+    );
   }
 
   @override

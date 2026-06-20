@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:get_it/get_it.dart';
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
+import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
@@ -19,6 +21,7 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bl
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_node.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_edge.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/pages/home_page.dart';
@@ -27,8 +30,51 @@ import 'package:frontend_mobile_nodos_app/features/nodes/presentation/pages/home
   MockSpec<NodeListBloc>(),
   MockSpec<BleBloc>(),
   MockSpec<VisualizationBloc>(),
+  MockSpec<BleConnectionBloc>(),
 ])
 import 'home_page_test.mocks.dart';
+
+// ─── Stub de WebViewPlatform para tests widget T5.7 ─────────────────
+
+class _StubHomeWebViewWidget extends PlatformWebViewWidget {
+  _StubHomeWebViewWidget(super.params) : super.implementation();
+  @override
+  Widget build(BuildContext context) => const SizedBox(key: Key('stub_webview'));
+}
+
+class _StubHomeWebViewController extends PlatformWebViewController {
+  _StubHomeWebViewController(super.params) : super.implementation();
+
+  @override
+  Future<void> loadFlutterAsset(String key) async {}
+  @override
+  Future<void> addJavaScriptChannel(JavaScriptChannelParams params) async {}
+  @override
+  Future<void> runJavaScript(String javaScript) async {}
+}
+
+class _StubHomeWebViewPlatform extends WebViewPlatform
+    with MockPlatformInterfaceMixin {
+  @override
+  PlatformWebViewController createPlatformWebViewController(
+    PlatformWebViewControllerCreationParams params,
+  ) => _StubHomeWebViewController(params);
+
+  @override
+  PlatformWebViewWidget createPlatformWebViewWidget(
+    PlatformWebViewWidgetCreationParams params,
+  ) => _StubHomeWebViewWidget(params);
+
+  @override
+  PlatformNavigationDelegate createPlatformNavigationDelegate(
+    PlatformNavigationDelegateCreationParams params,
+  ) => throw UnimplementedError();
+
+  @override
+  PlatformWebViewCookieManager createPlatformCookieManager(
+    PlatformWebViewCookieManagerCreationParams params,
+  ) => throw UnimplementedError();
+}
 
 Node _testNode(int id, String addr) => Node(
       id: id,
@@ -56,6 +102,14 @@ final _testLayout = LayoutResult(
   converged: true,
 );
 
+/// Helper que construye un BleConnectionBloc mock con estado inicial.
+MockBleConnectionBloc _mockConnBloc() {
+  final mock = MockBleConnectionBloc();
+  when(mock.state).thenReturn(const BleConnectionInitial());
+  when(mock.stream).thenAnswer((_) => Stream.value(const BleConnectionInitial()));
+  return mock;
+}
+
 /// Helper que construye el widget HomePage con los BLoCs mockeados.
 ///
 /// Registra GetIt con una BD en memoria para que _triggerGraphBuild
@@ -68,6 +122,7 @@ Widget _pumpHomePage({
   final mockNodeListBloc = MockNodeListBloc();
   final mockBleBloc = MockBleBloc();
   final mockVizBloc = MockVisualizationBloc();
+  final mockConnectionBloc = MockBleConnectionBloc();
 
   when(mockNodeListBloc.state).thenReturn(nodeListState);
   when(mockNodeListBloc.stream)
@@ -77,6 +132,9 @@ Widget _pumpHomePage({
   when(mockVizBloc.state).thenReturn(visualizationState);
   when(mockVizBloc.stream)
       .thenAnswer((_) => Stream.value(visualizationState));
+  when(mockConnectionBloc.state).thenReturn(const BleConnectionInitial());
+  when(mockConnectionBloc.stream)
+      .thenAnswer((_) => Stream.value(const BleConnectionInitial()));
 
   return MaterialApp(
     home: MultiBlocProvider(
@@ -84,6 +142,7 @@ Widget _pumpHomePage({
         BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
         BlocProvider<BleBloc>.value(value: mockBleBloc),
         BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+        BlocProvider<BleConnectionBloc>.value(value: mockConnectionBloc),
       ],
       child: const HomePage(),
     ),
@@ -94,12 +153,18 @@ void main() {
   // ── Inicializar GetIt con BD en memoria para los tests ──
   late AppDatabase testDb;
 
+  // Mockito no puede generar dummy values para sealed classes.
+  // Proveemos BleConnectionInitial como valor por defecto.
+  provideDummy<BleConnectionState>(const BleConnectionInitial());
+
   setUp(() async {
     testDb = AppDatabase.inMemory();
     // Registro mínimo para que _triggerGraphBuild no falle
     if (!GetIt.instance.isRegistered<AppDatabase>()) {
       GetIt.instance.registerSingleton<AppDatabase>(testDb);
     }
+    // T5.7: Registrar stub de WebViewPlatform para tests 3D
+    WebViewPlatform.instance = _StubHomeWebViewPlatform();
   });
 
   tearDown(() async {
@@ -263,6 +328,7 @@ void main() {
             BlocProvider<NodeListBloc>.value(value: mockNodeListBloc3),
             BlocProvider<BleBloc>.value(value: mockBleBloc3),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc3),
+            BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
           ],
           child: const HomePage(),
         ),
@@ -349,6 +415,7 @@ void main() {
             BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
           ],
           child: const HomePage(),
         ),
@@ -417,6 +484,7 @@ void main() {
             BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
           ],
           child: const HomePage(),
         ),
@@ -459,6 +527,7 @@ void main() {
                 BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
                 BlocProvider<BleBloc>.value(value: mockBleBloc),
                 BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+                BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
               ],
               child: const HomePage(),
             ),
@@ -510,6 +579,7 @@ void main() {
             BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
           ],
           child: const HomePage(),
         ),
@@ -550,6 +620,7 @@ void main() {
             BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
           ],
           child: const HomePage(),
         ),
@@ -596,6 +667,7 @@ void main() {
             BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
           ],
           child: const HomePage(),
         ),
@@ -656,6 +728,7 @@ void main() {
             BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
           ],
           child: const HomePage(),
         ),
@@ -705,6 +778,7 @@ void main() {
             BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
           ],
           child: const HomePage(),
         ),
@@ -747,6 +821,7 @@ void main() {
             BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
           ],
           child: const HomePage(),
         ),
@@ -805,6 +880,219 @@ void main() {
       ));
 
       expect(find.textContaining('nodos detectados'), findsNothing);
+    });
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // T3.8: Wire onEnlazar — al tocar "Enlazar" en el tooltip,
+    // HomePage despacha ConnectToDevice al BleConnectionBloc.
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    testWidgets('T3.8: al tocar Enlazar se despacha ConnectToDevice',
+        (tester) async {
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+      final mockConnectionBloc = MockBleConnectionBloc();
+
+      // Nodos que se usarán para mapear GraphNode.id → Node.bleAddress
+      final nodes = [
+        Node(
+          id: 1,
+          bleAddress: 'AA:BB:CC:DD:EE:FF',
+          name: 'Nodo Alpha',
+          firstSeen: DateTime(2026, 1, 1),
+          lastSeen: DateTime(2026, 6, 19),
+          rssiHistory: const [-50],
+        ),
+        ...List.generate(
+          4,
+          (i) => _testNode(i + 2, 'AA:BB:CC:DD:EE:0${i + 2}'),
+        ),
+      ];
+
+      when(mockNodeListBloc.state).thenReturn(NodeListLoaded(nodes));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(NodeListLoaded(nodes)));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream)
+          .thenAnswer((_) => Stream.value(const BleStopped()));
+      when(mockVizBloc.state).thenReturn(
+        GraphReady(_testLayout, selectedNodeId: 1),
+      );
+      when(mockVizBloc.stream).thenAnswer(
+        (_) => Stream.value(GraphReady(_testLayout, selectedNodeId: 1)),
+      );
+      when(mockConnectionBloc.state)
+          .thenReturn(const BleConnectionInitial());
+      when(mockConnectionBloc.stream)
+          .thenAnswer((_) => Stream.value(const BleConnectionInitial()));
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(
+                value: mockConnectionBloc),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Verificar que el tooltip se muestra con el nombre del nodo
+      // "Nodo Alpha" aparece también en el info bar (nodos detectados)
+      expect(find.text('Nodo Alpha'), findsAtLeast(1));
+
+      // Al tocar Enlazar → dispatch ConnectToDevice
+      await tester.tap(find.text('Enlazar'));
+      await tester.pump();
+
+      // Verificar que ConnectToDevice fue despachado
+      verify(mockConnectionBloc.add(
+        argThat(
+          predicate((e) =>
+              e is ConnectToDevice &&
+              e.remoteId == 'AA:BB:CC:DD:EE:FF'),
+        ),
+      )).called(1);
+    });
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // T5.6: Toggle 2D/3D en toolbar del grafo
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // QUÉ: cuando el grafo está visible (5+ nodos), debe aparecer un
+    // botón para alternar entre vista 2D (CustomPainter) y 3D (WebView).
+    // POR QUÉ: R6.1 — el usuario debe poder elegir la vista del grafo.
+
+    testWidgets('T5.6: muestra botón toggle 2D/3D en modo grafo (5+ nodos)',
+        (tester) async {
+      final nodes = List.generate(
+        6,
+        (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
+      );
+      await tester.pumpWidget(_pumpHomePage(
+        nodeListState: NodeListLoaded(nodes),
+        visualizationState: GraphReady(_testLayout),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Verifica que el botón toggle existe en la UI cuando el grafo es visible.
+      // Icono: view_in_ar (3D) o grid_view (2D)
+      expect(find.byIcon(Icons.view_in_ar), findsOneWidget,
+          reason: 'Debe mostrar el botón para cambiar a vista 3D');
+    });
+
+    testWidgets('T5.6: no muestra toggle en modo lista (≤4 nodos)',
+        (tester) async {
+      final nodes = [
+        _testNode(1, 'AA:BB:CC:DD:EE:01'),
+        _testNode(2, 'AA:BB:CC:DD:EE:02'),
+      ];
+      await tester.pumpWidget(_pumpHomePage(
+        nodeListState: NodeListLoaded(nodes),
+        visualizationState: const VisualizationInitial(),
+      ));
+
+      // En modo lista, el toggle no debe mostrarse
+      expect(find.byIcon(Icons.view_in_ar), findsNothing);
+      expect(find.byIcon(Icons.grid_view), findsNothing);
+    });
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // T5.7: Wire toggle → cambia entre GraphView (2D) y GraphView3D (3D)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // QUÉ: al presionar el toggle, el widget del grafo cambia de
+    // GraphView (2D CustomPainter) a GraphView3D (WebView Three.js).
+    // POR QUÉ: R6.1 + S6.1 — transición entre 2D y 3D con mismos datos.
+
+    testWidgets(
+        'T5.7: toggle cambia de 2D a 3D al presionar view_in_ar',
+        (tester) async {
+      final nodes = List.generate(
+        6,
+        (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
+      );
+      await tester.pumpWidget(_pumpHomePage(
+        nodeListState: NodeListLoaded(nodes),
+        visualizationState: GraphReady(_testLayout),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Estado inicial: modo 2D → icono view_in_ar (para cambiar a 3D)
+      expect(find.byIcon(Icons.view_in_ar), findsOneWidget,
+          reason: 'Modo 2D: botón para ir a 3D');
+
+      // Tocar el toggle para cambiar a 3D
+      await tester.tap(find.byIcon(Icons.view_in_ar));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Después del toggle: modo 3D → icono grid_view (para volver a 2D)
+      expect(find.byIcon(Icons.grid_view), findsOneWidget,
+          reason: 'Modo 3D: botón para volver a 2D');
+
+      // Tocar nuevamente para volver a 2D
+      await tester.tap(find.byIcon(Icons.grid_view));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // De vuelta en modo 2D
+      expect(find.byIcon(Icons.view_in_ar), findsOneWidget,
+          reason: 'Vuelta a modo 2D después del segundo toggle');
+    });
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // T3.9: SnackBar de estado de conexión
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    testWidgets(
+        'T3.9: muestra SnackBar "Conectando..." al emitir BleConnecting',
+        (tester) async {
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+      final mockConnectionBloc = MockBleConnectionBloc();
+
+      when(mockNodeListBloc.state).thenReturn(const NodeListLoaded([]));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(const NodeListLoaded([])));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream)
+          .thenAnswer((_) => Stream.value(const BleStopped()));
+      when(mockVizBloc.state).thenReturn(const VisualizationInitial());
+      when(mockVizBloc.stream)
+          .thenAnswer((_) => Stream.value(const VisualizationInitial()));
+      when(mockConnectionBloc.state)
+          .thenReturn(const BleConnectionInitial());
+      when(mockConnectionBloc.stream).thenAnswer(
+        (_) => Stream.fromIterable([
+          const BleConnecting(remoteId: 'AA:BB:CC:DD:EE:FF'),
+        ]),
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(
+                value: mockConnectionBloc),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Verificar el SnackBar "Conectando..."
+      expect(find.textContaining('Conectando'), findsOneWidget);
     });
   });
 }

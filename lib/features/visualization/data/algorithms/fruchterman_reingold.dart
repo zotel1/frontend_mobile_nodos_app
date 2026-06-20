@@ -14,10 +14,11 @@ import 'dart:math';
 /// Recibe un [params] con la estructura:
 /// ```dart
 /// {
-///   'nodes': [{id, x, y}, ...],      // x,y=0 → posición aleatoria
+///   'nodes': [{id, x, y, z?}, ...],   // x,y,z=0 → posición aleatoria
 ///   'edges': [{fromId, toId}, ...],
 ///   'width': 2000.0,
 ///   'height': 2000.0,
+///   'depth': 2000.0,                    // opcional, 3D; fallback a height
 ///   'iterations': 100,
 ///   'k': 150.0,                      // distancia ideal entre nodos
 ///   'temperature': 200.0,            // desplazamiento máximo inicial
@@ -25,6 +26,9 @@ import 'dart:math';
 ///   'seed': 42,                      // opcional, para tests deterministas
 /// }
 /// ```
+///
+/// T5.2: Extendido a 3D. Las distancias ahora incluyen dz.
+/// Si no se proporciona `depth`, Z se mantiene en 0 (comportamiento 2D).
 ///
 /// Retorna un Map con nodos reposicionados, aristas, iteraciones reales
 /// y flag de convergencia. Esta función es top-level para ser compatible
@@ -40,6 +44,8 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
       .toList();
   final width = (params['width'] as num).toDouble();
   final height = (params['height'] as num).toDouble();
+  final depth = (params['depth'] as num?)?.toDouble() ?? 0.0;
+  final hasDepth = depth > 0.0; // T5.2: flag para modo 3D activo
   final maxIterations = params['iterations'] as int? ?? 100;
   final k = (params['k'] as num?)?.toDouble() ?? 150.0;
   final coolingFactor =
@@ -59,8 +65,9 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
   const margin = 50.0;
   final areaWidth = width - 2 * margin;
   final areaHeight = height - 2 * margin;
+  final areaDepth = hasDepth ? depth - 2 * margin : 0.0;
 
-  // ── 1. Inicializar posiciones aleatorias si x,y == 0 ──
+  // ── 1. Inicializar posiciones aleatorias si x,y,z == 0 ──
   final random = Random(seed);
   for (final node in nodes) {
     final x = (node['x'] as num?)?.toDouble() ?? 0.0;
@@ -68,6 +75,14 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
     if (x == 0.0 && y == 0.0) {
       node['x'] = margin + random.nextDouble() * areaWidth;
       node['y'] = margin + random.nextDouble() * areaHeight;
+    }
+    // T5.2: Inicializar Z aleatoria si el modo 3D está activo
+    final z = (node['z'] as num?)?.toDouble() ?? 0.0;
+    if (hasDepth && z == 0.0) {
+      node['z'] = margin + random.nextDouble() * areaDepth;
+    } else if (node['z'] == null) {
+      // Asegurar que z siempre exista en el mapa de salida
+      node['z'] = 0.0;
     }
   }
 
@@ -101,21 +116,33 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
   for (var iter = 0; iter < maxIterations; iter++) {
     actualIterations = iter + 1;
 
-    // Inicializar vector de desplazamiento para cada nodo
+    // Inicializar vector de desplazamiento para cada nodo (2D + 3D)
     final displacementX = List<double>.filled(nodes.length, 0.0);
     final displacementY = List<double>.filled(nodes.length, 0.0);
+    final displacementZ = hasDepth
+        ? List<double>.filled(nodes.length, 0.0)
+        : <double>[];
 
     // ── a. Fuerzas repulsivas: Coulomb entre todos los pares O(|V|²) ──
     // Ley de Coulomb: fr = k² / d
     // Cada nodo repele a todos los demás. La fuerza es inversamente
     // proporcional a la distancia: los nodos muy cercanos se repelen fuerte.
+    // T5.2: Distancia ahora incluye dz en modo 3D.
     for (var i = 0; i < nodes.length; i++) {
       for (var j = i + 1; j < nodes.length; j++) {
         final dx = (nodes[i]['x'] as num).toDouble() -
             (nodes[j]['x'] as num).toDouble();
         final dy = (nodes[i]['y'] as num).toDouble() -
             (nodes[j]['y'] as num).toDouble();
-        final dist = sqrt(dx * dx + dy * dy).clamp(0.01, double.infinity);
+        double dist2D = dx * dx + dy * dy;
+
+        if (hasDepth) {
+          final dz = (nodes[i]['z'] as num).toDouble() -
+              (nodes[j]['z'] as num).toDouble();
+          dist2D += dz * dz;
+        }
+
+        final dist = sqrt(dist2D).clamp(0.01, double.infinity);
 
         // fr = k² / d  — fuerza repulsiva (Coulomb)
         final fr = (k * k) / dist;
@@ -126,6 +153,14 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
         // El nodo j recibe fuerza en dirección opuesta a i
         displacementX[j] -= (dx / dist) * fr;
         displacementY[j] -= (dy / dist) * fr;
+
+        // T5.2: Componente Z de la fuerza repulsiva
+        if (hasDepth) {
+          final dz = (nodes[i]['z'] as num).toDouble() -
+              (nodes[j]['z'] as num).toDouble();
+          displacementZ[i] += (dz / dist) * fr;
+          displacementZ[j] -= (dz / dist) * fr;
+        }
       }
     }
 
@@ -133,6 +168,7 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
     // Ley de Hooke: fa = d² / k
     // Las aristas actúan como resortes que atraen nodos conectados.
     // La fuerza crece con la distancia: nodos lejanos se atraen más.
+    // T5.2: Distancia ahora incluye dz en modo 3D.
     for (final edge in edges) {
       final fromIdx = indexOfId((edge['fromId'] as num).toInt());
       final toIdx = indexOfId((edge['toId'] as num).toInt());
@@ -142,7 +178,15 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
           (nodes[toIdx]['x'] as num).toDouble();
       final dy = (nodes[fromIdx]['y'] as num).toDouble() -
           (nodes[toIdx]['y'] as num).toDouble();
-      final dist = sqrt(dx * dx + dy * dy).clamp(0.01, double.infinity);
+      double dist2D = dx * dx + dy * dy;
+
+      if (hasDepth) {
+        final dz = (nodes[fromIdx]['z'] as num).toDouble() -
+            (nodes[toIdx]['z'] as num).toDouble();
+        dist2D += dz * dz;
+      }
+
+      final dist = sqrt(dist2D).clamp(0.01, double.infinity);
 
       // fa = d² / k  — fuerza atractiva (Hooke)
       final fa = (dist * dist) / k;
@@ -153,17 +197,30 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
       // Atraer toIdx hacia fromIdx
       displacementX[toIdx] += (dx / dist) * fa;
       displacementY[toIdx] += (dy / dist) * fa;
+
+      // T5.2: Componente Z de la fuerza atractiva
+      if (hasDepth) {
+        final dz = (nodes[fromIdx]['z'] as num).toDouble() -
+            (nodes[toIdx]['z'] as num).toDouble();
+        displacementZ[fromIdx] -= (dz / dist) * fa;
+        displacementZ[toIdx] += (dz / dist) * fa;
+      }
     }
 
     // ── c. Aplicar desplazamiento con cap de temperatura ──
     // La temperatura limita el desplazamiento máximo en esta iteración.
     // Sin este cap, los nodos oscilarían sin converger.
+    // T5.2: El desplazamiento máximo ahora incluye la componente Z.
     var maxDisplacement = 0.0;
     for (var i = 0; i < nodes.length; i++) {
-      final disp = sqrt(
-        displacementX[i] * displacementX[i] +
-            displacementY[i] * displacementY[i],
-      );
+      var disp2D = displacementX[i] * displacementX[i] +
+          displacementY[i] * displacementY[i];
+
+      if (hasDepth) {
+        disp2D += displacementZ[i] * displacementZ[i];
+      }
+
+      final disp = sqrt(disp2D);
 
       if (disp > maxDisplacement) maxDisplacement = disp;
 
@@ -180,6 +237,13 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
         // Evita que los nodos se escapen del área visible.
         nodes[i]['x'] = nx.clamp(margin, width - margin);
         nodes[i]['y'] = ny.clamp(margin, height - margin);
+
+        // T5.2: Clampear Z si el modo 3D está activo
+        if (hasDepth) {
+          final nz = (nodes[i]['z'] as num).toDouble() +
+              displacementZ[i] * scale;
+          nodes[i]['z'] = nz.clamp(margin, depth - margin);
+        }
       }
     }
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_scanner_datasource.dart';
@@ -277,6 +278,136 @@ void main() {
 
       await sub.cancel();
       await btController.close();
+    });
+  });
+
+  // ─── T1.2 + T1.4: Test del mapper _mapScanResultToDevice ──────
+  // QUÉ: Verifica que el mapper extrae correctamente todos los campos
+  // de enriquecimiento desde ScanResult → BleDevice.
+  // POR QUÉ: la función de mapeo fue extraída para ser testeable
+  // unitariamente sin depender de FlutterBluePlus platform.
+  group('_mapScanResultToDevice — enrichment mapper', () {
+    final now = DateTime(2026, 6, 19, 15, 0);
+
+    // Crea un ScanResult de prueba con advertisementData controlado.
+    ScanResult scanResult({
+      String remoteId = 'AA:BB:CC:DD:EE:FF',
+      String advName = '',
+      int? txPowerLevel,
+      bool connectable = false,
+      List<Guid> serviceUuids = const [],
+      Map<int, List<int>> manufacturerData = const {},
+      int rssi = -60,
+      DateTime? timeStamp,
+    }) {
+      return ScanResult(
+        device: BluetoothDevice(remoteId: DeviceIdentifier(remoteId)),
+        advertisementData: AdvertisementData(
+          advName: advName,
+          txPowerLevel: txPowerLevel,
+          appearance: null,
+          connectable: connectable,
+          manufacturerData: manufacturerData,
+          serviceData: {},
+          serviceUuids: serviceUuids,
+        ),
+        rssi: rssi,
+        timeStamp: timeStamp ?? now,
+      );
+    }
+
+    // ── T1.2: txPowerLevel en el mapper ──
+
+    test('T1.2: pasa txPowerLevel a rssiToDistance y lo almacena', () {
+      final scan = scanResult(
+        remoteId: '01:02:03:04:05:06',
+        txPowerLevel: -40,
+        rssi: -60,
+      );
+      final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
+
+      // Verifica que txPowerLevel se almacena en la entidad.
+      expect(device.txPowerLevel, -40);
+      // Con txPowerLevel=-40 y RSSI=-60: distance ≈ 10m (vs ~3.16m con default -50)
+      expect(device.distance, closeTo(10.0, 0.5));
+    });
+
+    test('T1.2: txPowerLevel null → usa fallback -50', () {
+      final scan = scanResult(
+        remoteId: '01:02:03:04:05:07',
+        txPowerLevel: null,
+        rssi: -60,
+      );
+      final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
+
+      expect(device.txPowerLevel, isNull);
+      // Con default txPower=-50 y RSSI=-60: distance ≈ 3.16m
+      expect(device.distance, closeTo(3.16, 0.2));
+    });
+
+    // ── T1.4: advName, platformName, serviceUuids, connectable ──
+
+    test('T1.4: captura advName desde advertisementData', () {
+      final scan = scanResult(advName: 'AirPods Pro');
+      final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
+
+      expect(device.advName, 'AirPods Pro');
+    });
+
+    test('T1.4: advName vacío cuando el dispositivo no anuncia nombre', () {
+      final scan = scanResult(advName: '');
+      final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
+
+      expect(device.advName, '');
+    });
+
+    test('T1.4: captura serviceUuids como List<String>', () {
+      final scan = scanResult(
+        serviceUuids: [Guid('180D'), Guid('180F')],
+      );
+      final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
+
+      expect(device.serviceUuids, isNotNull);
+      expect(device.serviceUuids!.length, 2);
+      expect(device.serviceUuids, contains('180d'));
+      expect(device.serviceUuids, contains('180f'));
+    });
+
+    test('T1.4: serviceUuids null cuando no hay UUIDs anunciados', () {
+      final scan = scanResult(serviceUuids: []);
+      final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
+
+      // Lista vacía se mapea a null (sin servicios = sin clasificación)
+      expect(device.serviceUuids, isNull);
+    });
+
+    test('T1.4: captura connectable desde advertisementData', () {
+      final connectable = scanResult(connectable: true);
+      final notConnectable = scanResult(connectable: false);
+
+      expect(
+        FlutterBluePlusDataSource.mapScanResultToDevice(connectable).connectable,
+        isTrue,
+      );
+      expect(
+        FlutterBluePlusDataSource.mapScanResultToDevice(notConnectable).connectable,
+        isFalse,
+      );
+    });
+
+    test('T1.4: mapea campos básicos correctamente (deviceId, rssi, timestamp)',
+        () {
+      final scan = scanResult(
+        remoteId: 'AA:BB:CC:DD:EE:FF',
+        rssi: -55,
+        timeStamp: now,
+      );
+      final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
+
+      expect(device.deviceId, 'AA:BB:CC:DD:EE:FF');
+      expect(device.rssi, -55);
+      expect(device.timestamp, now);
+      expect(device.proximity, rssiToProximity(-55));
     });
   });
 }

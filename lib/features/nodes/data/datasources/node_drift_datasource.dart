@@ -33,7 +33,11 @@ class NodeDriftDataSource implements NodeLocalDataSource {
         .getSingleOrNull();
 
     if (existing != null) {
-      final companion = _toCompanion(node);
+      // Freeze on first detection: preservar suggestedName existente.
+      // deviceType se actualiza en cada escaneo (puede cambiar).
+      final companion = _toCompanion(node).copyWith(
+        suggestedName: Value(existing.suggestedName ?? node.suggestedName),
+      );
       await (_db.update(_db.nodes)
             ..where((t) => t.id.equals(existing.id)))
           .write(companion);
@@ -65,6 +69,8 @@ class NodeDriftDataSource implements NodeLocalDataSource {
       firstSeen: row.firstSeen,
       lastSeen: row.lastSeen,
       rssiHistory: history,
+      suggestedName: row.suggestedName,
+      deviceType: row.deviceType,
     );
   }
 
@@ -85,6 +91,8 @@ class NodeDriftDataSource implements NodeLocalDataSource {
       lastRssi: Value(lastRssi),
       proximityZone: Value(proximityZone),
       rssiHistory: Value(historyJson),
+      suggestedName: Value(node.suggestedName),
+      deviceType: Value(node.deviceType),
     );
   }
 
@@ -105,6 +113,8 @@ class NodeDriftDataSource implements NodeLocalDataSource {
       lastRssi: Value(lastRssi),
       proximityZone: Value(proximityZone),
       rssiHistory: Value(historyJson),
+      suggestedName: Value(node.suggestedName),
+      deviceType: Value(node.deviceType),
     );
   }
 }

@@ -32,6 +32,7 @@ class NodeTooltip extends StatefulWidget {
     required GraphNode node,
     required Offset globalPosition,
     required VoidCallback onDismiss,
+    VoidCallback? onEnlazar,
   }) {
     // Usamos late para romper la referencia circular: el builder necesita
     // la referencia a entry, que aún no está declarada.
@@ -44,6 +45,7 @@ class NodeTooltip extends StatefulWidget {
           entry.remove();
           onDismiss();
         },
+        onEnlazar: onEnlazar,
       ),
     );
     Overlay.of(context).insert(entry);
@@ -90,10 +92,16 @@ class _TooltipContent extends StatefulWidget {
   final Offset globalPosition;
   final VoidCallback onDismiss;
 
+  /// Callback opcional al presionar "Enlazar".
+  /// El caller (HomePage) ya conoce el nodo seleccionado desde el
+  /// estado del VisualizationBloc, por lo que no necesita recibir el ID.
+  final VoidCallback? onEnlazar;
+
   const _TooltipContent({
     required this.node,
     required this.globalPosition,
     required this.onDismiss,
+    this.onEnlazar,
   });
 
   @override
@@ -199,6 +207,50 @@ class _TooltipContentState extends State<_TooltipContent> {
                       fontSize: 11,
                     ),
                   ),
+                  // T3.6 + T3.10: Botón "Enlazar" — inicia conexión GATT.
+                  // Deshabilitado si el dispositivo no es conectable.
+                  if (widget.onEnlazar != null) ...[
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 28,
+                      child: ElevatedButton.icon(
+                        onPressed:
+                            widget.node.connectable ? widget.onEnlazar : null,
+                        icon: const Icon(Icons.link, size: 14),
+                        label: const Text(
+                          'Enlazar',
+                          style: TextStyle(fontSize: 11),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          backgroundColor: widget.node.connectable
+                              ? const Color(0xFF2A3A5C)
+                              : Colors.grey.shade700,
+                          foregroundColor: widget.node.connectable
+                              ? Colors.white
+                              : Colors.grey,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          elevation: 0,
+                        ),
+                      ),
+                    ),
+                    // Tooltip informativo cuando no es conectable
+                    if (!widget.node.connectable)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 2),
+                        child: Text(
+                          'Dispositivo no conectable',
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: Colors.grey,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                  ],
                 ],
               ),
             ),

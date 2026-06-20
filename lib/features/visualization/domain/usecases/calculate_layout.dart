@@ -20,6 +20,7 @@ class CalculateLayout {
 
   /// Ejecuta el layout FR sobre [layout] en un canvas de [width]×[height].
   ///
+  /// [depth]: profundidad del canvas para modo 3D. Default 0 → modo 2D.
   /// Si [priorLayout] tiene posiciones previas, se reutilizan como punto de
   /// partida (menos iteraciones necesarias para converger).
   /// Retorna [Right] con el nuevo [LayoutResult] o [Left] con un [Failure]
@@ -28,6 +29,7 @@ class CalculateLayout {
     LayoutResult layout,
     double width,
     double height, {
+    double depth = 0.0,
     LayoutResult? priorLayout,
     int? seed,
   }) async {
@@ -41,11 +43,13 @@ class CalculateLayout {
       final iterations = hasCache ? 30 : 100;
       final temperature = hasCache ? width / 20 : width / 10;
 
-      // Serializar para cruzar el límite del Isolate
+      // Serializar para cruzar el límite del Isolate.
+      // T5.4: pasar depth al algoritmo FR 3D.
       final params = layoutResultToParams(
         source,
         width,
         height,
+        depth: depth,
         iterations: iterations,
         k: 150.0,
         temperature: temperature,

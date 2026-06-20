@@ -191,5 +191,114 @@ void main() {
         verifyNever(mockNodeRepository.upsertNode(any));
       },
     );
+
+    // ── T1.6: Mapeo de advName → suggestedName y deviceType ──
+    // QUÉ: Verifica que el BLoC mapea advName de BleDevice a suggestedName
+    // del Node y deviceType de BleDevice a deviceType del Node.
+    // POR QUÉ: Phase 4 identity enrichment — los nombres sugeridos y tipos
+    // de dispositivo se propagan desde el advertisement al nodo persistido.
+
+    blocTest<NodeListBloc, NodeListState>(
+      'T1.6: mapea advName → suggestedName en el Node upsertado',
+      build: () => NodeListBloc(
+        observeNodes: mockObserveNodes,
+        updateNodeMetadata: mockUpdateNodeMetadata,
+        nodeRepository: mockNodeRepository,
+      ),
+      act: (bloc) => bloc.add(SyncBleDevices([
+        BleDevice(
+          deviceId: 'AA:BB:CC:DD:EE:01',
+          rssi: -60,
+          distance: 3.0,
+          proximity: ProximityLevel.close,
+          timestamp: now,
+          advName: 'AirPods Pro',
+        ),
+      ])),
+      verify: (_) {
+        final captured = verify(mockNodeRepository.upsertNode(captureAny))
+            .captured;
+        expect(captured, hasLength(1));
+        final node = captured.single as Node;
+        expect(node.suggestedName, 'AirPods Pro');
+      },
+    );
+
+    blocTest<NodeListBloc, NodeListState>(
+      'T1.6: mapea deviceType → deviceType en el Node upsertado',
+      build: () => NodeListBloc(
+        observeNodes: mockObserveNodes,
+        updateNodeMetadata: mockUpdateNodeMetadata,
+        nodeRepository: mockNodeRepository,
+      ),
+      act: (bloc) => bloc.add(SyncBleDevices([
+        BleDevice(
+          deviceId: 'AA:BB:CC:DD:EE:02',
+          rssi: -65,
+          distance: 5.0,
+          proximity: ProximityLevel.medium,
+          timestamp: now,
+          deviceType: 'Reloj/Fitness',
+        ),
+      ])),
+      verify: (_) {
+        final captured = verify(mockNodeRepository.upsertNode(captureAny))
+            .captured;
+        final node = captured.single as Node;
+        expect(node.deviceType, 'Reloj/Fitness');
+      },
+    );
+
+    blocTest<NodeListBloc, NodeListState>(
+      'T1.6: advName vacío → suggestedName null en el Node',
+      build: () => NodeListBloc(
+        observeNodes: mockObserveNodes,
+        updateNodeMetadata: mockUpdateNodeMetadata,
+        nodeRepository: mockNodeRepository,
+      ),
+      act: (bloc) => bloc.add(SyncBleDevices([
+        BleDevice(
+          deviceId: 'AA:BB:CC:DD:EE:03',
+          rssi: -70,
+          distance: 8.0,
+          proximity: ProximityLevel.medium,
+          timestamp: now,
+          advName: '',
+        ),
+      ])),
+      verify: (_) {
+        final captured = verify(mockNodeRepository.upsertNode(captureAny))
+            .captured;
+        final node = captured.single as Node;
+        expect(node.suggestedName, isNull);
+      },
+    );
+
+    blocTest<NodeListBloc, NodeListState>(
+      'T1.6: mapea ambos campos simultáneamente',
+      build: () => NodeListBloc(
+        observeNodes: mockObserveNodes,
+        updateNodeMetadata: mockUpdateNodeMetadata,
+        nodeRepository: mockNodeRepository,
+      ),
+      act: (bloc) => bloc.add(SyncBleDevices([
+        BleDevice(
+          deviceId: 'AA:BB:CC:DD:EE:04',
+          rssi: -55,
+          distance: 2.0,
+          proximity: ProximityLevel.close,
+          timestamp: now,
+          advName: 'Galaxy Watch',
+          deviceType: 'Reloj/Fitness',
+        ),
+      ])),
+      verify: (_) {
+        final captured = verify(mockNodeRepository.upsertNode(captureAny))
+            .captured;
+        final node = captured.single as Node;
+        expect(node.suggestedName, 'Galaxy Watch');
+        expect(node.deviceType, 'Reloj/Fitness');
+      },
+    );
   });
 }

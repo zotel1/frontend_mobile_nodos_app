@@ -11,7 +11,12 @@ abstract class GraphRepository {
   /// Retorna un [LayoutResult] con nodos posicionados inicialmente
   /// (posiciones iniciales circulares) y aristas derivadas de las
   /// co-detecciones dentro de la sesión.
-  Future<LayoutResult> buildGraph(int scanSessionId);
+  ///
+  /// [myDeviceUuid] permite identificar el nodo que representa al
+  /// dispositivo del usuario. Si la dirección BLE de algún nodo coincide
+  /// con este UUID, se marca con `isSelf = true` para renderizado especial.
+  Future<LayoutResult> buildGraph(int scanSessionId,
+      {String? myDeviceUuid});
 
   /// Obtiene las aristas para una sesión específica.
   ///

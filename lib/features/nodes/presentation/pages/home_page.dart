@@ -6,6 +6,7 @@ import 'package:android_intent_plus/android_intent.dart';
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
 import 'package:frontend_mobile_nodos_app/core/di/injection_container.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/widgets/bluetooth_off_banner.dart';
@@ -17,6 +18,7 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bl
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_event.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_state.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/widgets/graph_view.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/presentation/widgets/graph_view_3d.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/widgets/node_tooltip.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
 
@@ -40,6 +42,10 @@ class _HomePageState extends State<HomePage> {
   /// Controla qué hijo del AnimatedCrossFade se muestra.
   /// true = grafo (secondChild), false = lista (firstChild).
   bool _showingGraph = false;
+
+  /// T5.6: Controla si el grafo se renderiza en 3D (WebView) o 2D (CustomPainter).
+  /// false = 2D (GraphView), true = 3D (GraphView3D).
+  bool _is3D = false;
 
   /// ID de la sesión de escaneo activa para el grafo.
   /// Se crea bajo demanda cuando se transiciona a modo grafo.
@@ -79,6 +85,13 @@ class _HomePageState extends State<HomePage> {
   /// dispositivos detectados. Usado para mostrar "Ahora" / "Hace X min"
   /// en la barra de info superior.
   DateTime? _lastScanTime;
+
+  /// T3.8: Lista actual de nodos persistidos (Drift).
+  ///
+  /// Se actualiza en el [BlocListener<NodeListBloc>] cada vez que se
+  /// emite [NodeListLoaded]. Se usa para mapear [GraphNode].id → [Node].bleAddress
+  /// cuando el usuario presiona "Enlazar" en el tooltip.
+  List<Node> _currentNodes = [];
 
   /// Abre el tooltip para un nodo específico en el grafo.
   ///
@@ -128,6 +141,23 @@ class _HomePageState extends State<HomePage> {
           if (mounted) {
             context.read<VisualizationBloc>().add(const NodeDeselected());
           }
+        },
+        // T3.8: Al presionar "Enlazar", despacha ConnectToDevice al BleConnectionBloc.
+        // Mapea GraphNode.id → Node.bleAddress usando la lista de nodos actual.
+        onEnlazar: () {
+          final bleAddress = _currentNodes
+              .where((n) => n.id == node.id)
+              .map((n) => n.bleAddress)
+              .firstOrNull;
+          if (bleAddress != null && mounted) {
+            context
+                .read<BleConnectionBloc>()
+                .add(ConnectToDevice(bleAddress));
+          }
+          // Cerrar tooltip después de presionar Enlazar
+          _tooltipEntry?.remove();
+          _tooltipEntry = null;
+          _tooltipNodeId = null;
         },
       );
       _tooltipNodeId = nodeId;
@@ -185,7 +215,61 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      body: BlocListener<VisualizationBloc, VisualizationState>(
+      body: BlocListener<BleConnectionBloc, BleConnectionState>(
+        /// T3.9: Muestra el estado de la conexión GATT como SnackBar.
+        ///
+        /// - BleConnecting → "Conectando..."
+        /// - BleConnected → "Conectado ✅" (verde)
+        /// - BleConnectionError → muestra el error
+        listener: (context, connectionState) {
+          switch (connectionState) {
+            case BleConnecting(:final remoteId):
+              // Buscar nombre del nodo para el mensaje
+              final nodeName = _currentNodes
+                  .where((n) => n.bleAddress == remoteId)
+                  .map((n) => n.name ?? n.suggestedName ?? 'dispositivo')
+                  .firstOrNull;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Conectando a ${nodeName ?? remoteId}...'),
+                  duration: const Duration(seconds: 10),
+                ),
+              );
+            case BleConnected():
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text(
+                    'Conectado ✅',
+                    style: TextStyle(color: Colors.greenAccent),
+                  ),
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+            case BleConnectionError(:final message, :final retryable):
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              final action = retryable
+                  ? SnackBarAction(
+                      label: 'Reintentar',
+                      onPressed: () {
+                        // Reintentar con el último remoteId conocido
+                      },
+                    )
+                  : null;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error: $message'),
+                  backgroundColor: Colors.red.shade700,
+                  duration: const Duration(seconds: 5),
+                  action: action,
+                ),
+              );
+            case BleConnectionInitial():
+              // Nada que mostrar — estado inicial
+              break;
+          }
+        },
+        child: BlocListener<VisualizationBloc, VisualizationState>(
         /// Escucha cambios en el VisualizationBloc para mostrar/ocultar el
         /// NodeTooltip cuando cambia selectedNodeId.
         ///
@@ -254,6 +338,8 @@ class _HomePageState extends State<HomePage> {
         // reconstrucciones innecesarias.
         listener: (context, nodeListState) {
           if (nodeListState is NodeListLoaded) {
+            // T3.8: Guardar la lista actual de nodos para mapeo GraphNode.id → bleAddress
+            _currentNodes = nodeListState.nodes;
             _updateViewMode(nodeListState.nodes, context);
           }
         },
@@ -276,7 +362,9 @@ class _HomePageState extends State<HomePage> {
                       return const SizedBox.shrink();
                     },
                   ),
-                  Expanded(child: _buildContent()),
+                  // T5.6: Toolbar de grafo con toggle 2D/3D (solo visible en modo grafo)
+              if (_showingGraph) _buildGraphToolbar(),
+              Expanded(child: _buildContent()),
                 ],
               );
             },
@@ -284,6 +372,7 @@ class _HomePageState extends State<HomePage> {
       ),
       ),
       ),
+      ), // cierra BlocListener<BleConnectionBloc>
     );
   }
 
@@ -447,6 +536,9 @@ class _HomePageState extends State<HomePage> {
   ///
   /// La histéresis (_showingGraph) evita que el crossfade oscile
   /// cuando la cantidad de nodos fluctúa alrededor del umbral.
+  ///
+  /// T5.7: Wiring — alterna entre GraphView (CustomPainter 2D) y
+  /// GraphView3D (WebView Three.js) según [_is3D].
   Widget _buildAnimatedContent(List<Node> nodes) {
     return AnimatedCrossFade(
       duration: const Duration(milliseconds: 300),
@@ -460,14 +552,27 @@ class _HomePageState extends State<HomePage> {
             VisualizationInitial() || GraphBuilding() =>
               const Center(child: CircularProgressIndicator()),
             GraphReady(:final layout, :final selectedNodeId) =>
-              GraphView(
-                key: _graphViewKey,
-                layout: layout,
-                selectedNodeId: selectedNodeId,
-                onNodeTapped: (nodeId) {
-                  context.read<VisualizationBloc>().add(NodeSelected(nodeId));
-                },
-              ),
+              _is3D
+                  // T5.7: Modo 3D — WebView con Three.js
+                  ? GraphView3D(
+                      layout: layout,
+                      onNodeTapped: (nodeId) {
+                        context
+                            .read<VisualizationBloc>()
+                            .add(NodeSelected(nodeId));
+                      },
+                    )
+                  // Modo 2D — CustomPainter (comportamiento original)
+                  : GraphView(
+                      key: _graphViewKey,
+                      layout: layout,
+                      selectedNodeId: selectedNodeId,
+                      onNodeTapped: (nodeId) {
+                        context
+                            .read<VisualizationBloc>()
+                            .add(NodeSelected(nodeId));
+                      },
+                    ),
             GraphError(:final message) => Center(
                 child: Text(
                   message,
@@ -477,6 +582,39 @@ class _HomePageState extends State<HomePage> {
             _ => const SizedBox.shrink(),
           };
         },
+      ),
+    );
+  }
+
+  /// T5.6: Barra de herramientas del grafo con toggle 2D/3D.
+  ///
+  /// QUÉ: muestra un IconButton para alternar entre vista 2D y 3D.
+  /// El icono cambia según el estado actual ([_is3D]).
+  /// Solo se muestra en modo grafo ([_showingGraph] == true).
+  /// POR QUÉ: R6.1 — el usuario debe poder alternar entre las dos vistas.
+  Widget _buildGraphToolbar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Text(
+            _is3D ? 'Vista 3D' : 'Vista 2D',
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            icon: Icon(_is3D ? Icons.grid_view : Icons.view_in_ar),
+            tooltip: _is3D ? 'Cambiar a vista 2D' : 'Cambiar a vista 3D',
+            onPressed: () => setState(() => _is3D = !_is3D),
+            iconSize: 24,
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
       ),
     );
   }

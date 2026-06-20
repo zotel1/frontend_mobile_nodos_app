@@ -7,6 +7,9 @@ import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 /// Representa un nodo BLE detectado con su posición (x, y) en el canvas,
 /// su nivel de proximidad, y atributos visuales derivados (radio, color,
 /// etiqueta). Usado por GraphPainter para renderizar cada nodo.
+///
+/// Radio basado en [connectionCount] (LinkedIn Maps style):
+/// `(12 + degree*3).clamp(12, 50)`. Nodos con más aristas son más grandes.
 class GraphNode extends Equatable {
   /// ID del nodo en la tabla nodes de Drift.
   final int? id;
@@ -23,21 +26,52 @@ class GraphNode extends Equatable {
   /// Nombre asignado por el usuario, si existe.
   final String? name;
 
+  /// Nombre sugerido desde el advertisement BLE (Phase 4 enrichment).
+  /// Se usa como fallback cuando el usuario no asignó nombre.
+  final String? suggestedName;
+
+  /// Cantidad de aristas (conexiones) de este nodo en el grafo.
+  /// Determina el tamaño visual del nodo (radio).
+  final int connectionCount;
+
+  /// Indica si este nodo representa el dispositivo del usuario ("yo").
+  /// Se renderiza con un anillo azul de glow (T2.5).
+  final bool isSelf;
+
+  /// Indica si el dispositivo acepta conexiones GATT (Enlazar).
+  ///
+  /// false → el botón "Enlazar" se deshabilita con estilo gris.
+  /// Valor por defecto true — se actualizará cuando el pipeline
+  /// de datos propague connectable desde BleDevice.
+  final bool connectable;
+
+  /// Coordenada Z para el grafo 3D (profundidad).
+  ///
+  /// Default 0.0 preserva compatibilidad con el grafo 2D existente.
+  /// El algoritmo Fruchterman-Reingold 3D (T5.2) calcula este valor
+  /// solo cuando el canvas incluye profundidad. Para 2D, z=0.
+  /// Agregado en PR5 — FR Algorithm 3D + 2D/3D Toggle.
+  final double z;
+
   const GraphNode({
     this.id,
     required this.x,
     required this.y,
     required this.proximity,
     this.name,
+    this.suggestedName,
+    this.connectionCount = 0,
+    this.isSelf = false,
+    this.connectable = true,
+    this.z = 0.0,
   });
 
-  /// Radio del círculo según nivel de proximidad.
-  /// CLOSE=24px, MEDIUM=18px, FAR=14px.
-  double get radius => switch (proximity) {
-        ProximityLevel.close => 24.0,
-        ProximityLevel.medium => 18.0,
-        ProximityLevel.far => 14.0,
-      };
+  /// Radio del círculo proporcional a la cantidad de conexiones.
+  ///
+  /// Fórmula LinkedIn Maps: `(12 + degree*3).clamp(12, 50)`.
+  /// Aislados (0 conexiones) = 12px, muy conectados = hasta 50px.
+  double get radius =>
+      (12.0 + connectionCount * 3.0).clamp(12.0, 50.0);
 
   /// Color de relleno según nivel de proximidad.
   /// Verde (close), ámbar (medium), rojo (far).
@@ -55,9 +89,10 @@ class GraphNode extends Equatable {
   bool get isKnown => name != null;
 
   /// Etiqueta a mostrar debajo del nodo.
-  /// Usa el nombre si existe, sino "Desconocido".
-  String get label => name ?? 'Desconocido';
+  /// Prioridad: name > suggestedName > "Desconocido" (T1.8).
+  String get label => name ?? suggestedName ?? 'Desconocido';
 
   @override
-  List<Object?> get props => [id, x, y, proximity, name];
+  List<Object?> get props =>
+      [id, x, y, proximity, name, suggestedName, connectionCount, isSelf, connectable, z];
 }

@@ -38,19 +38,34 @@ class _FakeLayoutResult_0 extends _i1.SmartFake implements _i2.LayoutResult {
 /// See the documentation for Mockito's code generation for more information.
 class MockGraphRepository extends _i1.Mock implements _i3.GraphRepository {
   @override
-  _i4.Future<_i2.LayoutResult> buildGraph(int? scanSessionId) =>
+  _i4.Future<_i2.LayoutResult> buildGraph(
+    int? scanSessionId, {
+    String? myDeviceUuid,
+  }) =>
       (super.noSuchMethod(
-            Invocation.method(#buildGraph, [scanSessionId]),
+            Invocation.method(
+              #buildGraph,
+              [scanSessionId],
+              {#myDeviceUuid: myDeviceUuid},
+            ),
             returnValue: _i4.Future<_i2.LayoutResult>.value(
               _FakeLayoutResult_0(
                 this,
-                Invocation.method(#buildGraph, [scanSessionId]),
+                Invocation.method(
+                  #buildGraph,
+                  [scanSessionId],
+                  {#myDeviceUuid: myDeviceUuid},
+                ),
               ),
             ),
             returnValueForMissingStub: _i4.Future<_i2.LayoutResult>.value(
               _FakeLayoutResult_0(
                 this,
-                Invocation.method(#buildGraph, [scanSessionId]),
+                Invocation.method(
+                  #buildGraph,
+                  [scanSessionId],
+                  {#myDeviceUuid: myDeviceUuid},
+                ),
               ),
             ),
           )

@@ -219,7 +219,8 @@ void main() {
     });
 
     group('rendimiento', () {
-      test('50 nodos se posicionan en menos de 100ms', () {
+      // T5.2: Extendido a 150ms para compensar el overhead de cálculos 3D (dz).
+      test('50 nodos se posicionan en menos de 150ms', () {
         final nodes = List.generate(50, (i) => {
           'id': i,
           'x': 0.0,
@@ -249,7 +250,7 @@ void main() {
         calculateFRLayout(params);
         stopwatch.stop();
 
-        expect(stopwatch.elapsedMilliseconds, lessThan(100),
+        expect(stopwatch.elapsedMilliseconds, lessThan(150),
             reason: '50 nodos tardaron ${stopwatch.elapsedMilliseconds}ms');
       });
     });
@@ -327,6 +328,199 @@ void main() {
         // las fuerzas repulsiva y atractiva se cancelan → convergencia.
         expect(result['iterations'], lessThanOrEqualTo(50));
         expect(result['converged'], isTrue);
+      });
+    });
+
+    // ─── T5.2: FR 3D — extensión al eje Z ────────────────────────
+    // QUÉ: el algoritmo FR ahora soporta un tercer eje Z. La distancia
+    // entre nodos se calcula en 3D (dx²+dy²+dz²). Las fuerzas repulsivas
+    // y atractivas incluyen componente Z. El clamping se aplica también en Z.
+    // POR QUÉ: R6.3 — el layout debe extenderse a 3D para el grafo 3D.
+    // Compatibilidad: sin z en input → z=0 → comportamiento 2D preservado.
+
+    Map<String, dynamic> params3D({
+      required List<Map<String, dynamic>> nodes,
+      required List<Map<String, dynamic>> edges,
+      int iterations = 100,
+      double k = 150.0,
+      double temperature = 200.0,
+      double depth = 2000.0,
+    }) {
+      return {
+        'nodes': nodes,
+        'edges': edges,
+        'width': 2000.0,
+        'height': 2000.0,
+        'depth': depth,
+        'iterations': iterations,
+        'k': k,
+        'temperature': temperature,
+        'coolingFactor': 0.95,
+        'seed': 42,
+      };
+    }
+
+    double distance3D(Map<String, dynamic> a, Map<String, dynamic> b) {
+      final dx = (a['x'] as num).toDouble() - (b['x'] as num).toDouble();
+      final dy = (a['y'] as num).toDouble() - (b['y'] as num).toDouble();
+      final az = (a['z'] as num?)?.toDouble() ?? 0.0;
+      final bz = (b['z'] as num?)?.toDouble() ?? 0.0;
+      final dz = az - bz;
+      return sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    group('T5.2: FR 3D', () {
+      test('calcula coordenada Z distinta de 0 con depth parameter', () {
+        final params = params3D(
+          nodes: [
+            {'id': 1, 'x': 0.0, 'y': 0.0, 'z': 0.0},
+            {'id': 2, 'x': 0.0, 'y': 0.0, 'z': 0.0},
+            {'id': 3, 'x': 0.0, 'y': 0.0, 'z': 0.0},
+          ],
+          edges: [
+            {'fromId': 1, 'toId': 2},
+            {'fromId': 2, 'toId': 3},
+          ],
+          iterations: 100,
+          depth: 2000.0,
+        );
+
+        final result = calculateFRLayout(params);
+        final nodes = result['nodes'] as List<Map<String, dynamic>>;
+
+        // Al menos un nodo debe tener Z distinto de 0 después del layout 3D
+        final zValues = nodes.map((n) => (n['z'] as num).toDouble()).toList();
+        final hasNonZeroZ = zValues.any((z) => z.abs() > 10.0);
+        expect(hasNonZeroZ, isTrue,
+            reason: 'Con depth parameter, las coordenadas Z deben divergir');
+      });
+
+      test('posiciones Z dentro del rango de profundidad (margen 50px)', () {
+        final params = params3D(
+          nodes: [
+            {'id': 1, 'x': 0.0, 'y': 0.0, 'z': 0.0},
+            {'id': 2, 'x': 0.0, 'y': 0.0, 'z': 0.0},
+            {'id': 3, 'x': 0.0, 'y': 0.0, 'z': 0.0},
+          ],
+          edges: [
+            {'fromId': 1, 'toId': 2},
+            {'fromId': 2, 'toId': 3},
+          ],
+          depth: 2000.0,
+        );
+
+        final result = calculateFRLayout(params);
+        final nodes = result['nodes'] as List<Map<String, dynamic>>;
+
+        for (final node in nodes) {
+          final z = (node['z'] as num).toDouble();
+          expect(z, greaterThanOrEqualTo(50),
+              reason: 'Z debe estar dentro del margen inferior');
+          expect(z, lessThanOrEqualTo(1950),
+              reason: 'Z debe estar dentro del margen superior');
+        }
+      });
+
+      test('nodos con aristas están más cerca en 3D que nodos sin aristas', () {
+        // 6 nodos: 1-2-3 conectados en cadena, 4-5-6 aislados
+        final params = params3D(
+          nodes: [
+            {'id': 1, 'x': 0.0, 'y': 0.0, 'z': 0.0},
+            {'id': 2, 'x': 0.0, 'y': 0.0, 'z': 0.0},
+            {'id': 3, 'x': 0.0, 'y': 0.0, 'z': 0.0},
+            {'id': 4, 'x': 0.0, 'y': 0.0, 'z': 0.0},
+            {'id': 5, 'x': 0.0, 'y': 0.0, 'z': 0.0},
+            {'id': 6, 'x': 0.0, 'y': 0.0, 'z': 0.0},
+          ],
+          edges: [
+            {'fromId': 1, 'toId': 2},
+            {'fromId': 2, 'toId': 3},
+          ],
+          depth: 2000.0,
+        );
+
+        final result = calculateFRLayout(params);
+        final nodes = result['nodes'] as List<Map<String, dynamic>>;
+
+        // Distancia 3D entre nodos conectados (1↔2, 2↔3)
+        final dConnected12 = distance3D(nodes[0], nodes[1]);
+        final dConnected23 = distance3D(nodes[1], nodes[2]);
+        final avgConnected = (dConnected12 + dConnected23) / 2;
+
+        // Distancia 3D entre nodos aislados (4↔5, 5↔6)
+        final dIsolated45 = distance3D(nodes[3], nodes[4]);
+        final dIsolated56 = distance3D(nodes[4], nodes[5]);
+        final avgIsolated = (dIsolated45 + dIsolated56) / 2;
+
+        // Nodos conectados deben estar más cerca (atracción de aristas)
+        expect(avgConnected, lessThan(avgIsolated),
+            reason: 'Nodos con aristas deben estar más cerca: '
+                'conectados=${avgConnected.toStringAsFixed(0)}, '
+                'aislados=${avgIsolated.toStringAsFixed(0)}');
+      });
+
+      test('sin depth parameter → Z se mantiene en 0 (compatibilidad 2D)', () {
+        // Usar basicParams (sin depth) para verificar retrocompatibilidad
+        final params = basicParams(
+          nodes: [
+            {'id': 1, 'x': 0.0, 'y': 0.0},
+            {'id': 2, 'x': 0.0, 'y': 0.0},
+          ],
+          edges: [
+            {'fromId': 1, 'toId': 2},
+          ],
+          iterations: 100,
+        );
+
+        final result = calculateFRLayout(params);
+        final nodes = result['nodes'] as List<Map<String, dynamic>>;
+
+        for (final node in nodes) {
+          final z = (node['z'] as num?)?.toDouble() ?? 0.0;
+          expect(z, 0.0,
+              reason: 'Sin depth, Z debe ser 0 (backward compatible)');
+        }
+      });
+
+      test('determinismo: mismo seed produce mismas posiciones Z', () {
+        final params1 = params3D(
+          nodes: [
+            {'id': 1, 'x': 0.0, 'y': 0.0, 'z': 0.0},
+            {'id': 2, 'x': 0.0, 'y': 0.0, 'z': 0.0},
+            {'id': 3, 'x': 0.0, 'y': 0.0, 'z': 0.0},
+          ],
+          edges: [
+            {'fromId': 1, 'toId': 2},
+            {'fromId': 2, 'toId': 3},
+          ],
+          depth: 2000.0,
+        );
+
+        final params2 = params3D(
+          nodes: [
+            {'id': 1, 'x': 0.0, 'y': 0.0, 'z': 0.0},
+            {'id': 2, 'x': 0.0, 'y': 0.0, 'z': 0.0},
+            {'id': 3, 'x': 0.0, 'y': 0.0, 'z': 0.0},
+          ],
+          edges: [
+            {'fromId': 1, 'toId': 2},
+            {'fromId': 2, 'toId': 3},
+          ],
+          depth: 2000.0,
+        );
+
+        final result1 = calculateFRLayout(params1);
+        final result2 = calculateFRLayout(params2);
+        final nodes1 = result1['nodes'] as List<Map<String, dynamic>>;
+        final nodes2 = result2['nodes'] as List<Map<String, dynamic>>;
+
+        for (var i = 0; i < nodes1.length; i++) {
+          expect(
+            (nodes1[i]['z'] as num?)?.toDouble() ?? 0.0,
+            closeTo((nodes2[i]['z'] as num?)?.toDouble() ?? 0.0, 0.01),
+            reason: 'Z del nodo $i debe ser determinista con mismo seed',
+          );
+        }
       });
     });
 

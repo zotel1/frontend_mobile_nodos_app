@@ -15,12 +15,19 @@ enum ProximityLevel { close, medium, far }
 ///   free-space, higher for indoor environments).
 ///
 /// For rssi >= 0 (invalid/no signal), returns [double.infinity].
-double rssiToDistance(int rssi) {
+///
+/// Si se provee [txPowerLevel], se usa ese valor en lugar de la constante
+/// [txPower] de configuración. Esto permite calcular distancia con la
+/// potencia de transmisión real anunciada por el dispositivo BLE, que
+/// puede diferir del valor asumido (-50 dBm).
+double rssiToDistance(int rssi, {int? txPowerLevel}) {
   // Clamp: rssi >= 0 indicates invalid/no signal reading.
   if (rssi >= 0) {
     return double.infinity;
   }
-  return pow(10, (txPower - rssi) / (10 * pathLossExponent)).toDouble();
+  final effectiveTxPower = txPowerLevel ?? txPower;
+  return pow(10, (effectiveTxPower - rssi) / (10 * pathLossExponent))
+      .toDouble();
 }
 
 /// Classifies an RSSI reading into a [ProximityLevel].
