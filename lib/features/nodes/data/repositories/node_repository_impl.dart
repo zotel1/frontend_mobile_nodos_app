@@ -28,7 +28,18 @@ class NodeRepositoryImpl implements NodeRepository {
       firstSeen: existing.firstSeen,
       lastSeen: existing.lastSeen,
       rssiHistory: existing.rssiHistory,
+      suggestedName: existing.suggestedName,
+      deviceType: existing.deviceType,
+      connectable: existing.connectable,
+      estimatedDistance: existing.estimatedDistance,
     );
     await _dataSource.upsertNode(updated);
   }
+
+  @override
+  Future<void> clearAllNodes() => _dataSource.deleteAllNodes();
+
+  @override
+  Future<Node?> getNodeByBleAddress(String bleAddress) =>
+      _dataSource.getNodeByBleAddress(bleAddress);
 }

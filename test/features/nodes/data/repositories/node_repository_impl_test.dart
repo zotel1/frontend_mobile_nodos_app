@@ -131,5 +131,47 @@ void main() {
       expect(updatedNode.name, 'New Name');
       expect(updatedNode.color, '#FF0000');
     });
+
+    // ─── PR1.6: clearAllNodes y getNodeByBleAddress ────────
+    // QUÉ: clearAllNodes() delega a datasource.deleteAllNodes().
+    // getNodeByBleAddress() delega a datasource.getNodeByBleAddress().
+    // POR QUÉ: el repositorio es la fachada de dominio que abstrae
+    // el datasource concreto (Drift). Cada método nuevo en el
+    // datasource necesita su contraparte en el repositorio.
+
+    test('clearAllNodes delega a dataSource.deleteAllNodes', () async {
+      when(mockDataSource.deleteAllNodes()).thenAnswer((_) async {});
+
+      await repository.clearAllNodes();
+
+      verify(mockDataSource.deleteAllNodes()).called(1);
+    });
+
+    test('getNodeByBleAddress delega a dataSource.getNodeByBleAddress', () async {
+      final node = Node(
+        id: 1,
+        bleAddress: 'AA:BB:CC:DD:EE:FF',
+        name: 'Test',
+        firstSeen: now,
+        lastSeen: now,
+      );
+      when(mockDataSource.getNodeByBleAddress('AA:BB:CC:DD:EE:FF'))
+          .thenAnswer((_) async => node);
+
+      final result = await repository.getNodeByBleAddress('AA:BB:CC:DD:EE:FF');
+
+      expect(result, equals(node));
+      verify(mockDataSource.getNodeByBleAddress('AA:BB:CC:DD:EE:FF'))
+          .called(1);
+    });
+
+    test('getNodeByBleAddress retorna null cuando el datasource no encuentra', () async {
+      when(mockDataSource.getNodeByBleAddress('ZZ:ZZ:ZZ:ZZ:ZZ:ZZ'))
+          .thenAnswer((_) async => null);
+
+      final result = await repository.getNodeByBleAddress('ZZ:ZZ:ZZ:ZZ:ZZ:ZZ');
+
+      expect(result, isNull);
+    });
   });
 }
