@@ -3,17 +3,17 @@
 // Do not manually edit this file.
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
-import 'dart:async' as _i9;
+import 'dart:async' as _i13;
 
-import 'package:flutter_bloc/flutter_bloc.dart' as _i10;
+import 'package:flutter_bloc/flutter_bloc.dart' as _i14;
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_repository.dart'
     as _i5;
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart'
-    as _i11;
-import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart'
     as _i15;
+import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart'
+    as _i19;
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart'
-    as _i12;
+    as _i16;
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart'
     as _i6;
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/usecases/observe_nodes.dart'
@@ -24,14 +24,22 @@ import 'package:frontend_mobile_nodos_app/features/nodes/presentation/bloc/node_
     as _i4;
 import 'package:frontend_mobile_nodos_app/features/scan_session/presentation/bloc/scan_session_bloc.dart'
     as _i8;
+import 'package:frontend_mobile_nodos_app/features/user/domain/usecases/get_user_profile.dart'
+    as _i9;
+import 'package:frontend_mobile_nodos_app/features/user/domain/usecases/update_user_color.dart'
+    as _i11;
+import 'package:frontend_mobile_nodos_app/features/user/domain/usecases/update_user_name.dart'
+    as _i10;
+import 'package:frontend_mobile_nodos_app/features/user/presentation/bloc/user_bloc.dart'
+    as _i12;
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_bloc.dart'
-    as _i13;
+    as _i17;
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_event.dart'
-    as _i14;
+    as _i18;
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_state.dart'
     as _i7;
 import 'package:mockito/mockito.dart' as _i1;
-import 'package:mockito/src/dummies.dart' as _i16;
+import 'package:mockito/src/dummies.dart' as _i20;
 
 // ignore_for_file: type=lint
 // ignore_for_file: avoid_redundant_argument_values
@@ -83,6 +91,29 @@ class _FakeVisualizationState_5 extends _i1.SmartFake
 class _FakeScanSessionState_6 extends _i1.SmartFake
     implements _i8.ScanSessionState {
   _FakeScanSessionState_6(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeGetUserProfile_7 extends _i1.SmartFake
+    implements _i9.GetUserProfile {
+  _FakeGetUserProfile_7(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeUpdateUserName_8 extends _i1.SmartFake
+    implements _i10.UpdateUserName {
+  _FakeUpdateUserName_8(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeUpdateUserColor_9 extends _i1.SmartFake
+    implements _i11.UpdateUserColor {
+  _FakeUpdateUserColor_9(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeUserState_10 extends _i1.SmartFake implements _i12.UserState {
+  _FakeUserState_10(Object parent, Invocation parentInvocation)
     : super(parent, parentInvocation);
 }
 
@@ -142,22 +173,22 @@ class MockNodeListBloc extends _i1.Mock implements _i4.NodeListBloc {
           as _i4.NodeListState);
 
   @override
-  _i9.Stream<_i4.NodeListState> get stream =>
+  _i13.Stream<_i4.NodeListState> get stream =>
       (super.noSuchMethod(
             Invocation.getter(#stream),
-            returnValue: _i9.Stream<_i4.NodeListState>.empty(),
-            returnValueForMissingStub: _i9.Stream<_i4.NodeListState>.empty(),
+            returnValue: _i13.Stream<_i4.NodeListState>.empty(),
+            returnValueForMissingStub: _i13.Stream<_i4.NodeListState>.empty(),
           )
-          as _i9.Stream<_i4.NodeListState>);
+          as _i13.Stream<_i4.NodeListState>);
 
   @override
-  _i9.Future<void> close() =>
+  _i13.Future<void> close() =>
       (super.noSuchMethod(
             Invocation.method(#close, []),
-            returnValue: _i9.Future<void>.value(),
-            returnValueForMissingStub: _i9.Future<void>.value(),
+            returnValue: _i13.Future<void>.value(),
+            returnValueForMissingStub: _i13.Future<void>.value(),
           )
-          as _i9.Future<void>);
+          as _i13.Future<void>);
 
   @override
   void add(_i4.NodeListEvent? event) => super.noSuchMethod(
@@ -179,8 +210,8 @@ class MockNodeListBloc extends _i1.Mock implements _i4.NodeListBloc {
 
   @override
   void on<E extends _i4.NodeListEvent>(
-    _i10.EventHandler<E, _i4.NodeListState>? handler, {
-    _i10.EventTransformer<E>? transformer,
+    _i14.EventHandler<E, _i4.NodeListState>? handler, {
+    _i14.EventTransformer<E>? transformer,
   }) => super.noSuchMethod(
     Invocation.method(#on, [handler], {#transformer: transformer}),
     returnValueForMissingStub: null,
@@ -188,7 +219,7 @@ class MockNodeListBloc extends _i1.Mock implements _i4.NodeListBloc {
 
   @override
   void onTransition(
-    _i10.Transition<_i4.NodeListEvent, _i4.NodeListState>? transition,
+    _i14.Transition<_i4.NodeListEvent, _i4.NodeListState>? transition,
   ) => super.noSuchMethod(
     Invocation.method(#onTransition, [transition]),
     returnValueForMissingStub: null,
@@ -205,7 +236,7 @@ class MockNodeListBloc extends _i1.Mock implements _i4.NodeListBloc {
   );
 
   @override
-  void onChange(_i10.Change<_i4.NodeListState>? change) => super.noSuchMethod(
+  void onChange(_i14.Change<_i4.NodeListState>? change) => super.noSuchMethod(
     Invocation.method(#onChange, [change]),
     returnValueForMissingStub: null,
   );
@@ -226,7 +257,7 @@ class MockNodeListBloc extends _i1.Mock implements _i4.NodeListBloc {
 /// A class which mocks [BleBloc].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockBleBloc extends _i1.Mock implements _i11.BleBloc {
+class MockBleBloc extends _i1.Mock implements _i15.BleBloc {
   @override
   _i5.BleRepository get repository =>
       (super.noSuchMethod(
@@ -264,31 +295,31 @@ class MockBleBloc extends _i1.Mock implements _i11.BleBloc {
           as _i6.BleState);
 
   @override
-  _i9.Stream<_i6.BleState> get stream =>
+  _i13.Stream<_i6.BleState> get stream =>
       (super.noSuchMethod(
             Invocation.getter(#stream),
-            returnValue: _i9.Stream<_i6.BleState>.empty(),
-            returnValueForMissingStub: _i9.Stream<_i6.BleState>.empty(),
+            returnValue: _i13.Stream<_i6.BleState>.empty(),
+            returnValueForMissingStub: _i13.Stream<_i6.BleState>.empty(),
           )
-          as _i9.Stream<_i6.BleState>);
+          as _i13.Stream<_i6.BleState>);
 
   @override
-  _i9.Future<void> close() =>
+  _i13.Future<void> close() =>
       (super.noSuchMethod(
             Invocation.method(#close, []),
-            returnValue: _i9.Future<void>.value(),
-            returnValueForMissingStub: _i9.Future<void>.value(),
+            returnValue: _i13.Future<void>.value(),
+            returnValueForMissingStub: _i13.Future<void>.value(),
           )
-          as _i9.Future<void>);
+          as _i13.Future<void>);
 
   @override
-  void add(_i12.BleEvent? event) => super.noSuchMethod(
+  void add(_i16.BleEvent? event) => super.noSuchMethod(
     Invocation.method(#add, [event]),
     returnValueForMissingStub: null,
   );
 
   @override
-  void onEvent(_i12.BleEvent? event) => super.noSuchMethod(
+  void onEvent(_i16.BleEvent? event) => super.noSuchMethod(
     Invocation.method(#onEvent, [event]),
     returnValueForMissingStub: null,
   );
@@ -300,30 +331,30 @@ class MockBleBloc extends _i1.Mock implements _i11.BleBloc {
   );
 
   @override
-  void on<E extends _i12.BleEvent>(
-    _i10.EventHandler<E, _i6.BleState>? handler, {
-    _i10.EventTransformer<E>? transformer,
+  void on<E extends _i16.BleEvent>(
+    _i14.EventHandler<E, _i6.BleState>? handler, {
+    _i14.EventTransformer<E>? transformer,
   }) => super.noSuchMethod(
     Invocation.method(#on, [handler], {#transformer: transformer}),
     returnValueForMissingStub: null,
   );
 
   @override
-  void onTransition(_i10.Transition<_i12.BleEvent, _i6.BleState>? transition) =>
+  void onTransition(_i14.Transition<_i16.BleEvent, _i6.BleState>? transition) =>
       super.noSuchMethod(
         Invocation.method(#onTransition, [transition]),
         returnValueForMissingStub: null,
       );
 
   @override
-  void onDone(_i12.BleEvent? event, [Object? error, StackTrace? stackTrace]) =>
+  void onDone(_i16.BleEvent? event, [Object? error, StackTrace? stackTrace]) =>
       super.noSuchMethod(
         Invocation.method(#onDone, [event, error, stackTrace]),
         returnValueForMissingStub: null,
       );
 
   @override
-  void onChange(_i10.Change<_i6.BleState>? change) => super.noSuchMethod(
+  void onChange(_i14.Change<_i6.BleState>? change) => super.noSuchMethod(
     Invocation.method(#onChange, [change]),
     returnValueForMissingStub: null,
   );
@@ -344,7 +375,7 @@ class MockBleBloc extends _i1.Mock implements _i11.BleBloc {
 /// A class which mocks [VisualizationBloc].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockVisualizationBloc extends _i1.Mock implements _i13.VisualizationBloc {
+class MockVisualizationBloc extends _i1.Mock implements _i17.VisualizationBloc {
   @override
   bool get isBuilding =>
       (super.noSuchMethod(
@@ -379,35 +410,35 @@ class MockVisualizationBloc extends _i1.Mock implements _i13.VisualizationBloc {
           as _i7.VisualizationState);
 
   @override
-  _i9.Stream<_i7.VisualizationState> get stream =>
+  _i13.Stream<_i7.VisualizationState> get stream =>
       (super.noSuchMethod(
             Invocation.getter(#stream),
-            returnValue: _i9.Stream<_i7.VisualizationState>.empty(),
+            returnValue: _i13.Stream<_i7.VisualizationState>.empty(),
             returnValueForMissingStub:
-                _i9.Stream<_i7.VisualizationState>.empty(),
+                _i13.Stream<_i7.VisualizationState>.empty(),
           )
-          as _i9.Stream<_i7.VisualizationState>);
+          as _i13.Stream<_i7.VisualizationState>);
 
   @override
-  _i9.Future<void> processBuildRequest(
-    _i14.BuildGraphRequested? event,
-    _i10.Emitter<_i7.VisualizationState>? emit,
+  _i13.Future<void> processBuildRequest(
+    _i18.BuildGraphRequested? event,
+    _i14.Emitter<_i7.VisualizationState>? emit,
   ) =>
       (super.noSuchMethod(
             Invocation.method(#processBuildRequest, [event, emit]),
-            returnValue: _i9.Future<void>.value(),
-            returnValueForMissingStub: _i9.Future<void>.value(),
+            returnValue: _i13.Future<void>.value(),
+            returnValueForMissingStub: _i13.Future<void>.value(),
           )
-          as _i9.Future<void>);
+          as _i13.Future<void>);
 
   @override
-  void add(_i14.VisualizationEvent? event) => super.noSuchMethod(
+  void add(_i18.VisualizationEvent? event) => super.noSuchMethod(
     Invocation.method(#add, [event]),
     returnValueForMissingStub: null,
   );
 
   @override
-  void onEvent(_i14.VisualizationEvent? event) => super.noSuchMethod(
+  void onEvent(_i18.VisualizationEvent? event) => super.noSuchMethod(
     Invocation.method(#onEvent, [event]),
     returnValueForMissingStub: null,
   );
@@ -419,9 +450,9 @@ class MockVisualizationBloc extends _i1.Mock implements _i13.VisualizationBloc {
   );
 
   @override
-  void on<E extends _i14.VisualizationEvent>(
-    _i10.EventHandler<E, _i7.VisualizationState>? handler, {
-    _i10.EventTransformer<E>? transformer,
+  void on<E extends _i18.VisualizationEvent>(
+    _i14.EventHandler<E, _i7.VisualizationState>? handler, {
+    _i14.EventTransformer<E>? transformer,
   }) => super.noSuchMethod(
     Invocation.method(#on, [handler], {#transformer: transformer}),
     returnValueForMissingStub: null,
@@ -429,7 +460,7 @@ class MockVisualizationBloc extends _i1.Mock implements _i13.VisualizationBloc {
 
   @override
   void onTransition(
-    _i10.Transition<_i14.VisualizationEvent, _i7.VisualizationState>?
+    _i14.Transition<_i18.VisualizationEvent, _i7.VisualizationState>?
     transition,
   ) => super.noSuchMethod(
     Invocation.method(#onTransition, [transition]),
@@ -438,7 +469,7 @@ class MockVisualizationBloc extends _i1.Mock implements _i13.VisualizationBloc {
 
   @override
   void onDone(
-    _i14.VisualizationEvent? event, [
+    _i18.VisualizationEvent? event, [
     Object? error,
     StackTrace? stackTrace,
   ]) => super.noSuchMethod(
@@ -447,16 +478,16 @@ class MockVisualizationBloc extends _i1.Mock implements _i13.VisualizationBloc {
   );
 
   @override
-  _i9.Future<void> close() =>
+  _i13.Future<void> close() =>
       (super.noSuchMethod(
             Invocation.method(#close, []),
-            returnValue: _i9.Future<void>.value(),
-            returnValueForMissingStub: _i9.Future<void>.value(),
+            returnValue: _i13.Future<void>.value(),
+            returnValueForMissingStub: _i13.Future<void>.value(),
           )
-          as _i9.Future<void>);
+          as _i13.Future<void>);
 
   @override
-  void onChange(_i10.Change<_i7.VisualizationState>? change) =>
+  void onChange(_i14.Change<_i7.VisualizationState>? change) =>
       super.noSuchMethod(
         Invocation.method(#onChange, [change]),
         returnValueForMissingStub: null,
@@ -478,7 +509,7 @@ class MockVisualizationBloc extends _i1.Mock implements _i13.VisualizationBloc {
 /// A class which mocks [BleConnectionBloc].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockBleConnectionBloc extends _i1.Mock implements _i15.BleConnectionBloc {
+class MockBleConnectionBloc extends _i1.Mock implements _i19.BleConnectionBloc {
   @override
   bool get isClosed =>
       (super.noSuchMethod(
@@ -489,61 +520,61 @@ class MockBleConnectionBloc extends _i1.Mock implements _i15.BleConnectionBloc {
           as bool);
 
   @override
-  _i15.BleConnectionState get state =>
+  _i19.BleConnectionState get state =>
       (super.noSuchMethod(
             Invocation.getter(#state),
-            returnValue: _i16.dummyValue<_i15.BleConnectionState>(
+            returnValue: _i20.dummyValue<_i19.BleConnectionState>(
               this,
               Invocation.getter(#state),
             ),
-            returnValueForMissingStub: _i16.dummyValue<_i15.BleConnectionState>(
+            returnValueForMissingStub: _i20.dummyValue<_i19.BleConnectionState>(
               this,
               Invocation.getter(#state),
             ),
           )
-          as _i15.BleConnectionState);
+          as _i19.BleConnectionState);
 
   @override
-  _i9.Stream<_i15.BleConnectionState> get stream =>
+  _i13.Stream<_i19.BleConnectionState> get stream =>
       (super.noSuchMethod(
             Invocation.getter(#stream),
-            returnValue: _i9.Stream<_i15.BleConnectionState>.empty(),
+            returnValue: _i13.Stream<_i19.BleConnectionState>.empty(),
             returnValueForMissingStub:
-                _i9.Stream<_i15.BleConnectionState>.empty(),
+                _i13.Stream<_i19.BleConnectionState>.empty(),
           )
-          as _i9.Stream<_i15.BleConnectionState>);
+          as _i13.Stream<_i19.BleConnectionState>);
 
   @override
-  _i9.Future<void> close() =>
+  _i13.Future<void> close() =>
       (super.noSuchMethod(
             Invocation.method(#close, []),
-            returnValue: _i9.Future<void>.value(),
-            returnValueForMissingStub: _i9.Future<void>.value(),
+            returnValue: _i13.Future<void>.value(),
+            returnValueForMissingStub: _i13.Future<void>.value(),
           )
-          as _i9.Future<void>);
+          as _i13.Future<void>);
 
   @override
-  void add(_i15.BleConnectionEvent? event) => super.noSuchMethod(
+  void add(_i19.BleConnectionEvent? event) => super.noSuchMethod(
     Invocation.method(#add, [event]),
     returnValueForMissingStub: null,
   );
 
   @override
-  void onEvent(_i15.BleConnectionEvent? event) => super.noSuchMethod(
+  void onEvent(_i19.BleConnectionEvent? event) => super.noSuchMethod(
     Invocation.method(#onEvent, [event]),
     returnValueForMissingStub: null,
   );
 
   @override
-  void emit(_i15.BleConnectionState? state) => super.noSuchMethod(
+  void emit(_i19.BleConnectionState? state) => super.noSuchMethod(
     Invocation.method(#emit, [state]),
     returnValueForMissingStub: null,
   );
 
   @override
-  void on<E extends _i15.BleConnectionEvent>(
-    _i10.EventHandler<E, _i15.BleConnectionState>? handler, {
-    _i10.EventTransformer<E>? transformer,
+  void on<E extends _i19.BleConnectionEvent>(
+    _i14.EventHandler<E, _i19.BleConnectionState>? handler, {
+    _i14.EventTransformer<E>? transformer,
   }) => super.noSuchMethod(
     Invocation.method(#on, [handler], {#transformer: transformer}),
     returnValueForMissingStub: null,
@@ -551,7 +582,7 @@ class MockBleConnectionBloc extends _i1.Mock implements _i15.BleConnectionBloc {
 
   @override
   void onTransition(
-    _i10.Transition<_i15.BleConnectionEvent, _i15.BleConnectionState>?
+    _i14.Transition<_i19.BleConnectionEvent, _i19.BleConnectionState>?
     transition,
   ) => super.noSuchMethod(
     Invocation.method(#onTransition, [transition]),
@@ -560,7 +591,7 @@ class MockBleConnectionBloc extends _i1.Mock implements _i15.BleConnectionBloc {
 
   @override
   void onDone(
-    _i15.BleConnectionEvent? event, [
+    _i19.BleConnectionEvent? event, [
     Object? error,
     StackTrace? stackTrace,
   ]) => super.noSuchMethod(
@@ -569,7 +600,7 @@ class MockBleConnectionBloc extends _i1.Mock implements _i15.BleConnectionBloc {
   );
 
   @override
-  void onChange(_i10.Change<_i15.BleConnectionState>? change) =>
+  void onChange(_i14.Change<_i19.BleConnectionState>? change) =>
       super.noSuchMethod(
         Invocation.method(#onChange, [change]),
         returnValueForMissingStub: null,
@@ -617,13 +648,14 @@ class MockScanSessionBloc extends _i1.Mock implements _i8.ScanSessionBloc {
           as _i8.ScanSessionState);
 
   @override
-  _i9.Stream<_i8.ScanSessionState> get stream =>
+  _i13.Stream<_i8.ScanSessionState> get stream =>
       (super.noSuchMethod(
             Invocation.getter(#stream),
-            returnValue: _i9.Stream<_i8.ScanSessionState>.empty(),
-            returnValueForMissingStub: _i9.Stream<_i8.ScanSessionState>.empty(),
+            returnValue: _i13.Stream<_i8.ScanSessionState>.empty(),
+            returnValueForMissingStub:
+                _i13.Stream<_i8.ScanSessionState>.empty(),
           )
-          as _i9.Stream<_i8.ScanSessionState>);
+          as _i13.Stream<_i8.ScanSessionState>);
 
   @override
   void add(_i8.ScanSessionEvent? event) => super.noSuchMethod(
@@ -645,8 +677,8 @@ class MockScanSessionBloc extends _i1.Mock implements _i8.ScanSessionBloc {
 
   @override
   void on<E extends _i8.ScanSessionEvent>(
-    _i10.EventHandler<E, _i8.ScanSessionState>? handler, {
-    _i10.EventTransformer<E>? transformer,
+    _i14.EventHandler<E, _i8.ScanSessionState>? handler, {
+    _i14.EventTransformer<E>? transformer,
   }) => super.noSuchMethod(
     Invocation.method(#on, [handler], {#transformer: transformer}),
     returnValueForMissingStub: null,
@@ -654,7 +686,7 @@ class MockScanSessionBloc extends _i1.Mock implements _i8.ScanSessionBloc {
 
   @override
   void onTransition(
-    _i10.Transition<_i8.ScanSessionEvent, _i8.ScanSessionState>? transition,
+    _i14.Transition<_i8.ScanSessionEvent, _i8.ScanSessionState>? transition,
   ) => super.noSuchMethod(
     Invocation.method(#onTransition, [transition]),
     returnValueForMissingStub: null,
@@ -671,20 +703,169 @@ class MockScanSessionBloc extends _i1.Mock implements _i8.ScanSessionBloc {
   );
 
   @override
-  _i9.Future<void> close() =>
+  _i13.Future<void> close() =>
       (super.noSuchMethod(
             Invocation.method(#close, []),
-            returnValue: _i9.Future<void>.value(),
-            returnValueForMissingStub: _i9.Future<void>.value(),
+            returnValue: _i13.Future<void>.value(),
+            returnValueForMissingStub: _i13.Future<void>.value(),
           )
-          as _i9.Future<void>);
+          as _i13.Future<void>);
 
   @override
-  void onChange(_i10.Change<_i8.ScanSessionState>? change) =>
+  void onChange(_i14.Change<_i8.ScanSessionState>? change) =>
       super.noSuchMethod(
         Invocation.method(#onChange, [change]),
         returnValueForMissingStub: null,
       );
+
+  @override
+  void addError(Object? error, [StackTrace? stackTrace]) => super.noSuchMethod(
+    Invocation.method(#addError, [error, stackTrace]),
+    returnValueForMissingStub: null,
+  );
+
+  @override
+  void onError(Object? error, StackTrace? stackTrace) => super.noSuchMethod(
+    Invocation.method(#onError, [error, stackTrace]),
+    returnValueForMissingStub: null,
+  );
+}
+
+/// A class which mocks [UserBloc].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockUserBloc extends _i1.Mock implements _i12.UserBloc {
+  @override
+  _i9.GetUserProfile get getProfile =>
+      (super.noSuchMethod(
+            Invocation.getter(#getProfile),
+            returnValue: _FakeGetUserProfile_7(
+              this,
+              Invocation.getter(#getProfile),
+            ),
+            returnValueForMissingStub: _FakeGetUserProfile_7(
+              this,
+              Invocation.getter(#getProfile),
+            ),
+          )
+          as _i9.GetUserProfile);
+
+  @override
+  _i10.UpdateUserName get updateName =>
+      (super.noSuchMethod(
+            Invocation.getter(#updateName),
+            returnValue: _FakeUpdateUserName_8(
+              this,
+              Invocation.getter(#updateName),
+            ),
+            returnValueForMissingStub: _FakeUpdateUserName_8(
+              this,
+              Invocation.getter(#updateName),
+            ),
+          )
+          as _i10.UpdateUserName);
+
+  @override
+  _i11.UpdateUserColor get updateColor =>
+      (super.noSuchMethod(
+            Invocation.getter(#updateColor),
+            returnValue: _FakeUpdateUserColor_9(
+              this,
+              Invocation.getter(#updateColor),
+            ),
+            returnValueForMissingStub: _FakeUpdateUserColor_9(
+              this,
+              Invocation.getter(#updateColor),
+            ),
+          )
+          as _i11.UpdateUserColor);
+
+  @override
+  bool get isClosed =>
+      (super.noSuchMethod(
+            Invocation.getter(#isClosed),
+            returnValue: false,
+            returnValueForMissingStub: false,
+          )
+          as bool);
+
+  @override
+  _i12.UserState get state =>
+      (super.noSuchMethod(
+            Invocation.getter(#state),
+            returnValue: _FakeUserState_10(this, Invocation.getter(#state)),
+            returnValueForMissingStub: _FakeUserState_10(
+              this,
+              Invocation.getter(#state),
+            ),
+          )
+          as _i12.UserState);
+
+  @override
+  _i13.Stream<_i12.UserState> get stream =>
+      (super.noSuchMethod(
+            Invocation.getter(#stream),
+            returnValue: _i13.Stream<_i12.UserState>.empty(),
+            returnValueForMissingStub: _i13.Stream<_i12.UserState>.empty(),
+          )
+          as _i13.Stream<_i12.UserState>);
+
+  @override
+  void add(_i12.UserEvent? event) => super.noSuchMethod(
+    Invocation.method(#add, [event]),
+    returnValueForMissingStub: null,
+  );
+
+  @override
+  void onEvent(_i12.UserEvent? event) => super.noSuchMethod(
+    Invocation.method(#onEvent, [event]),
+    returnValueForMissingStub: null,
+  );
+
+  @override
+  void emit(_i12.UserState? state) => super.noSuchMethod(
+    Invocation.method(#emit, [state]),
+    returnValueForMissingStub: null,
+  );
+
+  @override
+  void on<E extends _i12.UserEvent>(
+    _i14.EventHandler<E, _i12.UserState>? handler, {
+    _i14.EventTransformer<E>? transformer,
+  }) => super.noSuchMethod(
+    Invocation.method(#on, [handler], {#transformer: transformer}),
+    returnValueForMissingStub: null,
+  );
+
+  @override
+  void onTransition(
+    _i14.Transition<_i12.UserEvent, _i12.UserState>? transition,
+  ) => super.noSuchMethod(
+    Invocation.method(#onTransition, [transition]),
+    returnValueForMissingStub: null,
+  );
+
+  @override
+  void onDone(_i12.UserEvent? event, [Object? error, StackTrace? stackTrace]) =>
+      super.noSuchMethod(
+        Invocation.method(#onDone, [event, error, stackTrace]),
+        returnValueForMissingStub: null,
+      );
+
+  @override
+  _i13.Future<void> close() =>
+      (super.noSuchMethod(
+            Invocation.method(#close, []),
+            returnValue: _i13.Future<void>.value(),
+            returnValueForMissingStub: _i13.Future<void>.value(),
+          )
+          as _i13.Future<void>);
+
+  @override
+  void onChange(_i14.Change<_i12.UserState>? change) => super.noSuchMethod(
+    Invocation.method(#onChange, [change]),
+    returnValueForMissingStub: null,
+  );
 
   @override
   void addError(Object? error, [StackTrace? stackTrace]) => super.noSuchMethod(

@@ -62,7 +62,7 @@ void main() {
         Future.microtask(() => stateController.add(true));
         return BleConnectionBloc(gatt: mockDatasource, nodeRepository: mockNodeRepo, db: testDb);
       },
-      act: (bloc) => bloc.add(const ConnectToDevice('AA:BB:CC:DD:EE:FF')),
+      act: (bloc) => bloc.add(const ConnectToDevice('AA:BB:CC:DD:EE:FF', myNodeId: 1)),
       expect: () => [
         isA<BleConnecting>().having(
           (s) => s.remoteId,
@@ -89,7 +89,7 @@ void main() {
             .thenAnswer((_) => stateController.stream);
         return BleConnectionBloc(gatt: mockDatasource, nodeRepository: mockNodeRepo, db: testDb);
       },
-      act: (bloc) => bloc.add(const ConnectToDevice('BB:CC:DD:EE:FF:00')),
+      act: (bloc) => bloc.add(const ConnectToDevice('BB:CC:DD:EE:FF:00', myNodeId: 1)),
       expect: () => [
         isA<BleConnecting>(),
         isA<BleConnectionError>()
@@ -107,7 +107,7 @@ void main() {
             .thenAnswer((_) => stateController.stream);
         return BleConnectionBloc(gatt: mockDatasource, nodeRepository: mockNodeRepo, db: testDb);
       },
-      act: (bloc) => bloc.add(const ConnectToDevice('timeout-device')),
+      act: (bloc) => bloc.add(const ConnectToDevice('timeout-device', myNodeId: 1)),
       expect: () => [
         isA<BleConnecting>(),
         isA<BleConnectionError>().having(
@@ -127,7 +127,7 @@ void main() {
             .thenAnswer((_) => stateController.stream);
         return BleConnectionBloc(gatt: mockDatasource, nodeRepository: mockNodeRepo, db: testDb);
       },
-      act: (bloc) => bloc.add(const ConnectToDevice('bt-off-device')),
+      act: (bloc) => bloc.add(const ConnectToDevice('bt-off-device', myNodeId: 1)),
       expect: () => [
         isA<BleConnecting>(),
         isA<BleConnectionError>().having(
@@ -298,25 +298,5 @@ void main() {
       ],
     );
 
-    blocTest<BleConnectionBloc, BleConnectionState>(
-      'T3.3: no emite ConnectionInserted cuando myNodeId es null',
-      build: () {
-        when(mockDatasource.connect(any)).thenAnswer((_) async {});
-        when(mockDatasource.connectionState(any))
-            .thenAnswer((_) => stateController.stream);
-        when(mockDatasource.discoverServices(any))
-            .thenThrow(Exception('fail'));
-        Future.microtask(() => stateController.add(true));
-        return BleConnectionBloc(gatt: mockDatasource, nodeRepository: mockNodeRepo, db: testDb);
-      },
-      act: (bloc) => bloc.add(
-        const ConnectToDevice('no-my-node', myNodeId: null),
-      ),
-      expect: () => [
-        isA<BleConnecting>(),
-        isA<BleConnected>(),
-        // Sin myNodeId, no se inserta connection → no ConnectionInserted
-      ],
-    );
   });
 }

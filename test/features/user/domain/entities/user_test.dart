@@ -69,7 +69,7 @@ void main() {
         createdAt: now,
       );
 
-      expect(user.props.length, 5);
+      expect(user.props.length, 6);
       expect(user.props, containsAll([
         '550e8400-e29b-41d4-a716-446655440000',
         'Usuario',

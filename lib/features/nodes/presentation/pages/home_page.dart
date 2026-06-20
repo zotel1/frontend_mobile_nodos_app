@@ -20,6 +20,7 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/wi
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/widgets/graph_view_3d.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/widgets/node_tooltip.dart';
 import 'package:frontend_mobile_nodos_app/features/scan_session/presentation/bloc/scan_session_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/user/presentation/bloc/user_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
 
 /// Pantalla principal: alterna entre lista de nodos (≤4) y grafo (>4).
@@ -146,9 +147,13 @@ class _HomePageState extends State<HomePage> {
               .map((n) => n.bleAddress)
               .firstOrNull;
           if (bleAddress != null && mounted) {
-            context
-                .read<BleConnectionBloc>()
-                .add(ConnectToDevice(bleAddress));
+            final userState = context.read<UserBloc>().state;
+            final myNodeId = userState is UserLoaded ? userState.user.id : null;
+            if (myNodeId != null) {
+              context
+                  .read<BleConnectionBloc>()
+                  .add(ConnectToDevice(bleAddress, myNodeId: myNodeId));
+            }
           }
           // Cerrar tooltip después de presionar Enlazar
           _tooltipEntry?.remove();
@@ -683,10 +688,7 @@ class _HomePageState extends State<HomePage> {
       itemCount: nodes.length,
       itemBuilder: (context, index) => NodeTile(
         node: nodes[index],
-        onTap: () => Navigator.pushNamed(
-          context,
-          '/node/${nodes[index].id}',
-        ),
+        onTap: () => context.push('/node/${nodes[index].id}'),
       ),
     );
   }
