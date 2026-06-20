@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
@@ -154,6 +156,53 @@ void main() {
       await tester.startGesture(tester.getCenter(viewer));
       await tester.pump();
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  // ─── PR2 T2.7: Centrado automático en barycenter ────────────────
+  // QUÉ: GraphView debe centrar la vista en el barycenter del cluster
+  // la primera vez que recibe un GraphReady (R5.13).
+  // CÓMO: usa animateTo() con addPostFrameCallback para evitar race
+  // con el build del widget.
+
+  group('PR2 T2.7: Centrado automático', () {
+    testWidgets('GraphView renderiza sin error con barycenter provisto',
+        (tester) async {
+      final layout = buildLayout();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GraphView(
+              layout: layout,
+              barycenter: const Offset(200, 200),
+            ),
+          ),
+        ),
+      );
+
+      // No debe lanzar excepción al intentar centrar
+      expect(tester.takeException(), isNull);
+      expect(find.byType(InteractiveViewer), findsOneWidget);
+    });
+
+    testWidgets('GraphView renderiza sin error con barycenter null',
+        (tester) async {
+      final layout = buildLayout();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GraphView(
+              layout: layout,
+            ),
+          ),
+        ),
+      );
+
+      // barycenter null no debe causar error
+      expect(tester.takeException(), isNull);
+      expect(find.byType(InteractiveViewer), findsOneWidget);
     });
   });
 }

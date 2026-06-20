@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/painters/graph_painter.dart';
@@ -11,19 +12,25 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/pa
 /// Sin el controller no se puede mapear coordenadas de tap al espacio
 /// del canvas bajo transformaciones de zoom/pan.
 ///
+/// PR2: [barycenter] opcional permite centrar automáticamente la vista
+/// en el cluster de nodos la primera vez que se recibe (R5.13).
+///
 /// Parámetros:
 /// - [layout]: resultado del algoritmo FR con nodos posicionados y aristas
 /// - [selectedNodeId]: ID del nodo seleccionado (para resaltar en azul)
+/// - [barycenter]: centro geométrico del cluster para auto-centrado inicial
 /// - [onNodeTapped]: callback al tocar un nodo, recibe el ID del nodo
 class GraphView extends StatefulWidget {
   final LayoutResult layout;
   final int? selectedNodeId;
+  final Offset? barycenter;
   final void Function(int nodeId)? onNodeTapped;
 
   const GraphView({
     super.key,
     required this.layout,
     this.selectedNodeId,
+    this.barycenter,
     this.onNodeTapped,
   });
 
@@ -37,6 +44,18 @@ class _GraphViewState extends State<GraphView> {
   final TransformationController _transformController =
       TransformationController();
 
+  /// PR2: evita re-centrar después del primer centrado automático.
+  /// Solo la primera vez que llega un barycenter no-nulo se centra.
+  bool _hasCentered = false;
+
+  @override
+  void didUpdateWidget(GraphView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // PR2: centrar automáticamente en el barycenter la primera vez
+    // que se recibe un barycenter no-nulo con layout convergido.
+    _maybeCenterOnBarycenter();
+  }
+
   @override
   void dispose() {
     _transformController.dispose();
@@ -47,6 +66,11 @@ class _GraphViewState extends State<GraphView> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        // PR2: intentar centrar en el primer frame después del build
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _maybeCenterOnBarycenter();
+        });
+
         return GestureDetector(
           onTapUp: (details) => _handleTap(details.localPosition),
           child: InteractiveViewer(
@@ -67,6 +91,29 @@ class _GraphViewState extends State<GraphView> {
         );
       },
     );
+  }
+
+  /// PR2: Centra la vista en el barycenter del cluster de nodos.
+  ///
+  /// Solo ejecuta el centrado UNA vez (_hasCentered=false) cuando
+  /// [barycenter] no es null. Después de centrar, el usuario puede
+  /// navegar libremente con zoom/pan sin que el widget le pelee.
+  ///
+  /// Usa [Matrix4.identity] con translate para posicionar el viewport
+  /// de modo que el barycenter quede en el centro de la pantalla.
+  /// R5.13 — viewport must auto-center on node cluster at GraphReady.
+  void _maybeCenterOnBarycenter() {
+    if (_hasCentered || widget.barycenter == null) return;
+
+    final size = context.size;
+    if (size == null || size.isEmpty) return;
+
+    _hasCentered = true;
+    _transformController.value = Matrix4.identity()
+      ..translate(
+        -widget.barycenter!.dx + size.width / 2,
+        -widget.barycenter!.dy + size.height / 2,
+      );
   }
 
   /// Transforma la posición del tap al espacio del canvas mediante
