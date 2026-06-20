@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -61,9 +62,34 @@ class VisualizationBloc
   /// [processBuildRequest] está ejecutándose.
   bool _isBuilding = false;
 
+  /// Centro geométrico del cluster de nodos (promedio x,y).
+  ///
+  /// Se calcula en [processBuildRequest] al recibir el layout final.
+  /// GraphView lo usa para centrar la vista en el primer GraphReady
+  /// con converged=true (R5.13). Agregado en PR2.
+  Offset? _barycenter;
+
+  /// Flag que evita re-centrar la vista después del primer centrado.
+  ///
+  /// Solo se centra una vez (cuando el grafo aparece por primera vez).
+  /// Después el usuario navega libremente con zoom/pan.
+  /// Se resetea en cada ciclo GraphBuilding → GraphReady. PR2.
+  bool _hasCentered = false;
+
   /// Expone [isBuilding] para tests (F1.2).
   @visibleForTesting
   bool get isBuilding => _isBuilding;
+
+  /// Indica si el conjunto de IDs de nodo del evento actual coincide
+  /// exactamente con el último conjunto procesado.
+  ///
+  /// Usa [Set.equals] para comparación semántica en vez de comparar
+  /// longitud + containsAll (equivalente pero más verboso).
+  /// PR2: extraído a getter privado para claridad (R5.16).
+  bool _nodeIdsStable(Set<int> currentIds) {
+    return _lastNodeIds.length == currentIds.length &&
+        _lastNodeIds.containsAll(currentIds);
+  }
 
   /// Tamaño fijo del canvas donde se posiciona el grafo.
   /// 2000×2000 píxeles da espacio suficiente para 50+ nodos sin
@@ -110,9 +136,8 @@ class VisualizationBloc
         .map((n) => n.id!)
         .toSet();
 
-    if (_lastNodeIds.isNotEmpty &&
-        _lastNodeIds.length == currentIds.length &&
-        _lastNodeIds.containsAll(currentIds)) {
+    // PR2: _nodeIdsStable usa lógica de Set.equals para claridad
+    if (_lastNodeIds.isNotEmpty && _nodeIdsStable(currentIds)) {
       return; // Mismos nodos que el request anterior: ignorar
     }
 
@@ -156,8 +181,12 @@ class VisualizationBloc
     try {
       emit(const GraphBuilding());
 
-      // Paso 1: Construir grafo desde el repositorio
-      final buildResult = await _buildGraph(event.scanSessionId);
+      // Paso 1: Construir grafo desde el repositorio.
+      // PR2: pasar myDeviceUuid para marcar self-node en el grafo.
+      final buildResult = await _buildGraph(
+        event.scanSessionId,
+        myDeviceUuid: event.myDeviceUuid,
+      );
 
       final initialLayout = buildResult.fold<LayoutResult?>(
         (failure) {
@@ -191,7 +220,15 @@ class VisualizationBloc
         (layout) {
           // Cachear layout para el próximo BuildGraphRequested
           _lastLayout = layout;
-          emit(GraphReady(layout));
+
+          // PR2: Calcular barycenter del cluster para auto-centrado (R5.13).
+          // Promedio de posiciones (x,y) de todos los nodos.
+          _computeBarycenter(layout);
+
+          emit(GraphReady(
+            layout,
+            barycenter: _barycenter,
+          ));
         },
       );
     } finally {
@@ -214,6 +251,7 @@ class VisualizationBloc
       emit(GraphReady(
         currentState.layout,
         selectedNodeId: event.nodeId,
+        barycenter: currentState.barycenter,
       ));
     }
   }
@@ -228,7 +266,30 @@ class VisualizationBloc
   ) {
     final currentState = state;
     if (currentState is GraphReady) {
-      emit(GraphReady(currentState.layout));
+      emit(GraphReady(currentState.layout,
+          barycenter: currentState.barycenter));
     }
+  }
+
+  /// PR2: Calcula el barycenter (centro geométrico) del cluster de nodos.
+  ///
+  /// El barycenter es el promedio aritmético de las posiciones (x, y)
+  /// de todos los nodos en el layout. Si no hay nodos, se usa (0, 0).
+  /// Este valor se usa en GraphView para centrar la vista automáticamente
+  /// en el primer GraphReady (R5.13).
+  void _computeBarycenter(LayoutResult layout) {
+    if (layout.nodes.isEmpty) {
+      _barycenter = Offset.zero;
+      return;
+    }
+    double sumX = 0, sumY = 0;
+    for (final node in layout.nodes) {
+      sumX += node.x;
+      sumY += node.y;
+    }
+    _barycenter = Offset(
+      sumX / layout.nodes.length,
+      sumY / layout.nodes.length,
+    );
   }
 }

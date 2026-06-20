@@ -41,22 +41,35 @@ class _FakeEither_0<L, R> extends _i1.SmartFake implements _i2.Either<L, R> {
 class MockBuildGraph extends _i1.Mock implements _i3.BuildGraph {
   @override
   _i4.Future<_i2.Either<_i5.Failure, _i6.LayoutResult>> call(
-    int? scanSessionId,
-  ) =>
+    int? scanSessionId, {
+    String? myDeviceUuid,
+  }) =>
       (super.noSuchMethod(
-            Invocation.method(#call, [scanSessionId]),
+            Invocation.method(
+              #call,
+              [scanSessionId],
+              {#myDeviceUuid: myDeviceUuid},
+            ),
             returnValue:
                 _i4.Future<_i2.Either<_i5.Failure, _i6.LayoutResult>>.value(
                   _FakeEither_0<_i5.Failure, _i6.LayoutResult>(
                     this,
-                    Invocation.method(#call, [scanSessionId]),
+                    Invocation.method(
+                      #call,
+                      [scanSessionId],
+                      {#myDeviceUuid: myDeviceUuid},
+                    ),
                   ),
                 ),
             returnValueForMissingStub:
                 _i4.Future<_i2.Either<_i5.Failure, _i6.LayoutResult>>.value(
                   _FakeEither_0<_i5.Failure, _i6.LayoutResult>(
                     this,
-                    Invocation.method(#call, [scanSessionId]),
+                    Invocation.method(
+                      #call,
+                      [scanSessionId],
+                      {#myDeviceUuid: myDeviceUuid},
+                    ),
                   ),
                 ),
           )

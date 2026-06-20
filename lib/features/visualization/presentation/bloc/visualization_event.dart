@@ -22,17 +22,22 @@ abstract class VisualizationEvent extends Equatable {
 ///
 /// [scanSessionId] identifica la sesión activa para BuildGraph.
 /// [nodes] provee contexto de cantidad de nodos disponibles.
+/// [myDeviceUuid] UUID del dispositivo propio, para marcar el self-node
+/// en el grafo (R5.13). Opcional — si es null, ningún nodo se marca isSelf.
+/// Agregado en PR2.
 class BuildGraphRequested extends VisualizationEvent {
   final int scanSessionId;
   final List<Node> nodes;
+  final String? myDeviceUuid;
 
   const BuildGraphRequested({
     required this.scanSessionId,
     required this.nodes,
+    this.myDeviceUuid,
   });
 
   @override
-  List<Object?> get props => [scanSessionId, nodes];
+  List<Object?> get props => [scanSessionId, nodes, myDeviceUuid];
 }
 
 /// El usuario tocó un nodo en el grafo.
