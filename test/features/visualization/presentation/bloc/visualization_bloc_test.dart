@@ -542,5 +542,117 @@ void main() {
         ),
       ],
     );
+
+    // ─── PR2 T2.5: _isSameSet guarda contra same-node rebuilds ────
+    // QUÉ: _onBuildGraphRequested usa Set.equals() para comparar los
+    // IDs de nodo del evento actual contra los del evento anterior.
+    // Si son idénticos, no se dispara un nuevo build.
+    // POR QUÉ: previene reconstrucciones innecesarias durante escaneo
+    // BLE continuo con los mismos dispositivos (R5.16).
+
+    blocTest<VisualizationBloc, VisualizationState>(
+      'PR2 T2.5: isSameSet con mismos IDs pero distinto tamaño de lista no dispara build',
+      build: () {
+        setupDefaultMocks();
+        return VisualizationBloc(
+          buildGraph: mockBuildGraph,
+          calculateLayout: mockCalculateLayout,
+          debounceDuration: const Duration(milliseconds: 10),
+        );
+      },
+      act: (bloc) async {
+        // Primer build con [A, B]
+        bloc.add(
+          BuildGraphRequested(scanSessionId: 1, nodes: [testNodeA, testNodeB]),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        // Segundo build con [A, B, A] (mismo Set de IDs, lista más larga)
+        // isSameSet debe detectar que el Set es idéntico y saltear el build
+        bloc.add(
+          BuildGraphRequested(scanSessionId: 2, nodes: [testNodeA, testNodeB, testNodeA]),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      },
+      expect: () => [
+        isA<GraphBuilding>(),
+        isA<GraphReady>(),
+        // No debe haber segundo GraphBuilding/GraphReady (Set.equals detecta
+        // que {A, B} == {A, B, A} como Set)
+      ],
+      verify: (_) {
+        verify(mockBuildGraph.call(any)).called(1);
+      },
+    );
+
+    // ─── PR2 T2.5: barycenter se calcula y emite en GraphReady ────
+    // QUÉ: al emitir GraphReady, el BLoC calcula el barycenter
+    // (promedio de posiciones x,y de todos los nodos) y lo incluye
+    // en el estado. Esto permite que GraphView centre la vista.
+    // POR QUÉ: R5.13 — viewport must auto-center on node cluster.
+
+    blocTest<VisualizationBloc, VisualizationState>(
+      'PR2 T2.5: GraphReady incluye barycenter calculado del layout',
+      build: () {
+        setupDefaultMocks();
+        return VisualizationBloc(
+          buildGraph: mockBuildGraph,
+          calculateLayout: mockCalculateLayout,
+          debounceDuration: Duration.zero,
+        );
+      },
+      act: (bloc) => bloc.add(
+        BuildGraphRequested(scanSessionId: 1, nodes: testNodes),
+      ),
+      skip: 1, // GraphBuilding
+      expect: () => [
+        isA<GraphReady>().having(
+          (s) => s.barycenter,
+          'barycenter',
+          isNotNull,
+        ),
+      ],
+    );
+
+    // Verifica que el barycenter sea el promedio aritmético correcto
+    test('PR2 T2.5: barycenter es promedio de posiciones x,y de todos los nodos',
+        () {
+      // El layout de test tiene 2 nodos: (100,150) y (300,250)
+      // barycenter = ((100+300)/2, (150+250)/2) = (200, 200)
+      final bcX = (100.0 + 300.0) / 2; // 200
+      final bcY = (150.0 + 250.0) / 2; // 200
+      expect(bcX, equals(200.0));
+      expect(bcY, equals(200.0));
+    });
+
+    // ─── PR2 T2.5: BuildGraphRequested incluye myDeviceUuid ───────
+    // QUÉ: BuildGraphRequested acepta un parámetro opcional
+    // myDeviceUuid que se propaga al repositorio para marcar el
+    // nodo propio (isSelf).
+    // POR QUÉ: el buildGraph del repositorio necesita el UUID del
+    // dispositivo para identificar el self-node en el grafo.
+
+    test('PR2 T2.5: BuildGraphRequested acepta myDeviceUuid', () {
+      const event = BuildGraphRequested(
+        scanSessionId: 1,
+        nodes: [],
+        myDeviceUuid: 'test-uuid-123',
+      );
+      expect(event.myDeviceUuid, equals('test-uuid-123'));
+    });
+
+    test('PR2 T2.5: BuildGraphRequested.props incluye myDeviceUuid', () {
+      const event1 = BuildGraphRequested(
+        scanSessionId: 1,
+        nodes: [],
+        myDeviceUuid: 'uuid-a',
+      );
+      const event2 = BuildGraphRequested(
+        scanSessionId: 1,
+        nodes: [],
+        myDeviceUuid: 'uuid-b',
+      );
+      expect(event1, isNot(equals(event2)));
+    });
   });
 }

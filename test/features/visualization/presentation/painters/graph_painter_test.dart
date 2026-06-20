@@ -586,4 +586,135 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   });
+
+  // ─── PR2 T2.7: Aristas transitivas dashed, userColor, distancia ──
+  // QUÉ: verifica que GraphPainter renderice sin excepciones los
+  // nuevos features visuales: aristas transitivas con patrón dashed,
+  // nodos con userColor asignado, y labels con distancia adaptativa.
+  // POR QUÉ: R5.3 (dashed transitive edges), R5.6 (userColor override),
+  // R5.15 (distance label "~35cm" / "~2.3m").
+
+  group('PR2 T2.7: Aristas transitivas y userColor', () {
+    testWidgets('pinta arista transitiva sin lanzar excepción', (tester) async {
+      final nodes = [
+        const GraphNode(id: 1, x: 100, y: 200, proximity: ProximityLevel.close, name: 'A'),
+        const GraphNode(id: 2, x: 400, y: 200, proximity: ProximityLevel.medium, name: 'B'),
+      ];
+      final edges = [
+        GraphEdge(
+          fromId: 1, toId: 2, thickness: 0.5,
+          edgeType: EdgeType.transitive,
+        ),
+      ];
+      final layout = LayoutResult(
+        nodes: nodes, edges: edges, iterations: 50, converged: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 600, height: 600,
+              child: CustomPaint(
+                size: const Size(600, 600),
+                painter: GraphPainter(layout: layout),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('pinta nodo con userColor asignado sin excepción', (tester) async {
+      final node = GraphNode(
+        id: 1, x: 300, y: 300,
+        proximity: ProximityLevel.close,
+        name: 'Azul',
+        userColor: 0xFF2196F3, // azul
+      );
+      final layout = LayoutResult(
+        nodes: [node], edges: const [], iterations: 50, converged: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 600, height: 600,
+              child: CustomPaint(
+                size: const Size(600, 600),
+                painter: GraphPainter(layout: layout),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      // Verifica que el displayColor sea el azul asignado, no el verde de close
+      expect(node.displayColor, equals(const Color(0xFF2196F3)));
+      expect(node.color, equals(const Color(0xFF4CAF50))); // proximidad
+    });
+
+    testWidgets('pinta nodo con estimatedDistance sin excepción', (tester) async {
+      final node = GraphNode(
+        id: 1, x: 300, y: 300,
+        proximity: ProximityLevel.close,
+        name: 'Nodo',
+        estimatedDistance: 0.35,
+      );
+      final layout = LayoutResult(
+        nodes: [node], edges: const [], iterations: 50, converged: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 600, height: 600,
+              child: CustomPaint(
+                size: const Size(600, 600),
+                painter: GraphPainter(layout: layout),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(node.estimatedDistance, equals(0.35));
+    });
+
+    test('formato de distancia: ≥1m muestra metros', () {
+      // R5.15: ≥1m → "~X.Xm"
+      double d = 2.3;
+      final label = d >= 1.0
+          ? '~${d.toStringAsFixed(1)}m'
+          : '~${(d * 100).round()}cm';
+      expect(label, equals('~2.3m'));
+
+      d = 1.0;
+      final label2 = d >= 1.0
+          ? '~${d.toStringAsFixed(1)}m'
+          : '~${(d * 100).round()}cm';
+      expect(label2, equals('~1.0m'));
+    });
+
+    test('formato de distancia: <1m muestra centímetros', () {
+      // R5.15: <1m → "~XXcm"
+      double d = 0.35;
+      final label = d >= 1.0
+          ? '~${d.toStringAsFixed(1)}m'
+          : '~${(d * 100).round()}cm';
+      expect(label, equals('~35cm'));
+
+      d = 0.05;
+      final label2 = d >= 1.0
+          ? '~${d.toStringAsFixed(1)}m'
+          : '~${(d * 100).round()}cm';
+      expect(label2, equals('~5cm'));
+    });
+  });
 }

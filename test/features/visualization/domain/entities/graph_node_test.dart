@@ -181,9 +181,9 @@ void main() {
         name: 'Test',
       );
 
-      // T3.10: props incluyen connectable. T5.1: z agregado.
+      // T3.10: props incluyen connectable. T5.1: z agregado. PR2: userColor+estimatedDistance.
       expect(node.props,
-          [5, 150.0, 250.0, ProximityLevel.medium, 'Test', null, 0, false, true, 0.0]);
+          [5, 150.0, 250.0, ProximityLevel.medium, 'Test', null, 0, false, true, 0.0, null, null]);
     });
 
     test('isKnown returns true when node has a name', () {
@@ -421,7 +421,7 @@ void main() {
         name: 'Test', z: 42.0,
       );
       expect(node.props,
-          [5, 150.0, 250.0, ProximityLevel.medium, 'Test', null, 0, false, true, 42.0]);
+          [5, 150.0, 250.0, ProximityLevel.medium, 'Test', null, 0, false, true, 42.0, null, null]);
     });
 
     test('connectionCount y isSelf están en props para equality', () {
@@ -456,6 +456,105 @@ void main() {
         proximity: ProximityLevel.close,
         connectionCount: 3,
         isSelf: false, // distinto
+      );
+
+      expect(nodeA, equals(nodeB));
+      expect(nodeA, isNot(equals(nodeC)));
+      expect(nodeA, isNot(equals(nodeD)));
+    });
+
+    // ─── PR2 T2.1: userColor, estimatedDistance, displayColor ───
+    // QUÉ: userColor (int? ARGB) permite al usuario asignar un color
+    // que sobrescribe el color de proximidad en el grafo.
+    // displayColor devuelve el userColor como Color si no es null,
+    // caso contrario delega al getter color (proximidad).
+    // POR QUÉ: R5.6 — user-assigned colors must override proximity.
+
+    test('PR2: userColor es null por defecto', () {
+      final node = GraphNode(
+        id: 1,
+        x: 100.0,
+        y: 200.0,
+        proximity: ProximityLevel.close,
+      );
+      expect(node.userColor, isNull);
+    });
+
+    test('PR2: userColor puede especificarse con valor ARGB', () {
+      final node = GraphNode(
+        id: 1,
+        x: 100.0,
+        y: 200.0,
+        proximity: ProximityLevel.close,
+        userColor: 0xFF2196F3, // azul
+      );
+      expect(node.userColor, equals(0xFF2196F3));
+    });
+
+    test('PR2: displayColor usa userColor cuando no es null', () {
+      final node = GraphNode(
+        id: 1,
+        x: 100.0,
+        y: 200.0,
+        proximity: ProximityLevel.close, // verde
+        userColor: 0xFF2196F3, // azul asignado por usuario
+      );
+      expect(node.displayColor, equals(const Color(0xFF2196F3)));
+      // El color de proximidad original sigue siendo verde
+      expect(node.color, equals(const Color(0xFF4CAF50)));
+    });
+
+    test('PR2: displayColor delega a color de proximidad cuando userColor es null', () {
+      final node = GraphNode(
+        id: 1,
+        x: 100.0,
+        y: 200.0,
+        proximity: ProximityLevel.far, // rojo
+      );
+      expect(node.displayColor, equals(const Color(0xFFF44336)));
+    });
+
+    test('PR2: estimatedDistance es null por defecto', () {
+      final node = GraphNode(
+        id: 1,
+        x: 100.0,
+        y: 200.0,
+        proximity: ProximityLevel.close,
+      );
+      expect(node.estimatedDistance, isNull);
+    });
+
+    test('PR2: estimatedDistance puede especificarse con valor double', () {
+      final node = GraphNode(
+        id: 1,
+        x: 100.0,
+        y: 200.0,
+        proximity: ProximityLevel.close,
+        estimatedDistance: 3.16,
+      );
+      expect(node.estimatedDistance, equals(3.16));
+    });
+
+    test('PR2: userColor y estimatedDistance están en props para equality', () {
+      final nodeA = GraphNode(
+        id: 1, x: 100.0, y: 200.0,
+        proximity: ProximityLevel.close,
+        userColor: 0xFF0000FF, estimatedDistance: 1.5,
+      );
+      final nodeB = GraphNode(
+        id: 1, x: 100.0, y: 200.0,
+        proximity: ProximityLevel.close,
+        userColor: 0xFF0000FF, estimatedDistance: 1.5,
+      );
+      final nodeC = GraphNode(
+        id: 1, x: 100.0, y: 200.0,
+        proximity: ProximityLevel.close,
+        userColor: 0xFF00FF00, estimatedDistance: 1.5, // distinto color
+      );
+      final nodeD = GraphNode(
+        id: 1, x: 100.0, y: 200.0,
+        proximity: ProximityLevel.close,
+        userColor: 0xFF0000FF, estimatedDistance: 5.0, // distinta distancia
       );
 
       expect(nodeA, equals(nodeB));

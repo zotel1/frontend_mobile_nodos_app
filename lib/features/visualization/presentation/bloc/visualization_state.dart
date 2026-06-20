@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:equatable/equatable.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
 
@@ -31,14 +33,23 @@ class GraphBuilding extends VisualizationState {
 ///
 /// [selectedNodeId] es no-nulo cuando el usuario tocó un nodo
 /// y el tooltip está visible. Nulo cuando no hay selección activa.
+///
+/// [barycenter] es el centro geométrico del cluster de nodos
+/// (promedio de todas las posiciones x,y). Se usa en GraphView
+/// para centrar la vista automáticamente en el primer GraphReady (R5.13).
+/// Agregado en PR2.
 class GraphReady extends VisualizationState {
   final LayoutResult layout;
   final int? selectedNodeId;
 
-  const GraphReady(this.layout, {this.selectedNodeId});
+  /// Centro geométrico del cluster: promedio de posiciones (x,y).
+  /// null si el layout está vacío (no debería ocurrir en este estado).
+  final Offset? barycenter;
+
+  const GraphReady(this.layout, {this.selectedNodeId, this.barycenter});
 
   @override
-  List<Object?> get props => [layout, selectedNodeId];
+  List<Object?> get props => [layout, selectedNodeId, barycenter];
 }
 
 /// Ocurrió un error al construir el grafo o calcular su layout.

@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_edge.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_node.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
 
@@ -48,17 +49,19 @@ class GraphPainter extends CustomPainter {
 
   /// Capa 1: Aristas entre nodos co-detectados.
   ///
-  /// Dibuja curvas Bezier cuadráticas cuyo color interpola entre verde
-  /// (RSSI fuerte) y rojo (RSSI débil) según el grosor de la arista.
+  /// Dibuja curvas Bezier cuadráticas cuyo estilo depende de [EdgeType]:
+  /// - [EdgeType.direct]: sólida, opacidad completa, color por grosor.
+  /// - [EdgeType.transitive]: patrón dashed [5, 5], opacidad 50% (R5.3).
   ///
-  /// Cada arista se curva proporcionalmente a su longitud (LinkedIn Maps style).
-  /// El punto de control se desplaza perpendicularmente al punto medio
-  /// con curvatura = edge.length * 0.2.
+  /// PR2: soporte para aristas transitivas con renderizado diferenciado.
   void _drawEdges(Canvas canvas, Map<int, GraphNode> nodeMap) {
     for (final edge in layout.edges) {
       final fromNode = nodeMap[edge.fromId];
       final toNode = nodeMap[edge.toId];
       if (fromNode == null || toNode == null) continue;
+
+      // PR2: estilo según edgeType
+      final isTransitive = edge.edgeType == EdgeType.transitive;
 
       // Color interpolado: grosor 1 → rojizo, grosor 3 → verdoso
       final t = (edge.thickness - 1.0) / 2.0; // 0..1
@@ -69,7 +72,9 @@ class GraphPainter extends CustomPainter {
       )!;
 
       final paint = Paint()
-        ..color = edgeColor
+        ..color = isTransitive
+            ? edgeColor.withAlpha(128) // 50% opacity para transitivas
+            : edgeColor
         ..strokeWidth = edge.thickness
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round;
@@ -78,12 +83,17 @@ class GraphPainter extends CustomPainter {
       final to = Offset(toNode.x, toNode.y);
 
       // Curva Bezier cuadrática: punto de control desplazado
-      // perpendicularmente al punto medio de la arista (T2.4).
       final cp = computeBezierControlPoint(from, to);
       final path = Path()
         ..moveTo(from.dx, from.dy)
         ..quadraticBezierTo(cp.dx, cp.dy, to.dx, to.dy);
-      canvas.drawPath(path, paint);
+
+      // PR2: patrón dashed [5, 5] para aristas transitivas
+      if (isTransitive) {
+        _drawDashedPath(canvas, path, paint, dashWidth: 5.0, gapWidth: 5.0);
+      } else {
+        canvas.drawPath(path, paint);
+      }
     }
   }
 
@@ -149,20 +159,19 @@ class GraphPainter extends CustomPainter {
 
   /// Capa 3: Nodos como círculos rellenos con borde blanco.
   ///
-  /// Nodos conocidos (isKnown=true): relleno con color de proximidad
-  /// y borde blanco sólido de 2px.
+  /// Nodos conocidos (isKnown=true): relleno con [GraphNode.displayColor]
+  /// (que respeta userColor > proximidad, R5.6) y borde blanco sólido de 2px.
   ///
   /// Nodos desconocidos (isKnown=false): relleno gris (#9E9E9E) y
-  /// borde blanco discontinuo (dashed) de 1.5px — distinción visual
-  /// para que el usuario sepa qué dispositivos aún no identificó.
+  /// borde blanco discontinuo (dashed) de 1.5px.
   void _drawNodes(Canvas canvas) {
     for (final node in layout.nodes) {
       final center = Offset(node.x, node.y);
 
       if (node.isKnown) {
-        // Relleno con color de proximidad
+        // PR2: usar displayColor que respeta userColor (R5.6)
         final fillPaint = Paint()
-          ..color = node.color
+          ..color = node.displayColor
           ..style = PaintingStyle.fill;
         canvas.drawCircle(center, node.radius, fillPaint);
 
@@ -243,15 +252,55 @@ class GraphPainter extends CustomPainter {
     }
   }
 
+  /// PR2: Dibuja un path con patrón discontinuo (dashed).
+  ///
+  /// Útil para aristas transitivas (R5.3) que deben distinguirse
+  /// visualmente de las aristas directas. Similar a [_drawDashedCircle]
+  /// pero para paths arbitrarios (ej. curvas Bezier).
+  ///
+  /// [dashWidth]: ancho de cada segmento pintado (default 5px).
+  /// [gapWidth]: espacio entre segmentos (default 5px).
+  void _drawDashedPath(
+    Canvas canvas,
+    Path path,
+    Paint paint, {
+    double dashWidth = 5.0,
+    double gapWidth = 5.0,
+  }) {
+    final metrics = path.computeMetrics();
+    for (final metric in metrics) {
+      double distance = 0;
+      while (distance < metric.length) {
+        final dashEnd = min(distance + dashWidth, metric.length);
+        final extractPath = metric.extractPath(distance, dashEnd);
+        canvas.drawPath(extractPath, paint);
+        distance += dashWidth + gapWidth;
+      }
+    }
+  }
+
   /// Capa 4: Etiquetas de texto debajo de cada nodo.
   ///
-  /// Muestra el nombre del nodo o "Desconocido" si no tiene nombre,
-  /// en texto blanco de 12px centrado debajo del círculo.
+  /// Muestra el nombre del nodo (o "Desconocido") en texto blanco de 12px.
+  /// Si [GraphNode.estimatedDistance] no es null, agrega una segunda línea
+  /// con la distancia en formato adaptativo: ≥1m → "~2.3m", <1m → "~35cm" (R5.15).
+  /// PR2: soporte multilínea + distance label.
   void _drawLabels(Canvas canvas) {
     for (final node in layout.nodes) {
+      String labelText = node.label;
+
+      // PR2: agregar distancia debajo del nombre si está disponible
+      if (node.estimatedDistance != null) {
+        final d = node.estimatedDistance!;
+        final distanceLabel = d >= 1.0
+            ? '~${d.toStringAsFixed(1)}m'
+            : '~${(d * 100).round()}cm';
+        labelText += '\n$distanceLabel';
+      }
+
       final textPainter = TextPainter(
         text: TextSpan(
-          text: node.label,
+          text: labelText,
           style: const TextStyle(
             color: Colors.white,
             fontSize: 12.0,
@@ -259,7 +308,8 @@ class GraphPainter extends CustomPainter {
           ),
         ),
         textDirection: TextDirection.ltr,
-        maxLines: 1,
+        textAlign: TextAlign.center,
+        maxLines: 3,
         ellipsis: '…',
       )..layout(maxWidth: 120);
 

@@ -16,11 +16,15 @@ class BuildGraph {
 
   /// Construye el grafo para la sesión de escaneo [scanSessionId].
   ///
+  /// [myDeviceUuid] opcional identifica el dispositivo propio para
+  /// marcar el self-node con isSelf=true en el grafo.
   /// Retorna [Right] con el LayoutResult si la construcción es exitosa,
   /// o [Left] con un Failure si ocurre un error inesperado.
-  Future<Either<Failure, LayoutResult>> call(int scanSessionId) async {
+  Future<Either<Failure, LayoutResult>> call(int scanSessionId,
+      {String? myDeviceUuid}) async {
     try {
-      final result = await _repository.buildGraph(scanSessionId);
+      final result = await _repository.buildGraph(scanSessionId,
+          myDeviceUuid: myDeviceUuid);
       return Right(result);
     } catch (e) {
       return Left(UnexpectedFailure(e.toString()));

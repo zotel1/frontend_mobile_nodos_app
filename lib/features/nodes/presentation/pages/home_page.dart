@@ -551,7 +551,8 @@ class _HomePageState extends State<HomePage> {
           return switch (vizState) {
             VisualizationInitial() || GraphBuilding() =>
               const Center(child: CircularProgressIndicator()),
-            GraphReady(:final layout, :final selectedNodeId) =>
+            GraphReady(:final layout, :final selectedNodeId,
+                :final barycenter) =>
               _is3D
                   // T5.7: Modo 3D — WebView con Three.js
                   ? GraphView3D(
@@ -567,6 +568,7 @@ class _HomePageState extends State<HomePage> {
                       key: _graphViewKey,
                       layout: layout,
                       selectedNodeId: selectedNodeId,
+                      barycenter: barycenter,
                       onNodeTapped: (nodeId) {
                         context
                             .read<VisualizationBloc>()
