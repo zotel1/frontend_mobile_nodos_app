@@ -3,11 +3,13 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart' hide Column;
 import 'package:equatable/equatable.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_gatt_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 // ──────────────────────── Events ────────────────────────
 
@@ -186,6 +188,22 @@ class BleConnectionBloc
     Emitter<BleConnectionState> emit,
   ) async {
     emit(BleConnecting(remoteId: event.remoteId));
+
+    // R5.8: Verificar permiso BLUETOOTH_CONNECT en runtime (Android 12+).
+    // Si el permiso no está concedido, emitir error sin reintento.
+    // En entornos sin platform channel (tests, web) se asume concedido.
+    try {
+      final permission = await Permission.bluetoothConnect.request();
+      if (!permission.isGranted) {
+        emit(const BleConnectionError(
+          message: 'Permiso BLUETOOTH_CONNECT requerido',
+          retryable: false,
+        ));
+        return;
+      }
+    } catch (_) {
+      // Entorno sin platform channel — continuar sin verificación
+    }
 
     try {
       await _gatt.connect(event.remoteId);
