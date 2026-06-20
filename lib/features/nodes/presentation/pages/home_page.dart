@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:drift/drift.dart' hide Column;
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
-import 'package:frontend_mobile_nodos_app/core/di/injection_container.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
@@ -22,6 +19,8 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bl
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/widgets/graph_view.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/widgets/graph_view_3d.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/widgets/node_tooltip.dart';
+import 'package:frontend_mobile_nodos_app/features/scan_session/presentation/bloc/scan_session_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/user/presentation/bloc/user_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
 
 /// Pantalla principal: alterna entre lista de nodos (≤4) y grafo (>4).
@@ -48,10 +47,6 @@ class _HomePageState extends State<HomePage> {
   /// T5.6: Controla si el grafo se renderiza en 3D (WebView) o 2D (CustomPainter).
   /// false = 2D (GraphView), true = 3D (GraphView3D).
   bool _is3D = false;
-
-  /// ID de la sesión de escaneo activa para el grafo.
-  /// Se crea bajo demanda cuando se transiciona a modo grafo.
-  int? _scanSessionId;
 
   /// Guard contra stacking de [BluetoothOffDialog].
   ///
@@ -152,9 +147,13 @@ class _HomePageState extends State<HomePage> {
               .map((n) => n.bleAddress)
               .firstOrNull;
           if (bleAddress != null && mounted) {
-            context
-                .read<BleConnectionBloc>()
-                .add(ConnectToDevice(bleAddress));
+            final userState = context.read<UserBloc>().state;
+            final myNodeId = userState is UserLoaded ? userState.user.id : null;
+            if (myNodeId != null) {
+              context
+                  .read<BleConnectionBloc>()
+                  .add(ConnectToDevice(bleAddress, myNodeId: myNodeId));
+            }
           }
           // Cerrar tooltip después de presionar Enlazar
           _tooltipEntry?.remove();
@@ -357,6 +356,12 @@ class _HomePageState extends State<HomePage> {
                 .add(SyncBleDevices(bleState.devices));
             // T2.4: Registrar timestamp del último escaneo con dispositivos
             _lastScanTime = DateTime.now();
+            // Iniciar sesión de escaneo si no hay una activa
+            final sessionBloc = context.read<ScanSessionBloc>();
+            final sessionState = sessionBloc.state;
+            if (sessionState is! SessionActive) {
+              sessionBloc.add(const StartSession());
+            }
           }
           // Mostrar diálogo cuando BT está apagado.
           // El guard _dialogVisible previene stacking de múltiples diálogos.
@@ -380,10 +385,24 @@ class _HomePageState extends State<HomePage> {
             }
             // Limpiar nodos cuando BT se apaga
             context.read<NodeListBloc>().add(const ClearNodes());
+            // Finalizar sesión activa
+            final sessionBloc = context.read<ScanSessionBloc>();
+            final sessionState = sessionBloc.state;
+            if (sessionState is SessionActive) {
+              sessionBloc.add(EndSession(sessionState.sessionId));
+            }
           }
           // Si BT vuelve a estar disponible, reseteamos el guard.
           if (bleState is BleStopped || bleState is BleScanning) {
             _dialogVisible = false;
+          }
+          // Finalizar sesión cuando el escaneo se detiene
+          if (bleState is BleStopped) {
+            final sessionBloc = context.read<ScanSessionBloc>();
+            final sessionState = sessionBloc.state;
+            if (sessionState is SessionActive) {
+              sessionBloc.add(EndSession(sessionState.sessionId));
+            }
           }
         },
         child: BlocListener<NodeListBloc, NodeListState>(
@@ -394,23 +413,51 @@ class _HomePageState extends State<HomePage> {
           if (nodeListState is NodeListLoaded) {
             // T3.8: Guardar la lista actual de nodos para mapeo GraphNode.id → bleAddress
             _currentNodes = nodeListState.nodes;
+            // Registrar nodos en la sesión activa del ScanSessionBloc
+            final sessionBloc = context.read<ScanSessionBloc>();
+            final sessionState = sessionBloc.state;
+            if (sessionState is SessionActive &&
+                nodeListState.nodes.isNotEmpty) {
+              final nodeIds = nodeListState.nodes
+                  .map((n) => n.id)
+                  .whereType<int>()
+                  .toList();
+              if (nodeIds.isNotEmpty) {
+                sessionBloc
+                    .add(AddNodesToSession(sessionState.sessionId, nodeIds));
+              }
+            }
             _updateViewMode(nodeListState.nodes, context);
           }
         },
-          child: BlocBuilder<BleBloc, BleState>(
-            builder: (context, bleState) {
-              return Column(
-                children: [
-                  if (bleState is BluetoothOff)
-                    BluetoothOffBanner(
-                      onGoToSettings: () {
-                        const AndroidIntent(action: 'android.settings.BLUETOOTH_SETTINGS').launch();
-                      },
-                    ),
-                  // T2.4: Info bar — conteo de nodos y hora último escaneo
-                  BlocBuilder<NodeListBloc, NodeListState>(
-                    builder: (context, nodeState) {
-                      if (nodeState is NodeListLoaded) {
+          child: BlocListener<ScanSessionBloc, ScanSessionState>(
+            listener: (context, sessionState) {
+              if (sessionState is SessionActive) {
+                debugPrint(
+                    'Sesión ${sessionState.sessionId} activa — ${sessionState.nodeCount} nodos');
+              } else if (sessionState is SessionEnded) {
+                debugPrint('Sesión finalizada');
+              } else if (sessionState is SessionError) {
+                debugPrint('Error de sesión: ${sessionState.message}');
+              }
+            },
+            child: BlocBuilder<BleBloc, BleState>(
+              builder: (context, bleState) {
+                return Column(
+                  children: [
+                    if (bleState is BluetoothOff)
+                      BluetoothOffBanner(
+                        onGoToSettings: () {
+                          const AndroidIntent(
+                                  action:
+                                      'android.settings.BLUETOOTH_SETTINGS')
+                              .launch();
+                        },
+                      ),
+                    // T2.4: Info bar — conteo de nodos y hora último escaneo
+                    BlocBuilder<NodeListBloc, NodeListState>(
+                      builder: (context, nodeState) {
+                        if (nodeState is NodeListLoaded) {
                         return _buildInfoBar(nodeState.nodes.length);
                       }
                       return const SizedBox.shrink();
@@ -422,6 +469,7 @@ class _HomePageState extends State<HomePage> {
                 ],
               );
             },
+            ),
           ),
       ),
       ),
@@ -434,13 +482,8 @@ class _HomePageState extends State<HomePage> {
   ///
   /// Umbrales (T3.8: threshold reducido a ≥1 — R5.12):
   /// - ≥1 nodo: activa modo grafo (si no estaba activo) y dispara
-  ///   la construcción/reconstrucción del layout.
+  ///   la construcción del layout usando la sesión activa del ScanSessionBloc.
   /// - 0 nodos: vuelve a modo lista (si estaba en grafo).
-  ///
-  /// Cuando se activa el grafo, asegura que exista una sesión de escaneo
-  /// en la BD y dispara [BuildGraphRequested] en el [VisualizationBloc].
-  /// El debounce interno del BLoC (1s) evita procesamiento excesivo
-  /// cuando el conteo de nodos cambia rápidamente durante el escaneo.
   void _updateViewMode(List<Node> nodes, BuildContext context) {
     final count = nodes.length;
 
@@ -448,62 +491,17 @@ class _HomePageState extends State<HomePage> {
       if (!_showingGraph) {
         setState(() => _showingGraph = true);
       }
-      _triggerGraphBuild(nodes, context);
+      // Disparar construcción del grafo con la sesión activa
+      final sessionState = context.read<ScanSessionBloc>().state;
+      if (sessionState is SessionActive) {
+        context.read<VisualizationBloc>().add(BuildGraphRequested(
+          scanSessionId: sessionState.sessionId,
+          nodes: nodes,
+        ));
+      }
     } else if (_showingGraph) {
       setState(() => _showingGraph = false);
     }
-  }
-
-  /// Crea una sesión de escaneo bajo demanda y dispara la construcción
-  /// del grafo en el [VisualizationBloc].
-  ///
-  /// Problema que resuelve: la tabla [scanSessionNodes] es la fuente de
-  /// verdad para las aristas del grafo. Sin datos en esta tabla,
-  /// GraphRepositoryImpl.buildGraph() retorna un LayoutResult vacío.
-  /// Aquí aseguramos que los nodos actuales estén registrados antes
-  /// de solicitar el layout.
-  Future<void> _triggerGraphBuild(
-    List<Node> nodes,
-    BuildContext context,
-  ) async {
-    final db = sl<AppDatabase>();
-    final vizBloc = context.read<VisualizationBloc>();
-
-    // Reusar sesión existente o crear una nueva
-    int sessionId;
-    if (_scanSessionId != null) {
-      sessionId = _scanSessionId!;
-    } else {
-      sessionId = await db.into(db.scanSessions).insert(
-            ScanSessionsCompanion.insert(
-              startedAt: DateTime.now(),
-              nodesDetected: nodes.length,
-            ),
-          );
-      _scanSessionId = sessionId;
-    }
-
-    // Insertar nodos en scan_session_nodes (insertOrIgnore evita duplicados)
-    for (final node in nodes) {
-      if (node.id != null) {
-        await db.into(db.scanSessionNodes).insert(
-              ScanSessionNodesCompanion.insert(
-                sessionId: sessionId,
-                nodeId: node.id!,
-                rssi: node.rssiHistory.isNotEmpty ? node.rssiHistory.last : -100,
-              ),
-              mode: InsertMode.insertOrIgnore,
-            );
-      }
-    }
-
-    if (!mounted) return;
-
-    // Disparar construcción del grafo con debounce interno del BLoC
-    vizBloc.add(BuildGraphRequested(
-      scanSessionId: sessionId,
-      nodes: nodes,
-    ));
   }
 
   /// T2.4: Construye la barra de info superior con conteo de nodos y
@@ -690,10 +688,7 @@ class _HomePageState extends State<HomePage> {
       itemCount: nodes.length,
       itemBuilder: (context, index) => NodeTile(
         node: nodes[index],
-        onTap: () => Navigator.pushNamed(
-          context,
-          '/node/${nodes[index].id}',
-        ),
+        onTap: () => context.push('/node/${nodes[index].id}'),
       ),
     );
   }

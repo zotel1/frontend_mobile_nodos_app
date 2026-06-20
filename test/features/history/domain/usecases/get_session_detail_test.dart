@@ -1,77 +1,69 @@
-import 'package:drift/drift.dart' hide Column, isNull;
+import 'package:dartz/dartz.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:frontend_mobile_nodos_app/core/database/app_database.dart' hide ScanSession;
+import 'package:mockito/mockito.dart';
+import 'package:mockito/annotations.dart';
+import 'package:frontend_mobile_nodos_app/core/errors/failures.dart';
+import 'package:frontend_mobile_nodos_app/features/history/domain/entities/session_node.dart';
+import 'package:frontend_mobile_nodos_app/features/history/domain/repositories/history_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/history/domain/usecases/get_session_detail.dart';
 
-/// T3.3: Tests para GetSessionDetail — consulta nodos de una sesión
-/// con sus valores RSSI, uniendo scan_session_nodes con nodes.
+@GenerateNiceMocks([MockSpec<HistoryRepository>()])
+import 'get_session_detail_test.mocks.dart';
+
+/// T3.3: Tests para GetSessionDetail — caso de uso que delega la
+/// consulta de nodos de sesión al HistoryRepository.
 ///
-/// S4.3: Sesión con 2 nodos → detalle muestra ambos con RSSI y nivel
-/// de proximidad.
+/// S4.3: Retorna lista de nodos con RSSI y proximidad desde el repo.
 void main() {
-  late AppDatabase db;
+  late MockHistoryRepository mockRepo;
   late GetSessionDetail useCase;
 
-  setUp(() async {
-    db = AppDatabase.inMemory();
-    useCase = GetSessionDetail(db);
+  setUp(() {
+    mockRepo = MockHistoryRepository();
+    useCase = GetSessionDetail(mockRepo);
   });
 
-  tearDown(() async {
-    await db.close();
-  });
-
-  // ── Helpers ──
-
-  Future<int> insertSession(DateTime startedAt) async {
-    return db.into(db.scanSessions).insert(
-          ScanSessionsCompanion.insert(
-            startedAt: startedAt,
-            nodesDetected: 0,
-          ),
-        );
-  }
-
-  Future<int> insertNode(String address, [String? name]) async {
-    return db.into(db.nodes).insert(
-          NodesCompanion(
-            bleAddress: Value(address),
-            name: Value(name),
-            firstSeen: Value(DateTime(2026, 6, 1)),
-            lastSeen: Value(DateTime(2026, 6, 19)),
-            lastRssi: const Value(-60),
-            proximityZone: const Value('medium'),
-            rssiHistory: const Value('[-60]'),
-          ),
-        );
-  }
-
-  Future<void> insertSessionNode(int sessionId, int nodeId,
-      [int rssi = -60]) async {
-    await db.into(db.scanSessionNodes).insert(
-          ScanSessionNodesCompanion.insert(
-            sessionId: sessionId,
-            nodeId: nodeId,
-            rssi: rssi,
-          ),
-          mode: InsertMode.insertOrIgnore,
-        );
-  }
+  final testNodes = [
+    SessionNode(
+      id: 1,
+      sessionId: 1,
+      nodeId: 10,
+      rssi: -45,
+      nodeName: 'Nodo Alpha',
+      proximityLevel: 'close',
+    ),
+    SessionNode(
+      id: 2,
+      sessionId: 1,
+      nodeId: 20,
+      rssi: -75,
+      nodeName: 'Nodo Beta',
+      proximityLevel: 'medium',
+    ),
+  ];
 
   group('T3.3: GetSessionDetail', () {
-    test('retorna lista vacía cuando la sesión no tiene nodos', () async {
-      final session = await insertSession(DateTime(2026, 6, 19));
+    test('retorna lista de nodos cuando el repositorio retorna Right',
+        () async {
+      when(mockRepo.getSessionDetail(1))
+          .thenAnswer((_) async => Right(testNodes));
 
-      final result = await useCase(GetSessionDetailParams(sessionId: session));
+      final result =
+          await useCase(GetSessionDetailParams(sessionId: 1));
 
       expect(result.isRight(), isTrue);
       result.fold(
         (_) => fail('Expected Right, got Left'),
-        (nodes) => expect(nodes, isEmpty),
+        (nodes) => expect(nodes, equals(testNodes)),
       );
+      verify(mockRepo.getSessionDetail(1)).called(1);
     });
 
-    test('retorna lista vacía cuando la sesión no existe', () async {
+    test('retorna lista vacía cuando el repositorio retorna vacío',
+        () async {
+      when(mockRepo.getSessionDetail(any))
+          .thenAnswer((_) async => const Right(<SessionNode>[]));
+
       final result =
           await useCase(GetSessionDetailParams(sessionId: 999));
 
@@ -82,83 +74,17 @@ void main() {
       );
     });
 
-    test('retorna nodos con RSSI y nombre para una sesión con 2 nodos',
-        () async {
-      final session = await insertSession(DateTime(2026, 6, 19));
-      final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Nodo Alpha');
-      final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Nodo Beta');
+    test('retorna Left con Failure cuando el repositorio falla', () async {
+      when(mockRepo.getSessionDetail(any)).thenAnswer(
+          (_) async => Left(UnexpectedFailure('DB error')));
 
-      await insertSessionNode(session, nodeA, -45); // close range
-      await insertSessionNode(session, nodeB, -75); // medium range
+      final result =
+          await useCase(GetSessionDetailParams(sessionId: 1));
 
-      final result = await useCase(GetSessionDetailParams(sessionId: session));
-
+      expect(result.isLeft(), isTrue);
       result.fold(
-        (_) => fail('Expected Right, got Left'),
-        (nodes) {
-          expect(nodes.length, equals(2));
-
-          // Verificar que ambos nodos están presentes con sus datos
-          final nodeAData =
-              nodes.firstWhere((n) => n.nodeId == nodeA);
-          expect(nodeAData.rssi, equals(-45));
-          expect(nodeAData.nodeName, equals('Nodo Alpha'));
-
-          final nodeBData =
-              nodes.firstWhere((n) => n.nodeId == nodeB);
-          expect(nodeBData.rssi, equals(-75));
-          expect(nodeBData.nodeName, equals('Nodo Beta'));
-        },
-      );
-    });
-
-    test('retorna nombre null para nodos sin nombre asignado', () async {
-      final session = await insertSession(DateTime(2026, 6, 19));
-      final node = await insertNode('FF:EE:DD:CC:BB:01', null); // sin nombre
-
-      await insertSessionNode(session, node, -85);
-
-      final result = await useCase(GetSessionDetailParams(sessionId: session));
-
-      result.fold(
-        (_) => fail('Expected Right, got Left'),
-        (nodes) {
-          expect(nodes.length, equals(1));
-          expect(nodes[0].nodeName, isNull);
-          expect(nodes[0].rssi, equals(-85));
-        },
-      );
-    });
-
-    test('calcula proximityLevel correctamente desde RSSI', () async {
-      final session = await insertSession(DateTime(2026, 6, 19));
-      final closeNode = await insertNode('11:22:33:44:55:01');
-      final mediumNode = await insertNode('11:22:33:44:55:02');
-      final farNode = await insertNode('11:22:33:44:55:03');
-
-      // RSSI > -70 → close
-      await insertSessionNode(session, closeNode, -50);
-      // -85 <= RSSI <= -70 → medium
-      await insertSessionNode(session, mediumNode, -75);
-      // RSSI < -85 → far
-      await insertSessionNode(session, farNode, -90);
-
-      final result = await useCase(GetSessionDetailParams(sessionId: session));
-
-      result.fold(
-        (_) => fail('Expected Right, got Left'),
-        (nodes) {
-          expect(nodes.length, equals(3));
-
-          final close = nodes.firstWhere((n) => n.nodeId == closeNode);
-          expect(close.proximityLevel, equals('close'));
-
-          final medium = nodes.firstWhere((n) => n.nodeId == mediumNode);
-          expect(medium.proximityLevel, equals('medium'));
-
-          final far = nodes.firstWhere((n) => n.nodeId == farNode);
-          expect(far.proximityLevel, equals('far'));
-        },
+        (failure) => expect(failure, isA<UnexpectedFailure>()),
+        (_) => fail('Expected Left, got Right'),
       );
     });
   });

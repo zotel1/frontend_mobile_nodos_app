@@ -73,17 +73,6 @@ class VisualizationBloc
   @visibleForTesting
   bool get isBuilding => _isBuilding;
 
-  /// Indica si el conjunto de IDs de nodo del evento actual coincide
-  /// exactamente con el último conjunto procesado.
-  ///
-  /// Usa [Set.equals] para comparación semántica en vez de comparar
-  /// longitud + containsAll (equivalente pero más verboso).
-  /// PR2: extraído a getter privado para claridad (R5.16).
-  bool _nodeIdsStable(Set<int> currentIds) {
-    return _lastNodeIds.length == currentIds.length &&
-        _lastNodeIds.containsAll(currentIds);
-  }
-
   /// Tamaño fijo del canvas donde se posiciona el grafo.
   /// 2000×2000 píxeles da espacio suficiente para 50+ nodos sin
   /// solapamiento.
@@ -129,12 +118,16 @@ class VisualizationBloc
         .map((n) => n.id!)
         .toSet();
 
-    // PR2: _nodeIdsStable usa lógica de Set.equals para claridad
-    if (_lastNodeIds.isNotEmpty && _nodeIdsStable(currentIds)) {
-      return; // Mismos nodos que el request anterior: ignorar
+    // Si la cantidad de nodos cambió, siempre procesar (nodo nuevo o removido).
+    // Solo hacer dedup cuando la cantidad Y el conjunto son idénticos.
+    if (_lastNodeIds.isNotEmpty) {
+      if (_lastNodeIds.length != currentIds.length) {
+        // Count cambió: nuevo nodo detectado o removido → procesar
+      } else if (_lastNodeIds.containsAll(currentIds)) {
+        return; // Mismos nodos: ignorar
+      }
     }
 
-    // Actualizar el cache de últimos IDs ANTES de incrementar el contador
     _lastNodeIds
       ..clear()
       ..addAll(currentIds);

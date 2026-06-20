@@ -1,5 +1,6 @@
 import 'package:get_it/get_it.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_scanner_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_advertiser_datasource.dart';
@@ -36,10 +37,15 @@ import 'package:frontend_mobile_nodos_app/features/visualization/domain/reposito
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/usecases/build_graph.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/usecases/calculate_layout.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/history/domain/repositories/history_repository.dart';
+import 'package:frontend_mobile_nodos_app/features/history/data/repositories/history_repository_impl.dart';
 import 'package:frontend_mobile_nodos_app/features/history/domain/usecases/get_scan_sessions.dart';
 import 'package:frontend_mobile_nodos_app/features/history/domain/usecases/get_session_detail.dart';
 import 'package:frontend_mobile_nodos_app/features/history/domain/usecases/get_history_stats.dart';
 import 'package:frontend_mobile_nodos_app/features/history/presentation/bloc/history_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/scan_session/domain/repositories/scan_session_repository.dart';
+import 'package:frontend_mobile_nodos_app/features/scan_session/data/datasources/scan_session_drift_datasource.dart';
+import 'package:frontend_mobile_nodos_app/features/scan_session/presentation/bloc/scan_session_bloc.dart';
 
 final sl = GetIt.instance;
 
@@ -52,6 +58,11 @@ Future<void> initDependencies() async {
 
   // ── Database ──
   sl.registerLazySingleton<AppDatabase>(() => AppDatabase());
+
+  // ── SharedPreferences ──
+  // Usado para persistir preferencias de usuario (tema, etc.)
+  final prefs = await SharedPreferences.getInstance();
+  sl.registerLazySingleton<SharedPreferences>(() => prefs);
 
   // ── BLE data sources ──
   sl.registerLazySingleton<BleScannerDataSource>(
@@ -117,12 +128,16 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton(() => const CalculateLayout());
 
   // ── History ──
+  // Repositorio de historial: abstrae las queries SQL sobre Drift.
+  // Los casos de uso dependen de esta interfaz, no de AppDatabase.
+  sl.registerLazySingleton<HistoryRepository>(
+    () => HistoryRepositoryImpl(sl<AppDatabase>()),
+  );
   // Use cases para consultas de historial y estadísticas.
-  // Cada use case recibe AppDatabase directamente para queries SQL
-  // via Drift customSelect (COUNT, AVG, GROUP BY, JOINs).
-  sl.registerLazySingleton(() => GetScanSessions(sl()));
-  sl.registerLazySingleton(() => GetSessionDetail(sl()));
-  sl.registerLazySingleton(() => GetHistoryStats(sl()));
+  // Cada use case recibe HistoryRepository en lugar de AppDatabase.
+  sl.registerLazySingleton(() => GetScanSessions(sl<HistoryRepository>()));
+  sl.registerLazySingleton(() => GetSessionDetail(sl<HistoryRepository>()));
+  sl.registerLazySingleton(() => GetHistoryStats(sl<HistoryRepository>()));
 
   // ── BLoCs (factory — new instance per BlocProvider) ──
   sl.registerFactory(() => BleBloc(repository: sl()));
@@ -150,6 +165,7 @@ Future<void> initDependencies() async {
       updateName: sl(),
       updateColor: sl(),
       userRepository: sl(),
+      prefs: sl(),
     ),
   );
   // VisualizationBloc: orquesta BuildGraph + CalculateLayout con debounce.
@@ -169,5 +185,14 @@ Future<void> initDependencies() async {
       getSessionDetail: sl(),
       getHistoryStats: sl(),
     ),
+  );
+
+  // ScanSessionBloc: gestiona el ciclo de vida de sesiones de escaneo.
+  // Repositorio como LazySingleton, BLoC como Factory.
+  sl.registerLazySingleton<ScanSessionRepository>(
+    () => ScanSessionRepositoryImpl(sl<AppDatabase>()),
+  );
+  sl.registerFactory<ScanSessionBloc>(
+    () => ScanSessionBloc(repository: sl()),
   );
 }

@@ -128,5 +128,13 @@ void main() {
       ], 0x004C); // Apple
       expect(type, 'Nodo');
     });
+
+    // PR2: UUID Nodos detectado sin otros servicios — caso advertising real
+    test('Nodos UUID único en lista de services → "Nodo" (advertising real)', () {
+      final type = DeviceClassifier.classify([
+        '4fafc201-1fb5-459e-8fcc-c5c9c331914b',
+      ], null);
+      expect(type, 'Nodo');
+    });
   });
 }

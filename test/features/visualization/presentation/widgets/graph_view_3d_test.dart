@@ -28,6 +28,9 @@ class _StubWebViewController extends PlatformWebViewController {
   final List<JavaScriptChannelParams> channels = [];
   final List<String> executedJs = [];
 
+  /// Callback que simula onPageFinished desde el stub.
+  void Function(String)? onPageFinished;
+
   @override
   Future<void> loadFlutterAsset(String key) async {
     loadedAssets.add(key);
@@ -41,6 +44,47 @@ class _StubWebViewController extends PlatformWebViewController {
   @override
   Future<void> runJavaScript(String javaScript) async {
     executedJs.add(javaScript);
+  }
+
+  Future<void> setNavigationDelegate(
+    PlatformNavigationDelegateCreationParams params,
+  ) async {
+    // Stub: no-op. El callback onPageFinished se conecta vía
+    // createPlatformNavigationDelegate en _StubWebViewPlatform.
+  }
+
+  @override
+  Future<void> setPlatformNavigationDelegate(
+    PlatformNavigationDelegate handler,
+  ) async {
+    // Captura el delegate y extrae el callback onPageFinished
+    if (handler is _StubNavigationDelegate) {
+      onPageFinished = handler.onPageFinished;
+    }
+  }
+
+  /// Dispara manualmente el callback onPageFinished desde el stub
+  /// para simular que el WebView terminó de cargar.
+  void simulatePageFinished(String url) {
+    onPageFinished?.call(url);
+  }
+}
+
+/// Stub de PlatformNavigationDelegate para tests de WebView.
+///
+/// Permite capturar y disparar manualmente callbacks de navegación
+/// sin depender de un WebView real.
+class _StubNavigationDelegate extends PlatformNavigationDelegate {
+  _StubNavigationDelegate(super.params) : super.implementation();
+
+  /// Callback onPageFinished capturado desde los params.
+  void Function(String)? onPageFinished;
+
+  @override
+  Future<void> setOnPageFinished(PageEventCallback? onPageFinished) async {
+    if (onPageFinished != null) {
+      this.onPageFinished = onPageFinished;
+    }
   }
 }
 
@@ -70,7 +114,12 @@ class _StubWebViewPlatform extends WebViewPlatform
   PlatformNavigationDelegate createPlatformNavigationDelegate(
     PlatformNavigationDelegateCreationParams params,
   ) {
-    throw UnimplementedError();
+    final delegate = _StubNavigationDelegate(params);
+    // Conectar el callback onPageFinished del delegate al controller
+    if (_controller != null && delegate.onPageFinished != null) {
+      _controller!.onPageFinished = delegate.onPageFinished;
+    }
+    return delegate;
   }
 
   @override
@@ -320,15 +369,25 @@ void main() {
         ),
       );
 
-      // Espera a que se complete la carga del asset y la inyección JS
-      await tester.pumpAndSettle(const Duration(seconds: 1));
-
+      // PR2: Antes de onPageFinished, los datos NO deben inyectarse.
+      // Verifica que runJavaScript NO tiene llamadas a loadGraphData
+      // porque _injectData() almacena en _pendingData.
       final controller = stubPlatform.controller;
-      // Verifica que se ejecutó JavaScript con los datos
+      final jsCallsBeforePageLoad = controller.executedJs
+          .where((js) => js.contains('loadGraphData'))
+          .toList();
+      expect(jsCallsBeforePageLoad, isEmpty,
+          reason: 'No debe inyectar datos antes de onPageFinished');
+
+      // Simula que la página terminó de cargar
+      controller.simulatePageFinished('about:blank');
+
+      // Después de onPageFinished, runJavaScript debe tener la inyección
       final jsCalls = controller.executedJs
           .where((js) => js.contains('loadGraphData'))
           .toList();
-      expect(jsCalls, isNotEmpty, reason: 'Debe inyectar datos via runJavaScript');
+      expect(jsCalls, isNotEmpty,
+          reason: 'Debe inyectar datos después de onPageFinished');
     });
   });
 
@@ -437,6 +496,78 @@ void main() {
         () => channelParams.onMessageReceived(JavaScriptMessage(message: '7')),
         returnsNormally,
       );
+    });
+  });
+
+  // ═══════════ PR2: onPageFinished + onConsoleLog ═════════════════
+
+  group('PR2: onPageFinished y onConsoleLog', () {
+    testWidgets('configura canal onConsoleLog para logs de JS', (
+      WidgetTester tester,
+    ) async {
+      final layout = LayoutResult(
+        nodes: [const GraphNode(id: 1, x: 0, y: 0, proximity: ProximityLevel.medium)],
+        edges: [],
+        iterations: 1,
+        converged: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: GraphView3D(layout: layout),
+        ),
+      );
+
+      final controller = stubPlatform.controller;
+      final consoleChannel = controller.channels
+          .where((ch) => ch.name == 'onConsoleLog')
+          .toList();
+      expect(consoleChannel.length, equals(1),
+          reason: 'Debe registrar el canal onConsoleLog para logs de JS');
+    });
+
+    testWidgets('onPageFinished dispara la inyección de datos pendientes', (
+      WidgetTester tester,
+    ) async {
+      final layout = LayoutResult(
+        nodes: [
+          const GraphNode(
+            id: 1,
+            x: 10,
+            y: 20,
+            proximity: ProximityLevel.close,
+          ),
+        ],
+        edges: [],
+        iterations: 1,
+        converged: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: GraphView3D(layout: layout),
+        ),
+      );
+
+      final controller = stubPlatform.controller;
+
+      // Verifica que los datos se inyectan SOLO después de onPageFinished
+      final beforeCalls = controller.executedJs
+          .where((js) => js.contains('loadGraphData'))
+          .toList();
+      expect(beforeCalls, isEmpty,
+          reason: 'Sin onPageFinished, _pendingData guarda pero no inyecta');
+
+      // Dispara onPageFinished
+      controller.simulatePageFinished('about:blank');
+
+      final afterCalls = controller.executedJs
+          .where((js) => js.contains('loadGraphData'))
+          .toList();
+      expect(afterCalls, isNotEmpty,
+          reason: 'Después de onPageFinished debe inyectar los datos');
+      expect(afterCalls.first, contains('"nodes"'),
+          reason: 'El JSON inyectado debe contener nodos');
     });
   });
 }

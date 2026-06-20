@@ -66,7 +66,7 @@ void main() {
     );
 
     blocTest<NodeListBloc, NodeListState>(
-      'emits [NodeListLoading, NodeListLoaded] when LoadNodes is added '
+      'emits [NodeListLoaded] when LoadNodes is added '
       'and stream emits nodes',
       build: () {
         when(mockObserveNodes.call())
@@ -79,7 +79,6 @@ void main() {
       },
       act: (bloc) => bloc.add(LoadNodes()),
       expect: () => [
-        isA<NodeListLoading>(),
         isA<NodeListLoaded>().having(
           (s) => s.nodes,
           'nodes',
@@ -89,7 +88,7 @@ void main() {
     );
 
     blocTest<NodeListBloc, NodeListState>(
-      'emits [NodeListLoading, NodeListEmpty] when LoadNodes is added '
+      'emits [NodeListEmpty] when LoadNodes is added '
       'and stream emits empty list',
       build: () {
         when(mockObserveNodes.call())
@@ -102,7 +101,6 @@ void main() {
       },
       act: (bloc) => bloc.add(LoadNodes()),
       expect: () => [
-        isA<NodeListLoading>(),
         isA<NodeListEmpty>(),
       ],
     );
@@ -120,7 +118,6 @@ void main() {
       },
       act: (bloc) => bloc.add(LoadNodes()),
       expect: () => [
-        isA<NodeListLoading>(),
         isA<NodeListError>().having(
           (s) => s.message,
           'message',
@@ -147,7 +144,7 @@ void main() {
     );
 
     blocTest<NodeListBloc, NodeListState>(
-      'handles RefreshNodes by re-emitting current state if loaded',
+      'handles RefreshNodes as no-op — stream already reactive',
       seed: () => NodeListLoaded(testNodes),
       build: () {
         when(mockObserveNodes.call())
@@ -159,18 +156,12 @@ void main() {
         );
       },
       act: (bloc) => bloc.add(RefreshNodes()),
-      expect: () => [
-        isA<NodeListLoading>(),
-        isA<NodeListLoaded>().having(
-          (s) => s.nodes,
-          'nodes',
-          equals(testNodes),
-        ),
-      ],
+      // La suscripción ya es reactiva: no se emite nada nuevo.
+      expect: () => [],
     );
 
     blocTest<NodeListBloc, NodeListState>(
-      'handles RefreshNodes from empty state',
+      'handles RefreshNodes as no-op from empty state',
       seed: () => const NodeListEmpty(),
       build: () {
         when(mockObserveNodes.call())
@@ -182,10 +173,8 @@ void main() {
         );
       },
       act: (bloc) => bloc.add(RefreshNodes()),
-      expect: () => [
-        isA<NodeListLoading>(),
-        isA<NodeListEmpty>(),
-      ],
+      // La suscripción ya es reactiva: no se emite nada nuevo.
+      expect: () => [],
     );
 
     // T1.6 F6: SyncBleDevices debe suscribirse al stream Drift
@@ -220,10 +209,9 @@ void main() {
           timestamp: now,
         ),
       ])),
-      // La suscripción al stream se activa al final de _onSyncBleDevices,
-      // emitiendo NodeListLoaded con los nodos del stream Drift.
+      // _ensureSubscription crea el watcher sin emitir loading.
+      // El stream Drift emite reactivamente la lista actualizada.
       expect: () => [
-        isA<NodeListLoading>(),
         isA<NodeListLoaded>().having(
           (s) => s.nodes.length,
           'nodes.length',
@@ -241,12 +229,10 @@ void main() {
 
   group('ClearNodes', () {
     blocTest<NodeListBloc, NodeListState>(
-      'ClearNodes emite NodeListEmpty tras clearAllNodes y re-suscripción',
+      'ClearNodes llama a clearAllNodes del repositorio',
+      seed: () => NodeListLoaded(testNodes),
       build: () {
         when(mockNodeRepository.clearAllNodes()).thenAnswer((_) async {});
-        // Después de clearAllNodes, la re-suscripción emite lista vacía.
-        when(mockObserveNodes.call())
-            .thenAnswer((_) => Stream.value([]));
         return NodeListBloc(
           observeNodes: mockObserveNodes,
           updateNodeMetadata: mockUpdateNodeMetadata,
@@ -254,10 +240,8 @@ void main() {
         );
       },
       act: (bloc) => bloc.add(const ClearNodes()),
-      expect: () => [
-        isA<NodeListLoading>(),
-        isA<NodeListEmpty>(),
-      ],
+      // El stream reactivo emitirá la lista vacía automáticamente.
+      expect: () => [],
       verify: (_) {
         verify(mockNodeRepository.clearAllNodes()).called(1);
       },
@@ -266,14 +250,11 @@ void main() {
 
   group('UpdateNodeName', () {
     blocTest<NodeListBloc, NodeListState>(
-      'UpdateNodeName emite NodeListLoaded con el nombre actualizado',
+      'UpdateNodeName llama a updateNodeMetadata y el stream reacciona solo',
       build: () {
         // updateNodeMetadata devuelve Right(null).
         when(mockUpdateNodeMetadata(any))
             .thenAnswer((_) async => const Right(null));
-        // Re-suscripción emite la lista de nodos con el nombre actualizado.
-        when(mockObserveNodes.call())
-            .thenAnswer((_) => Stream.value(testNodes));
         return NodeListBloc(
           observeNodes: mockObserveNodes,
           updateNodeMetadata: mockUpdateNodeMetadata,
@@ -281,14 +262,8 @@ void main() {
         );
       },
       act: (bloc) => bloc.add(const UpdateNodeName(1, 'Nuevo Nombre')),
-      expect: () => [
-        isA<NodeListLoading>(),
-        isA<NodeListLoaded>().having(
-          (s) => s.nodes,
-          'nodes',
-          equals(testNodes),
-        ),
-      ],
+      // El stream reactivo emitirá la lista actualizada automáticamente.
+      expect: () => [],
       verify: (_) {
         verify(mockUpdateNodeMetadata(
           argThat(
@@ -302,12 +277,10 @@ void main() {
 
   group('UpdateNodeColor', () {
     blocTest<NodeListBloc, NodeListState>(
-      'UpdateNodeColor emite NodeListLoaded con el color actualizado',
+      'UpdateNodeColor llama a updateNodeMetadata y el stream reacciona solo',
       build: () {
         when(mockUpdateNodeMetadata(any))
             .thenAnswer((_) async => const Right(null));
-        when(mockObserveNodes.call())
-            .thenAnswer((_) => Stream.value(testNodes));
         return NodeListBloc(
           observeNodes: mockObserveNodes,
           updateNodeMetadata: mockUpdateNodeMetadata,
@@ -315,14 +288,8 @@ void main() {
         );
       },
       act: (bloc) => bloc.add(const UpdateNodeColor(2, '#FF0000')),
-      expect: () => [
-        isA<NodeListLoading>(),
-        isA<NodeListLoaded>().having(
-          (s) => s.nodes,
-          'nodes',
-          equals(testNodes),
-        ),
-      ],
+      // El stream reactivo emitirá la lista actualizada automáticamente.
+      expect: () => [],
       verify: (_) {
         verify(mockUpdateNodeMetadata(
           argThat(

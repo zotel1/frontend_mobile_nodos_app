@@ -4,7 +4,7 @@ abstract class BleRepository {
   Stream<List<BleDevice>> get scanResults;
   Future<void> startScan();
   Future<void> stopScan();
-  Future<void> startAdvertise(String deviceUuid);
+  Future<void> startAdvertise(String deviceUuid, String name, String color);
   Future<void> stopAdvertise();
   Stream<bool> get bluetoothState;
 }

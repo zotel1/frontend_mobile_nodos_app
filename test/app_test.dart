@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:get_it/get_it.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart';
@@ -15,6 +16,8 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bl
 import 'package:frontend_mobile_nodos_app/features/history/presentation/bloc/history_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/history/domain/entities/history_stats.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/scan_session/presentation/bloc/scan_session_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/scan_session/domain/repositories/scan_session_repository.dart';
 
 import 'package:frontend_mobile_nodos_app/app.dart';
 
@@ -25,6 +28,8 @@ import 'package:frontend_mobile_nodos_app/app.dart';
   MockSpec<VisualizationBloc>(),
   MockSpec<HistoryBloc>(),
   MockSpec<BleConnectionBloc>(),
+  MockSpec<ScanSessionBloc>(),
+  MockSpec<ScanSessionRepository>(),
 ])
 import 'app_test.mocks.dart';
 
@@ -38,6 +43,8 @@ void main() {
   late MockVisualizationBloc mockVizBloc;
   late MockHistoryBloc mockHistoryBloc;
   late MockBleConnectionBloc mockBleConnectionBloc;
+  late MockScanSessionBloc mockSessionBloc;
+  late MockScanSessionRepository mockSessionRepo;
   late AppDatabase testDb;
 
   setUp(() async {
@@ -47,6 +54,12 @@ void main() {
     mockVizBloc = MockVisualizationBloc();
     mockHistoryBloc = MockHistoryBloc();
     mockBleConnectionBloc = MockBleConnectionBloc();
+    mockSessionBloc = MockScanSessionBloc();
+    mockSessionRepo = MockScanSessionRepository();
+
+    // Mock SharedPreferences con onboarding_complete=true para
+    // que los tests existentes no redirijan a /onboarding.
+    SharedPreferences.setMockInitialValues({'onboarding_complete': true});
 
     // Configurar mocks para evitar crashes
     when(mockBleBloc.state).thenReturn(const BleStopped());
@@ -84,6 +97,9 @@ void main() {
     when(mockBleConnectionBloc.state).thenReturn(const BleConnectionInitial());
     when(mockBleConnectionBloc.stream)
         .thenAnswer((_) => Stream.value(const BleConnectionInitial()));
+    when(mockSessionBloc.state).thenReturn(const SessionInitial());
+    when(mockSessionBloc.stream)
+        .thenAnswer((_) => Stream.value(const SessionInitial()));
 
     // Registrar mocks en GetIt para que NodosApp los resuelva.
     if (!GetIt.instance.isRegistered<BleBloc>()) {
@@ -104,6 +120,13 @@ void main() {
     if (!GetIt.instance.isRegistered<BleConnectionBloc>()) {
       GetIt.instance
           .registerFactory<BleConnectionBloc>(() => mockBleConnectionBloc);
+    }
+    if (!GetIt.instance.isRegistered<ScanSessionRepository>()) {
+      GetIt.instance
+          .registerLazySingleton<ScanSessionRepository>(() => mockSessionRepo);
+    }
+    if (!GetIt.instance.isRegistered<ScanSessionBloc>()) {
+      GetIt.instance.registerFactory<ScanSessionBloc>(() => mockSessionBloc);
     }
 
     testDb = AppDatabase.inMemory();
@@ -135,6 +158,12 @@ void main() {
     }
     if (GetIt.instance.isRegistered<BleConnectionBloc>()) {
       GetIt.instance.unregister<BleConnectionBloc>();
+    }
+    if (GetIt.instance.isRegistered<ScanSessionRepository>()) {
+      GetIt.instance.unregister<ScanSessionRepository>();
+    }
+    if (GetIt.instance.isRegistered<ScanSessionBloc>()) {
+      GetIt.instance.unregister<ScanSessionBloc>();
     }
   });
 
@@ -251,7 +280,10 @@ void main() {
       await tester.pumpWidget(
         BlocProvider<BleBloc>.value(
           value: bleBloc,
-          child: MaterialApp.router(routerConfig: testRouter),
+          child: BlocProvider<UserBloc>.value(
+            value: MockUserBloc(),
+            child: MaterialApp.router(routerConfig: testRouter),
+          ),
         ),
       );
       await tester.pump();
@@ -315,7 +347,10 @@ void main() {
       await tester.pumpWidget(
         BlocProvider<BleBloc>.value(
           value: bleBloc,
-          child: MaterialApp.router(routerConfig: testRouter),
+          child: BlocProvider<UserBloc>.value(
+            value: MockUserBloc(),
+            child: MaterialApp.router(routerConfig: testRouter),
+          ),
         ),
       );
       await tester.pump();
@@ -334,6 +369,58 @@ void main() {
 
       // T2.5: Al entrar a Home tab, debería dispararse StartScan
       // (verificación indirecta: navegación sin errores)
+    });
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // PR3: Onboarding redirect guard
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  group('Onboarding redirect', () {
+    testWidgets(
+        'redirige a Home cuando onboarding_complete es true',
+        (tester) async {
+      // setUp() ya configura onboarding_complete: true
+      await tester.pumpWidget(buildApp());
+      // Varios pumps para que el redirect asíncrono de GoRouter se resuelva
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      // La app debe mostrar la HomePage con BottomNavigationBar.
+      expect(find.byType(BottomNavigationBar), findsOneWidget);
+      // El botón "Continuar" del onboarding no debe aparecer.
+      expect(find.text('Continuar'), findsNothing);
+    });
+
+    testWidgets(
+        'redirige a Onboarding cuando onboarding_complete es false',
+        (tester) async {
+      // Forzar false en la instancia mock ya inicializada.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('onboarding_complete', false);
+
+      await tester.pumpWidget(buildApp());
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+
+      // Debe mostrar la página de onboarding (paso 1: botón Continuar).
+      expect(find.text('Continuar'), findsOneWidget);
+    });
+
+    testWidgets(
+        'redirige a Onboarding cuando no existe la key onboarding_complete',
+        (tester) async {
+      // Eliminar la key de la instancia mock.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('onboarding_complete');
+
+      await tester.pumpWidget(buildApp());
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+
+      // Sin la key, debe mostrar el onboarding.
+      expect(find.text('Continuar'), findsOneWidget);
     });
   });
 }

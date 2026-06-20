@@ -104,13 +104,15 @@ void main() {
       verify(mockScanner.stopScan()).called(1);
     });
 
-    test('startAdvertise delegates to advertiser', () async {
-      when(mockAdvertiser.startAdvertise(any, any))
+    test('startAdvertise delegates to advertiser with identity', () async {
+      when(mockAdvertiser.startAdvertise(any, any, any))
           .thenAnswer((_) async {});
 
-      await repository.startAdvertise('device-uuid');
+      await repository.startAdvertise('device-uuid', 'Mi dispositivo', '#2196F3');
 
-      verify(mockAdvertiser.startAdvertise('device-uuid', any)).called(1);
+      verify(mockAdvertiser.startAdvertise(
+              'device-uuid', 'Mi dispositivo', '#2196F3'))
+          .called(1);
     });
 
     test('stopAdvertise delegates to advertiser', () async {

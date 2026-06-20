@@ -64,14 +64,17 @@ void main() {
     blocTest<BleBloc, BleState>(
       'emits [BleAdvertising] when StartAdvertise is added',
       build: () {
-        when(mockRepository.startAdvertise(any))
+        when(mockRepository.startAdvertise(any, any, any))
             .thenAnswer((_) async {});
         return BleBloc(repository: mockRepository);
       },
-      act: (bloc) => bloc.add(const StartAdvertise('test-uuid')),
+      act: (bloc) => bloc.add(
+          const StartAdvertise('test-uuid', 'Mi dispositivo', '#2196F3')),
       expect: () => [isA<BleAdvertising>()],
       verify: (_) =>
-          verify(mockRepository.startAdvertise('test-uuid')).called(1),
+          verify(mockRepository.startAdvertise(
+                  'test-uuid', 'Mi dispositivo', '#2196F3'))
+              .called(1),
     );
 
     blocTest<BleBloc, BleState>(
@@ -176,15 +179,17 @@ void main() {
     blocTest<BleBloc, BleState>(
       'handles StartAdvertise with different UUIDs',
       build: () {
-        when(mockRepository.startAdvertise(any))
+        when(mockRepository.startAdvertise(any, any, any))
             .thenAnswer((_) async {});
         return BleBloc(repository: mockRepository);
       },
       act: (bloc) =>
-          bloc.add(const StartAdvertise('another-uuid-123')),
+          bloc.add(const StartAdvertise(
+              'another-uuid-123', 'Test', '#FF0000')),
       expect: () => [isA<BleAdvertising>()],
       verify: (_) =>
-          verify(mockRepository.startAdvertise('another-uuid-123'))
+          verify(mockRepository.startAdvertise(
+                  'another-uuid-123', 'Test', '#FF0000'))
               .called(1),
     );
 

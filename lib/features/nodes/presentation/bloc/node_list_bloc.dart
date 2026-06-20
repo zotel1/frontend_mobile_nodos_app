@@ -175,7 +175,7 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
 
   Future<void> _onLoadNodes(
       LoadNodes event, Emitter<NodeListState> emit) async {
-    await _subscribeToNodes(emit);
+    _ensureSubscription();
   }
 
   void _onNodeDetected(
@@ -183,10 +183,11 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
     emit(NodeListLoaded([event.node]));
   }
 
+  /// El stream Drift .watch() ya es reactivo — los cambios en la BD
+  /// se emiten automáticamente sin necesidad de cancelar y recrear
+  /// la suscripción. Este handler es un no-op intencional.
   Future<void> _onRefreshNodes(
-      RefreshNodes event, Emitter<NodeListState> emit) async {
-    await _subscribeToNodes(emit);
-  }
+      RefreshNodes event, Emitter<NodeListState> emit) async {}
 
   /// Convierte dispositivos BLE detectados en entidades [Node] y las persiste.
   ///
@@ -269,15 +270,10 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
       await _nodeRepository.upsertNode(node);
     }
 
-    // F6: Suscribirse al stream Drift reactivo si no hay
-    // suscripción activa. Si ya existe, Drift .watch()
-    // emitirá automáticamente los cambios sin intervención.
-    // QUÉ problema resuelve: sin esta suscripción, los nodos
-    // persistidos nunca se reflejan en la UI porque el BLoC
-    // no escucha los cambios en la base de datos.
-    if (_nodesSubscription == null) {
-      await _subscribeToNodes(emit);
-    }
+    // Asegurar que la suscripción al stream Drift existe.
+    // Si ya existe, no se cancela ni recrea — .watch() emite
+    // reactivamente los cambios sin intervención.
+    _ensureSubscription();
   }
 
   /// Elimina todos los nodos y re-suscribe el stream para emitir vacío.
@@ -290,7 +286,8 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
   Future<void> _onClearNodes(
       ClearNodes event, Emitter<NodeListState> emit) async {
     await _nodeRepository.clearAllNodes();
-    await _subscribeToNodes(emit);
+    // El stream Drift .watch() emitirá automáticamente la lista vacía
+    // sin necesidad de cancelar y recrear la suscripción.
   }
 
   /// Actualiza el nombre de un nodo y re-emite la lista desde el stream.
@@ -303,7 +300,7 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
     await updateNodeMetadata(
       UpdateNodeMetadataParams(id: event.nodeId, name: event.name),
     );
-    await _subscribeToNodes(emit);
+    // El stream Drift .watch() emitirá automáticamente la lista actualizada.
   }
 
   /// Actualiza el color de un nodo y re-emite la lista desde el stream.
@@ -316,12 +313,16 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
     await updateNodeMetadata(
       UpdateNodeMetadataParams(id: event.nodeId, color: event.color),
     );
-    await _subscribeToNodes(emit);
+    // El stream Drift .watch() emitirá automáticamente la lista actualizada.
   }
 
-  Future<void> _subscribeToNodes(Emitter<NodeListState> emit) async {
-    emit(const NodeListLoading());
-    await _nodesSubscription?.cancel();
+  /// Crea la suscripción al stream Drift exactamente UNA vez.
+  ///
+  /// La suscripción no se cancela ni recrea porque Drift .watch()
+  /// emite reactivamente ante cualquier cambio en la tabla nodes.
+  /// Si la suscripción ya existe, este método es un no-op.
+  void _ensureSubscription() {
+    if (_nodesSubscription != null) return;
     _nodesSubscription = observeNodes().listen(
       (nodes) {
         if (!isClosed) {

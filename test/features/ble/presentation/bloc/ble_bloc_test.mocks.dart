@@ -67,9 +67,13 @@ class MockBleRepository extends _i1.Mock implements _i2.BleRepository {
           as _i3.Future<void>);
 
   @override
-  _i3.Future<void> startAdvertise(String? deviceUuid) =>
+  _i3.Future<void> startAdvertise(
+    String? deviceUuid,
+    String? name,
+    String? color,
+  ) =>
       (super.noSuchMethod(
-            Invocation.method(#startAdvertise, [deviceUuid]),
+            Invocation.method(#startAdvertise, [deviceUuid, name, color]),
             returnValue: _i3.Future<void>.value(),
             returnValueForMissingStub: _i3.Future<void>.value(),
           )

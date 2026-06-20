@@ -51,6 +51,7 @@ class UserDriftDataSource implements UserLocalDataSource {
 
   domain.User _toDomain(db.User row) {
     return domain.User(
+      id: row.id,
       uuid: row.uuid,
       name: row.name,
       color: row.color,
