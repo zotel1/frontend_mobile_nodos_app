@@ -242,13 +242,36 @@
   /**
    * @param {Object} data — { nodes: [{id,x,y,z,radius,color,label,isSelf}], edges: [{fromId,toId,thickness}] }
    */
+  // Overlay para mensaje de estado vacío (R6.3)
+  let emptyOverlay = null;
+
+  function showEmptyMessage(visible) {
+    if (!emptyOverlay) {
+      emptyOverlay = document.createElement('div');
+      emptyOverlay.id = 'empty-overlay';
+      emptyOverlay.style.cssText =
+        'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);' +
+        'color:#9e9e9e;font-size:20px;font-family:sans-serif;' +
+        'pointer-events:none;z-index:10;text-align:center;';
+      emptyOverlay.textContent = 'Sin nodos detectados';
+      document.getElementById('container').appendChild(emptyOverlay);
+    }
+    emptyOverlay.style.display = visible ? 'block' : 'none';
+  }
+
   window.loadGraphData = function (data) {
     try {
     if (!renderer) initScene();
-    if (!data || !data.nodes) {
-      _log('loadGraphData: datos vacíos o nulos, ignorando');
+    if (!data || !data.nodes || data.nodes.length === 0) {
+      _log('loadGraphData: sin nodos, mostrando mensaje de estado vacío');
+      showEmptyMessage(true);
+      // Limpiar escena anterior si existía
+      while (group.children.length > 0) {
+        group.remove(group.children[0]);
+      }
       return;
     }
+    showEmptyMessage(false);
 
     _log('loadGraphData: renderizando ' + data.nodes.length + ' nodos y ' + 
          (data.edges ? data.edges.length : 0) + ' aristas');
