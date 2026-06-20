@@ -49,6 +49,8 @@ dependencies:
   flutter_ble_peripheral: ^2.1.1
   android_intent_plus: ^5.1.0
   webview_flutter: ^4.14.0
+  permission_handler: ^11.3.1
+  shared_preferences: ^2.3.0
 
 dev_dependencies:
   flutter_test:

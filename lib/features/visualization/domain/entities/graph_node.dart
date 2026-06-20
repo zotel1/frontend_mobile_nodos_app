@@ -53,6 +53,22 @@ class GraphNode extends Equatable {
   /// Agregado en PR5 — FR Algorithm 3D + 2D/3D Toggle.
   final double z;
 
+  /// Color asignado por el usuario, en formato ARGB int (ej. 0xFF2196F3).
+  ///
+  /// Si no es null, sobrescribe el color de proximidad en la renderización
+  /// del grafo (R5.6). El getter [displayColor] resuelve la prioridad:
+  /// userColor > color de proximidad.
+  /// Agregado en PR2 — Phase 5 Graph Social Model.
+  final int? userColor;
+
+  /// Distancia estimada en metros desde el dispositivo del usuario.
+  ///
+  /// Computada vía [rssiToDistance] en el pipeline de sincronización BLE.
+  /// Se muestra como label adaptativo: ≥1m → "~2.3m", <1m → "~35cm" (R5.15).
+  /// null cuando no hay dato de RSSI disponible.
+  /// Agregado en PR2 — Phase 5 Graph Social Model.
+  final double? estimatedDistance;
+
   const GraphNode({
     this.id,
     required this.x,
@@ -64,6 +80,8 @@ class GraphNode extends Equatable {
     this.isSelf = false,
     this.connectable = true,
     this.z = 0.0,
+    this.userColor,
+    this.estimatedDistance,
   });
 
   /// Radio del círculo proporcional a la cantidad de conexiones.
@@ -81,6 +99,14 @@ class GraphNode extends Equatable {
         ProximityLevel.far => const Color(0xFFF44336),
       };
 
+  /// Color efectivo para renderizar el nodo.
+  ///
+  /// Prioridad: si el usuario asignó [userColor], se usa ese color.
+  /// Caso contrario, se usa el color derivado de proximidad [color].
+  /// R5.6 — user-assigned colors must override proximity color.
+  Color get displayColor =>
+      userColor != null ? Color(userColor!) : color;
+
   /// Indica si el nodo tiene identidad conocida (nombre asignado).
   ///
   /// Nodos sin nombre (name == null) son dispositivos detectados a los que
@@ -94,5 +120,5 @@ class GraphNode extends Equatable {
 
   @override
   List<Object?> get props =>
-      [id, x, y, proximity, name, suggestedName, connectionCount, isSelf, connectable, z];
+      [id, x, y, proximity, name, suggestedName, connectionCount, isSelf, connectable, z, userColor, estimatedDistance];
 }

@@ -4,6 +4,16 @@
 /// analogous to a port number. Not a secret.
 const String serviceUuid = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
 
+/// UUID de la característica de identidad Nodos.
+///
+/// Bajo el Service UUID compartido, esta característica expone
+/// un JSON `{uuid, name, color}` con los metadatos de identidad
+/// del dispositivo remoto. Si el dispositivo no corre Nodos App,
+/// la característica no existe → fallback a bottom sheet manual.
+///
+/// AD12: UUID propio bajo el mismo service, no UUIDs estándar (0x2A00).
+const String identityCharacteristicUUID = '4fafc202-1fb5-459e-8fcc-c5c9c331914b';
+
 /// Assumed RSSI at 1 meter (dBm). Will be calibrated in Phase 1.
 const int txPower = -50;
 

@@ -300,5 +300,114 @@ void main() {
         expect(node.deviceType, 'Reloj/Fitness');
       },
     );
+
+    // ─── PR1.8: SyncBleDevices propaga connectable y estimatedDistance ──
+    // QUÉ: el handler _onSyncBleDevices debe mapear BleDevice.connectable
+    // al Node.connectable y computar estimatedDistance desde lastRssi
+    // usando rssiToDistance.
+    // POR QUÉ: R5.18 y R5.19 — el pipeline BLE→Node no debe perder
+    // estos campos; son necesarios para habilitar Enlazar y renderizar
+    // la etiqueta de distancia en el grafo.
+
+    blocTest<NodeListBloc, NodeListState>(
+      'PR1.8: propaga device.connectable → Node.connectable=true',
+      build: () => NodeListBloc(
+        observeNodes: mockObserveNodes,
+        updateNodeMetadata: mockUpdateNodeMetadata,
+        nodeRepository: mockNodeRepository,
+      ),
+      act: (bloc) => bloc.add(SyncBleDevices([
+        BleDevice(
+          deviceId: 'AA:BB:CC:DD:EE:01',
+          rssi: -60,
+          distance: 3.0,
+          proximity: ProximityLevel.close,
+          timestamp: now,
+          connectable: true,
+        ),
+      ])),
+      verify: (_) {
+        final captured = verify(mockNodeRepository.upsertNode(captureAny))
+            .captured;
+        final node = captured.single as Node;
+        expect(node.connectable, isTrue);
+      },
+    );
+
+    blocTest<NodeListBloc, NodeListState>(
+      'PR1.8: device.connectable=false → Node.connectable=false',
+      build: () => NodeListBloc(
+        observeNodes: mockObserveNodes,
+        updateNodeMetadata: mockUpdateNodeMetadata,
+        nodeRepository: mockNodeRepository,
+      ),
+      act: (bloc) => bloc.add(SyncBleDevices([
+        BleDevice(
+          deviceId: 'AA:BB:CC:DD:EE:02',
+          rssi: -65,
+          distance: 5.0,
+          proximity: ProximityLevel.medium,
+          timestamp: now,
+          connectable: false,
+        ),
+      ])),
+      verify: (_) {
+        final captured = verify(mockNodeRepository.upsertNode(captureAny))
+            .captured;
+        final node = captured.single as Node;
+        expect(node.connectable, isFalse);
+      },
+    );
+
+    blocTest<NodeListBloc, NodeListState>(
+      'PR1.8: computa estimatedDistance desde lastRssi usando rssiToDistance',
+      build: () => NodeListBloc(
+        observeNodes: mockObserveNodes,
+        updateNodeMetadata: mockUpdateNodeMetadata,
+        nodeRepository: mockNodeRepository,
+      ),
+      act: (bloc) => bloc.add(SyncBleDevices([
+        BleDevice(
+          deviceId: 'AA:BB:CC:DD:EE:03',
+          rssi: -60,
+          distance: 3.0,
+          proximity: ProximityLevel.close,
+          timestamp: now,
+          txPowerLevel: -50,
+        ),
+      ])),
+      verify: (_) {
+        final captured = verify(mockNodeRepository.upsertNode(captureAny))
+            .captured;
+        final node = captured.single as Node;
+        // rssi=-60, txPower=-50, pathLossExponent=2.0
+        // distance = 10^((-50 - (-60)) / (10*2)) = 10^(10/20) = 10^0.5 ≈ 3.162
+        expect(node.estimatedDistance, isNotNull);
+        expect(node.estimatedDistance!, greaterThan(0));
+        expect(node.estimatedDistance!, closeTo(3.16, 0.05));
+      },
+    );
+
+    blocTest<NodeListBloc, NodeListState>(
+      'PR1.8: estimatedDistance es null cuando el RSSI no es válido',
+      build: () => NodeListBloc(
+        observeNodes: mockObserveNodes,
+        updateNodeMetadata: mockUpdateNodeMetadata,
+        nodeRepository: mockNodeRepository,
+      ),
+      act: (bloc) => bloc.add(SyncBleDevices([
+        BleDevice(
+          deviceId: 'AA:BB:CC:DD:EE:04',
+          rssi: 0, // RSSI inválido
+          distance: 1.0,
+          proximity: ProximityLevel.far,
+          timestamp: now,
+        ),
+      ])),
+      verify: (_) {
+        // RSSI >= 0 se ignora completamente → no se llama upsertNode.
+        verifyNever(mockNodeRepository.upsertNode(any));
+      },
+    );
   });
 }

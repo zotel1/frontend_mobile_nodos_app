@@ -23,6 +23,7 @@ import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/pages/home_page.dart';
 
@@ -1093,6 +1094,225 @@ void main() {
 
       // Verificar el SnackBar "Conectando..."
       expect(find.textContaining('Conectando'), findsOneWidget);
+    });
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // T3.7: Nuevos tests PR3 — Connection UX + Permissions
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    testWidgets('T3.7: BluetoothOff despacha ClearNodes al NodeListBloc',
+        (tester) async {
+      final bleController = StreamController<BleState>.broadcast();
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+
+      when(mockNodeListBloc.state).thenReturn(const NodeListLoaded([]));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(const NodeListLoaded([])));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream).thenAnswer((_) => bleController.stream);
+      when(mockVizBloc.state).thenReturn(const VisualizationInitial());
+      when(mockVizBloc.stream)
+          .thenAnswer((_) => Stream.value(const VisualizationInitial()));
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      // Emitir BluetoothOff y esperar procesamiento
+      bleController.add(const BluetoothOff());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // Verificar que ClearNodes fue despachado
+      verify(mockNodeListBloc.add(const ClearNodes())).called(1);
+
+      bleController.close();
+    });
+
+    testWidgets('T3.7: muestra grafo con 1 solo nodo (umbral removido)',
+        (tester) async {
+      final nodes = [_testNode(1, 'AA:BB:CC:DD:EE:01')];
+      await tester.pumpWidget(_pumpHomePage(
+        nodeListState: NodeListLoaded(nodes),
+        visualizationState: GraphReady(_testLayout),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Con 1 nodo, debería mostrarse el grafo (antes requería 5+)
+      // Verificamos que el AnimatedCrossFade está en modo secondChild (grafo)
+      expect(find.byType(AnimatedCrossFade), findsOneWidget);
+    });
+
+    testWidgets(
+        'T3.7: RemoteIdentityUnavailable abre bottom sheet de metadata',
+        (tester) async {
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+      final mockConnectionBloc = MockBleConnectionBloc();
+
+      final nodes = List.generate(
+        3,
+        (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
+      );
+
+      when(mockNodeListBloc.state).thenReturn(NodeListLoaded(nodes));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(NodeListLoaded(nodes)));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream)
+          .thenAnswer((_) => Stream.value(const BleStopped()));
+      when(mockVizBloc.state).thenReturn(const VisualizationInitial());
+      when(mockVizBloc.stream)
+          .thenAnswer((_) => Stream.value(const VisualizationInitial()));
+      when(mockConnectionBloc.state)
+          .thenReturn(const RemoteIdentityUnavailable(
+              remoteId: 'AA:BB:CC:DD:EE:01'));
+      when(mockConnectionBloc.stream).thenAnswer(
+        (_) => Stream.value(const RemoteIdentityUnavailable(
+            remoteId: 'AA:BB:CC:DD:EE:01')),
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(
+                value: mockConnectionBloc),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // La metadata sheet debería abrirse — buscamos el botón Guardar
+      expect(find.text('Guardar'), findsOneWidget);
+      expect(find.text('Identificar nodo'), findsOneWidget);
+    });
+
+    testWidgets(
+        'T3.7: RemoteIdentityLoaded despacha UpdateNodeMetadata al NodeListBloc',
+        (tester) async {
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+      final mockConnectionBloc = MockBleConnectionBloc();
+
+      final nodes = [
+        Node(
+          id: 1,
+          bleAddress: 'AA:BB:CC:DD:EE:01',
+          name: null,
+          firstSeen: DateTime(2026, 1, 1),
+          lastSeen: DateTime(2026, 6, 20),
+          rssiHistory: const [-50],
+        ),
+        _testNode(2, 'AA:BB:CC:DD:EE:02'),
+        _testNode(3, 'AA:BB:CC:DD:EE:03'),
+      ];
+
+      when(mockNodeListBloc.state).thenReturn(NodeListLoaded(nodes));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(NodeListLoaded(nodes)));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream)
+          .thenAnswer((_) => Stream.value(const BleStopped()));
+      when(mockVizBloc.state).thenReturn(const VisualizationInitial());
+      when(mockVizBloc.stream)
+          .thenAnswer((_) => Stream.value(const VisualizationInitial()));
+      when(mockConnectionBloc.state)
+          .thenReturn(const RemoteIdentityLoaded(
+        remoteId: 'AA:BB:CC:DD:EE:01',
+        name: 'Nodo Remoto',
+        color: '#FF5722',
+      ));
+      when(mockConnectionBloc.stream).thenAnswer(
+        (_) => Stream.value(const RemoteIdentityLoaded(
+          remoteId: 'AA:BB:CC:DD:EE:01',
+          name: 'Nodo Remoto',
+          color: '#FF5722',
+        )),
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(
+                value: mockConnectionBloc),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Verificar que UpdateNodeName fue despachado con el nombre remoto
+      verify(mockNodeListBloc.add(
+        argThat(
+          predicate((e) =>
+              e is UpdateNodeName &&
+              e.nodeId == 1 &&
+              e.name == 'Nodo Remoto'),
+        ),
+      )).called(1);
+
+      // Verificar que UpdateNodeColor fue despachado con el color remoto
+      verify(mockNodeListBloc.add(
+        argThat(
+          predicate((e) =>
+              e is UpdateNodeColor &&
+              e.nodeId == 1 &&
+              e.color == '#FF5722'),
+        ),
+      )).called(1);
+    });
+
+    testWidgets('T3.7: toggle is3D persiste a través de SharedPreferences',
+        (tester) async {
+      // Inicializar SharedPreferences con valor inicial
+      SharedPreferences.setMockInitialValues({'is3D': false});
+
+      final nodes = List.generate(
+        6,
+        (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
+      );
+      await tester.pumpWidget(_pumpHomePage(
+        nodeListState: NodeListLoaded(nodes),
+        visualizationState: GraphReady(_testLayout),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Estado inicial: 2D → icono view_in_ar
+      expect(find.byIcon(Icons.view_in_ar), findsOneWidget);
+
+      // Cambiar a 3D
+      await tester.tap(find.byIcon(Icons.view_in_ar));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Verificar que se guardó en SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('is3D'), isTrue);
     });
   });
 }

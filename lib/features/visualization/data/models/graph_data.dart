@@ -77,6 +77,7 @@ LayoutResult paramsToLayoutResult(
       // T5.3: z se lee del resultado del Isolate (default 0 para 2D).
       // F3: preservar metadata visual (connectionCount, suggestedName,
       // isSelf, connectable) que se perdía en el round-trip del Isolate.
+      // PR2: preservar userColor y estimatedDistance (R5.6, R5.15).
       updatedNodes.add(GraphNode(
         id: id,
         x: (rn['x'] as num).toDouble(),
@@ -88,6 +89,8 @@ LayoutResult paramsToLayoutResult(
         suggestedName: originalNode.suggestedName,
         isSelf: originalNode.isSelf,
         connectable: originalNode.connectable,
+        userColor: originalNode.userColor,
+        estimatedDistance: originalNode.estimatedDistance,
       ));
     }
     // Si el nodo no existe en el original, se ignora (no debería ocurrir)

@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:android_intent_plus/android_intent.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
 import 'package:frontend_mobile_nodos_app/core/di/injection_container.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
@@ -13,6 +14,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/presentation/widgets/blue
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/widgets/bluetooth_off_dialog.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/bloc/node_list_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/nodes/presentation/widgets/node_metadata_sheet.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/widgets/node_tile.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_event.dart';
@@ -176,11 +178,18 @@ class _HomePageState extends State<HomePage> {
   /// QUÉ: LoadNodes inicia la suscripción al stream Drift de nodos.
   /// StartScan inicia el escaneo BLE automáticamente sin FAB.
   /// Guarda referencia a BleBloc para dispose() donde context no es seguro.
+  /// T3.8: Carga la preferencia is3D desde SharedPreferences (R5.21).
   /// addPostFrameCallback asegura que el context ya tiene los BLoCs
   /// disponibles desde el árbol de providers.
   @override
   void initState() {
     super.initState();
+    // T3.8: Cargar preferencia is3D desde SharedPreferences (R5.22)
+    SharedPreferences.getInstance().then((prefs) {
+      if (mounted) {
+        setState(() => _is3D = prefs.getBool('is3D') ?? false);
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final bleBloc = context.read<BleBloc>();
@@ -217,10 +226,14 @@ class _HomePageState extends State<HomePage> {
       ),
       body: BlocListener<BleConnectionBloc, BleConnectionState>(
         /// T3.9: Muestra el estado de la conexión GATT como SnackBar.
+        /// T3.8: Maneja RemoteIdentityLoaded y RemoteIdentityUnavailable
+        /// para actualizar metadata o mostrar bottom sheet (R5.5).
         ///
         /// - BleConnecting → "Conectando..."
         /// - BleConnected → "Conectado ✅" (verde)
         /// - BleConnectionError → muestra el error
+        /// - RemoteIdentityLoaded → actualiza nombre y color del nodo
+        /// - RemoteIdentityUnavailable → abre bottom sheet de metadata
         listener: (context, connectionState) {
           switch (connectionState) {
             case BleConnecting(:final remoteId):
@@ -264,8 +277,44 @@ class _HomePageState extends State<HomePage> {
                   action: action,
                 ),
               );
+            // T3.8: Identidad remota cargada — actualizar nodo automáticamente
+            // Usa addPostFrameCallback para que _currentNodes esté poblado
+            // por el BlocListener<NodeListBloc> antes de buscar el nodo.
+            case RemoteIdentityLoaded(:final remoteId, :final name, :final color):
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted) return;
+                final node = _currentNodes
+                    .where((n) => n.bleAddress == remoteId)
+                    .firstOrNull;
+                if (node != null && node.id != null) {
+                  context
+                      .read<NodeListBloc>()
+                      .add(UpdateNodeName(node.id!, name));
+                  context
+                      .read<NodeListBloc>()
+                      .add(UpdateNodeColor(node.id!, color));
+                }
+              });
+            // T3.8: Identidad no disponible — abrir bottom sheet manual
+            case RemoteIdentityUnavailable(:final remoteId):
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted) return;
+                final node = _currentNodes
+                    .where((n) => n.bleAddress == remoteId)
+                    .firstOrNull;
+                if (node != null) {
+                  showModalBottomSheet(
+                    context: context,
+                    builder: (_) => NodeMetadataSheet(
+                      node: node,
+                      nodeListBloc: context.read<NodeListBloc>(),
+                    ),
+                  );
+                }
+              });
             case BleConnectionInitial():
-              // Nada que mostrar — estado inicial
+            case ConnectionInserted():
+              // Nada que mostrar — estados informativos
               break;
           }
         },
@@ -311,21 +360,26 @@ class _HomePageState extends State<HomePage> {
           }
           // Mostrar diálogo cuando BT está apagado.
           // El guard _dialogVisible previene stacking de múltiples diálogos.
-          if (bleState is BluetoothOff && !_dialogVisible) {
-            _dialogVisible = true;
-            showDialog(
-              context: context,
-              barrierDismissible: false,
-              builder: (ctx) => BluetoothOffDialog(
-                onGoToSettings: () {
-                  _dialogVisible = false;
-                  const AndroidIntent(action: 'android.settings.BLUETOOTH_SETTINGS').launch();
-                },
-                onCancel: () {
-                  _dialogVisible = false;
-                },
-              ),
-            );
+          // T3.8: También despacha ClearNodes para limpiar el contador (R5.17).
+          if (bleState is BluetoothOff) {
+            if (!_dialogVisible) {
+              _dialogVisible = true;
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (ctx) => BluetoothOffDialog(
+                  onGoToSettings: () {
+                    _dialogVisible = false;
+                    const AndroidIntent(action: 'android.settings.BLUETOOTH_SETTINGS').launch();
+                  },
+                  onCancel: () {
+                    _dialogVisible = false;
+                  },
+                ),
+              );
+            }
+            // Limpiar nodos cuando BT se apaga
+            context.read<NodeListBloc>().add(const ClearNodes());
           }
           // Si BT vuelve a estar disponible, reseteamos el guard.
           if (bleState is BleStopped || bleState is BleScanning) {
@@ -378,11 +432,10 @@ class _HomePageState extends State<HomePage> {
 
   /// Aplica histéresis al modo de visualización según la cantidad de nodos.
   ///
-  /// Umbrales:
-  /// - ≥5 nodos: activa modo grafo (si no estaba activo) y dispara
+  /// Umbrales (T3.8: threshold reducido a ≥1 — R5.12):
+  /// - ≥1 nodo: activa modo grafo (si no estaba activo) y dispara
   ///   la construcción/reconstrucción del layout.
-  /// - ≤3 nodos: vuelve a modo lista (si estaba en grafo).
-  /// - 4 nodos: mantiene el modo actual, evitando parpadeos.
+  /// - 0 nodos: vuelve a modo lista (si estaba en grafo).
   ///
   /// Cuando se activa el grafo, asegura que exista una sesión de escaneo
   /// en la BD y dispara [BuildGraphRequested] en el [VisualizationBloc].
@@ -391,12 +444,12 @@ class _HomePageState extends State<HomePage> {
   void _updateViewMode(List<Node> nodes, BuildContext context) {
     final count = nodes.length;
 
-    if (count >= 5) {
+    if (count >= 1) {
       if (!_showingGraph) {
         setState(() => _showingGraph = true);
       }
       _triggerGraphBuild(nodes, context);
-    } else if (count <= 3 && _showingGraph) {
+    } else if (_showingGraph) {
       setState(() => _showingGraph = false);
     }
   }
@@ -551,7 +604,8 @@ class _HomePageState extends State<HomePage> {
           return switch (vizState) {
             VisualizationInitial() || GraphBuilding() =>
               const Center(child: CircularProgressIndicator()),
-            GraphReady(:final layout, :final selectedNodeId) =>
+            GraphReady(:final layout, :final selectedNodeId,
+                :final barycenter) =>
               _is3D
                   // T5.7: Modo 3D — WebView con Three.js
                   ? GraphView3D(
@@ -567,6 +621,7 @@ class _HomePageState extends State<HomePage> {
                       key: _graphViewKey,
                       layout: layout,
                       selectedNodeId: selectedNodeId,
+                      barycenter: barycenter,
                       onNodeTapped: (nodeId) {
                         context
                             .read<VisualizationBloc>()
@@ -610,7 +665,12 @@ class _HomePageState extends State<HomePage> {
           IconButton(
             icon: Icon(_is3D ? Icons.grid_view : Icons.view_in_ar),
             tooltip: _is3D ? 'Cambiar a vista 2D' : 'Cambiar a vista 3D',
-            onPressed: () => setState(() => _is3D = !_is3D),
+            onPressed: () {
+              setState(() => _is3D = !_is3D);
+              // T3.8: Persistir preferencia is3D (R5.21)
+              SharedPreferences.getInstance()
+                  .then((prefs) => prefs.setBool('is3D', _is3D));
+            },
             iconSize: 24,
             visualDensity: VisualDensity.compact,
           ),

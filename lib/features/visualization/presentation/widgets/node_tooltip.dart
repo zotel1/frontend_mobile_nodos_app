@@ -126,6 +126,17 @@ class _TooltipContentState extends State<_TooltipContent> {
     super.dispose();
   }
 
+  /// Formatea la distancia estimada de forma adaptativa (R5.15).
+  ///
+  /// ≥1.0m → "~2.3m", <1.0m → "~35cm".
+  static String _formatDistance(double distance) {
+    if (distance >= 1.0) {
+      return '~${distance.toStringAsFixed(1)}m';
+    } else {
+      return '~${(distance * 100).round()}cm';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Indicador textual del nivel de proximidad
@@ -207,6 +218,18 @@ class _TooltipContentState extends State<_TooltipContent> {
                       fontSize: 11,
                     ),
                   ),
+                  // T3.9: Label de distancia adaptativo (R5.15)
+                  // ≥1m → "~2.3m", <1m → "~35cm"
+                  if (widget.node.estimatedDistance != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      _formatDistance(widget.node.estimatedDistance!),
+                      style: const TextStyle(
+                        color: Colors.grey,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
                   // T3.6 + T3.10: Botón "Enlazar" — inicia conexión GATT.
                   // Deshabilitado si el dispositivo no es conectable.
                   if (widget.onEnlazar != null) ...[
