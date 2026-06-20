@@ -69,18 +69,20 @@ class DeviceClassifier {
     return null;
   }
 
-  /// Intenta hacer match de un GUID de servicio BLE contra el mapa conocido.
+  /// Intenta hacer match de un service UUID contra el mapa conocido.
   ///
-  /// Extrae los 4 caracteres del código de 16 bits desde el GUID completo
-  /// (posiciones 4-7 del string "0000XXXX-...") y los compara contra
-  /// [_serviceUuidMap].
+  /// Soporta dos formatos:
+  /// 1. GUID completo: "0000180d-0000-1000-8000-00805F9B34FB"
+  ///    Extrae posiciones 4-7 (código de 16 bits).
+  /// 2. Código corto: "180d" (como lo retorna flutter_blue_plus).
+  ///    Usa directamente el string.
   static String? _matchServiceUuid(String uuid) {
-    // El GUID de 16 bits tiene formato: 0000XXXX-0000-1000-8000-00805F9B34FB
-    // donde XXXX es el código de 16 bits en hexadecimal.
-    if (uuid.length >= 8) {
+    // Formato GUID completo: 0000XXXX-0000-1000-8000-00805F9B34FB
+    if (uuid.length >= 8 && uuid[4] != '-') {
       final shortCode = uuid.substring(4, 8).toLowerCase();
       return _serviceUuidMap[shortCode];
     }
-    return null;
+    // Formato corto: directamente el código de 16 bits (ej: "180d")
+    return _serviceUuidMap[uuid.toLowerCase()];
   }
 }

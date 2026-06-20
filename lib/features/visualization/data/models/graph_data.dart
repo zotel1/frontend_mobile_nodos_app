@@ -75,6 +75,8 @@ LayoutResult paramsToLayoutResult(
     if (originalNode != null) {
       // Preservar campos del original que FR no modifica.
       // T5.3: z se lee del resultado del Isolate (default 0 para 2D).
+      // F3: preservar metadata visual (connectionCount, suggestedName,
+      // isSelf, connectable) que se perdía en el round-trip del Isolate.
       updatedNodes.add(GraphNode(
         id: id,
         x: (rn['x'] as num).toDouble(),
@@ -82,6 +84,10 @@ LayoutResult paramsToLayoutResult(
         z: (rn['z'] as num?)?.toDouble() ?? 0.0,
         proximity: originalNode.proximity,
         name: originalNode.name,
+        connectionCount: originalNode.connectionCount,
+        suggestedName: originalNode.suggestedName,
+        isSelf: originalNode.isSelf,
+        connectable: originalNode.connectable,
       ));
     }
     // Si el nodo no existe en el original, se ignora (no debería ocurrir)
