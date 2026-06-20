@@ -178,6 +178,7 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
 
       if (existing != null) {
         // Mismo deviceId ya procesado en este batch: append RSSI.
+        // Preservar suggestedName del primer avistamiento (freeze).
         final updatedHistory = [...existing.rssiHistory, device.rssi];
         if (updatedHistory.length > 20) {
           updatedHistory.removeAt(0);
@@ -190,9 +191,13 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
           firstSeen: existing.firstSeen,
           lastSeen: DateTime.now(),
           rssiHistory: updatedHistory,
+          suggestedName: existing.suggestedName,
+          deviceType: device.deviceType ?? existing.deviceType,
         );
       } else {
         // Nuevo nodo (o primera aparición en este batch).
+        // T1.6: mapear advName → suggestedName y deviceType.
+        // El freeze on first detection se maneja en el datasource Drift.
         processed[device.deviceId] = Node(
           bleAddress: device.deviceId,
           name: null,
@@ -200,6 +205,10 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
           firstSeen: DateTime.now(),
           lastSeen: DateTime.now(),
           rssiHistory: [device.rssi],
+          suggestedName: device.advName != null && device.advName!.isNotEmpty
+              ? device.advName
+              : null,
+          deviceType: device.deviceType,
         );
       }
     }

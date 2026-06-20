@@ -26,7 +26,7 @@ class NodeDetailPage extends StatelessWidget {
 
         return Scaffold(
           appBar: AppBar(
-            title: Text(node?.name ?? 'Detalle del nodo'),
+            title: Text(node?.name ?? node?.suggestedName ?? 'Detalle del nodo'),
           ),
           body: node == null
               ? const Center(child: Text('Nodo no encontrado'))
@@ -58,8 +58,15 @@ class NodeDetailPage extends StatelessWidget {
         ListTile(
           leading: const Icon(Icons.devices),
           title: const Text('Nombre'),
-          subtitle: Text(node.name ?? 'Desconocido'),
+          subtitle: Text(node.name ?? node.suggestedName ?? 'Desconocido'),
         ),
+        // T1.9: Device Type row
+        if (node.deviceType != null)
+          ListTile(
+            leading: const Icon(Icons.category),
+            title: const Text('Tipo de dispositivo'),
+            subtitle: Text(node.deviceType!),
+          ),
         // BLE Address
         ListTile(
           leading: const Icon(Icons.bluetooth),

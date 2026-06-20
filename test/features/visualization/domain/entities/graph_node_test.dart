@@ -148,6 +148,44 @@ void main() {
       expect(node.label, 'Mi Dispositivo');
     });
 
+    // ─── T1.8: label con suggestedName ─────────────────────────
+    // QUÉ: label ahora usa name ?? suggestedName ?? 'Desconocido'
+    // POR QUÉ: Phase 4 identity enrichment — si el usuario no asignó
+    // nombre, se muestra el nombre sugerido del advertisement BLE.
+
+    test('label usa suggestedName cuando name es null', () {
+      final node = GraphNode(
+        id: 1,
+        x: 0.0,
+        y: 0.0,
+        proximity: ProximityLevel.close,
+        suggestedName: 'AirPods Pro',
+      );
+      expect(node.label, 'AirPods Pro');
+    });
+
+    test('label prefiere name sobre suggestedName', () {
+      final node = GraphNode(
+        id: 1,
+        x: 0.0,
+        y: 0.0,
+        proximity: ProximityLevel.close,
+        name: 'Mis auris',
+        suggestedName: 'AirPods Pro',
+      );
+      expect(node.label, 'Mis auris');
+    });
+
+    test('label usa Desconocido cuando ambos son null', () {
+      final node = GraphNode(
+        id: 1,
+        x: 0.0,
+        y: 0.0,
+        proximity: ProximityLevel.close,
+      );
+      expect(node.label, 'Desconocido');
+    });
+
     test('props list contains correct fields', () {
       final node = GraphNode(
         id: 5,
@@ -159,7 +197,7 @@ void main() {
 
       // name debe estar en props: dos nodos con mismo id/pos/proximidad
       // pero diferente nombre NO deben ser considerados iguales.
-      expect(node.props, [5, 150.0, 250.0, ProximityLevel.medium, 'Test']);
+      expect(node.props, [5, 150.0, 250.0, ProximityLevel.medium, 'Test', null]);
     });
 
     test('isKnown returns true when node has a name', () {

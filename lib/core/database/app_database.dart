@@ -17,7 +17,7 @@ class Users extends Table {
 
 // ──────────────────────── Nodes ────────────────────────
 
-@DataClassName('NodeRow')
+  @DataClassName('NodeRow')
 class Nodes extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get bleAddress => text().unique()();
@@ -28,6 +28,9 @@ class Nodes extends Table {
   IntColumn get lastRssi => integer().nullable()();
   TextColumn get proximityZone => text().nullable()();
   TextColumn get rssiHistory => text().nullable()(); // JSON array
+  // Phase 4 identity enrichment
+  TextColumn get suggestedName => text().nullable()();
+  TextColumn get deviceType => text().nullable()();
 }
 
 // ──────────────────────── ScanSessions ────────────────────────
@@ -77,7 +80,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.inMemory() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -91,6 +94,11 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(scanSessionNodes);
             // Índice para queries por sesión en scan_session_nodes.
             await m.createIndex(scanSessionNodesSessionIdIdx);
+          }
+          if (from < 3) {
+            // Phase 4: identity enrichment columns (nullable, no data loss)
+            await m.addColumn(nodes, nodes.suggestedName);
+            await m.addColumn(nodes, nodes.deviceType);
           }
         },
       );
