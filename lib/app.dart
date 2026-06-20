@@ -15,6 +15,7 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bl
 import 'package:frontend_mobile_nodos_app/features/history/presentation/bloc/history_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/history/presentation/pages/history_tab.dart';
 import 'package:frontend_mobile_nodos_app/features/history/presentation/pages/stats_tab.dart';
+import 'package:frontend_mobile_nodos_app/features/scan_session/presentation/bloc/scan_session_bloc.dart';
 
 /// Scaffold con BottomNavigationBar de 3 tabs usando StatefulShellRoute.
 ///
@@ -99,6 +100,8 @@ class NodosApp extends StatelessWidget {
         // HistoryBloc: orquesta el historial de sesiones y estadísticas.
         // Compartido entre HistoryTab y StatsTab via BlocProvider.
         BlocProvider<HistoryBloc>(create: (_) => sl<HistoryBloc>()),
+        // ScanSessionBloc: gestiona el ciclo de vida de sesiones de escaneo.
+        BlocProvider<ScanSessionBloc>(create: (_) => sl<ScanSessionBloc>()),
       ],
       child: BlocBuilder<UserBloc, UserState>(
         builder: (context, state) {
