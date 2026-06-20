@@ -168,5 +168,67 @@ void main() {
       final retrieved = await dataSource.getNodeById(1);
       expect(retrieved!.rssiHistory, history);
     });
+
+    // ─── PR1.3: deleteAllNodes y getNodeByBleAddress ──────────
+    // QUÉ: deleteAllNodes() elimina todas las filas de la tabla nodes.
+    // getNodeByBleAddress() busca un nodo por su dirección BLE.
+    // POR QUÉ: necesario para limpiar nodos al apagar Bluetooth
+    // (R5.17) y para lookup de nodos por bleAddress en el flujo
+    // de conexiones GATT (connections insert).
+
+    test('deleteAllNodes elimina todas las filas de la tabla', () async {
+      // Insertar 3 nodos distintos.
+      await dataSource.upsertNode(createNode(
+        bleAddress: 'AA:BB:CC:DD:EE:01',
+        name: 'Nodo 1',
+      ));
+      await dataSource.upsertNode(createNode(
+        bleAddress: 'AA:BB:CC:DD:EE:02',
+        name: 'Nodo 2',
+      ));
+      await dataSource.upsertNode(createNode(
+        bleAddress: 'AA:BB:CC:DD:EE:03',
+        name: 'Nodo 3',
+      ));
+
+      // Verificar que los 3 existen.
+      expect(await dataSource.getNodeById(1), isNotNull);
+      expect(await dataSource.getNodeById(2), isNotNull);
+      expect(await dataSource.getNodeById(3), isNotNull);
+
+      // Eliminar todos.
+      await dataSource.deleteAllNodes();
+
+      // Verificar que ninguno existe.
+      expect(await dataSource.getNodeById(1), isNull);
+      expect(await dataSource.getNodeById(2), isNull);
+      expect(await dataSource.getNodeById(3), isNull);
+    });
+
+    test('deleteAllNodes no lanza error si la tabla está vacía', () async {
+      // No debe lanzar excepción.
+      await dataSource.deleteAllNodes();
+    });
+
+    test('getNodeByBleAddress retorna el nodo correcto por bleAddress', () async {
+      await dataSource.upsertNode(createNode(
+        bleAddress: '11:22:33:44:55:66',
+        name: 'Target',
+      ));
+      await dataSource.upsertNode(createNode(
+        bleAddress: 'AA:BB:CC:DD:EE:FF',
+        name: 'Other',
+      ));
+
+      final result = await dataSource.getNodeByBleAddress('11:22:33:44:55:66');
+      expect(result, isNotNull);
+      expect(result!.bleAddress, '11:22:33:44:55:66');
+      expect(result.name, 'Target');
+    });
+
+    test('getNodeByBleAddress retorna null si no existe', () async {
+      final result = await dataSource.getNodeByBleAddress('FF:EE:DD:CC:BB:AA');
+      expect(result, isNull);
+    });
   });
 }

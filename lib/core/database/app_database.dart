@@ -31,6 +31,31 @@ class Nodes extends Table {
   // Phase 4 identity enrichment
   TextColumn get suggestedName => text().nullable()();
   TextColumn get deviceType => text().nullable()();
+  // Phase 5 graph social model
+  BoolColumn get connectable => boolean().withDefault(const Constant(false))();
+  RealColumn get estimatedDistance => real().nullable()();
+}
+
+// ──────────────────────── Connections ────────────────────────
+//
+// QUÉ: tabla que registra conexiones BLE exitosas entre nodos.
+// Las aristas del grafo social se derivan de esta tabla
+// (no de co-detección). UNIQUE(from, to) evita duplicados.
+// ON DELETE CASCADE: si un nodo se elimina, sus conexiones
+// asociadas se borran automáticamente.
+
+class Connections extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get fromNodeId => integer().references(Nodes, #id,
+      onDelete: KeyAction.cascade)();
+  IntColumn get toNodeId => integer().references(Nodes, #id,
+      onDelete: KeyAction.cascade)();
+  DateTimeColumn get createdAt => dateTime()();
+
+  @override
+  List<String> get customConstraints => [
+        'UNIQUE(from_node_id, to_node_id)',
+      ];
 }
 
 // ──────────────────────── ScanSessions ────────────────────────
@@ -72,7 +97,7 @@ final scanSessionNodesSessionIdIdx = Index(
 
 // ──────────────────────── Database ────────────────────────
 
-@DriftDatabase(tables: [Users, Nodes, ScanSessions, ScanSessionNodes])
+@DriftDatabase(tables: [Users, Nodes, Connections, ScanSessions, ScanSessionNodes])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(driftDatabase(name: 'nodos'));
 
@@ -80,7 +105,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.inMemory() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -99,6 +124,12 @@ class AppDatabase extends _$AppDatabase {
             // Phase 4: identity enrichment columns (nullable, no data loss)
             await m.addColumn(nodes, nodes.suggestedName);
             await m.addColumn(nodes, nodes.deviceType);
+          }
+          if (from < 4) {
+            // Phase 5: tabla connections para grafo social + nuevos campos en nodes
+            await m.createTable(connections);
+            await m.addColumn(nodes, nodes.connectable);
+            await m.addColumn(nodes, nodes.estimatedDistance);
           }
         },
       );

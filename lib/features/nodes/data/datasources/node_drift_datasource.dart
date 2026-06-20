@@ -51,6 +51,30 @@ class NodeDriftDataSource implements NodeLocalDataSource {
     await (_db.delete(_db.nodes)..where((t) => t.id.equals(id))).go();
   }
 
+  /// Elimina todos los nodos de la tabla nodes.
+  ///
+  /// QUÉ hace: ejecuta DELETE sin WHERE, borrando todas las filas.
+  /// POR QUÉ: necesario para el pipeline ClearNodes → NodeListEmpty
+  /// cuando se apaga Bluetooth (R5.17). Las conexiones se eliminan
+  /// automáticamente por ON DELETE CASCADE.
+  @override
+  Future<void> deleteAllNodes() async {
+    await _db.delete(_db.nodes).go();
+  }
+
+  /// Busca un nodo por su dirección BLE.
+  ///
+  /// QUÉ hace: query SELECT por bleAddress, retorna null si no existe.
+  /// POR QUÉ: necesario para el lookup de nodos en el flujo de
+  /// inserción de connections (mapear remoteId → nodeId).
+  @override
+  Future<Node?> getNodeByBleAddress(String bleAddress) async {
+    final row = await (_db.select(_db.nodes)
+          ..where((t) => t.bleAddress.equals(bleAddress)))
+        .getSingleOrNull();
+    return row != null ? _toDomain(row) : null;
+  }
+
   // ── Mappers ────────────────────────────────────────────────
 
   Node _toDomain(NodeRow row) {
@@ -71,6 +95,8 @@ class NodeDriftDataSource implements NodeLocalDataSource {
       rssiHistory: history,
       suggestedName: row.suggestedName,
       deviceType: row.deviceType,
+      connectable: row.connectable,
+      estimatedDistance: row.estimatedDistance,
     );
   }
 
@@ -93,6 +119,8 @@ class NodeDriftDataSource implements NodeLocalDataSource {
       rssiHistory: Value(historyJson),
       suggestedName: Value(node.suggestedName),
       deviceType: Value(node.deviceType),
+      connectable: Value(node.connectable),
+      estimatedDistance: Value(node.estimatedDistance),
     );
   }
 
@@ -115,6 +143,8 @@ class NodeDriftDataSource implements NodeLocalDataSource {
       rssiHistory: Value(historyJson),
       suggestedName: Value(node.suggestedName),
       deviceType: Value(node.deviceType),
+      connectable: Value(node.connectable),
+      estimatedDistance: Value(node.estimatedDistance),
     );
   }
 }
