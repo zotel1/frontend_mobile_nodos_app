@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:get_it/get_it.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart';
@@ -55,6 +56,10 @@ void main() {
     mockBleConnectionBloc = MockBleConnectionBloc();
     mockSessionBloc = MockScanSessionBloc();
     mockSessionRepo = MockScanSessionRepository();
+
+    // Mock SharedPreferences con onboarding_complete=true para
+    // que los tests existentes no redirijan a /onboarding.
+    SharedPreferences.setMockInitialValues({'onboarding_complete': true});
 
     // Configurar mocks para evitar crashes
     when(mockBleBloc.state).thenReturn(const BleStopped());
@@ -364,6 +369,58 @@ void main() {
 
       // T2.5: Al entrar a Home tab, debería dispararse StartScan
       // (verificación indirecta: navegación sin errores)
+    });
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // PR3: Onboarding redirect guard
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  group('Onboarding redirect', () {
+    testWidgets(
+        'redirige a Home cuando onboarding_complete es true',
+        (tester) async {
+      // setUp() ya configura onboarding_complete: true
+      await tester.pumpWidget(buildApp());
+      // Varios pumps para que el redirect asíncrono de GoRouter se resuelva
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      // La app debe mostrar la HomePage con BottomNavigationBar.
+      expect(find.byType(BottomNavigationBar), findsOneWidget);
+      // El botón "Continuar" del onboarding no debe aparecer.
+      expect(find.text('Continuar'), findsNothing);
+    });
+
+    testWidgets(
+        'redirige a Onboarding cuando onboarding_complete es false',
+        (tester) async {
+      // Forzar false en la instancia mock ya inicializada.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('onboarding_complete', false);
+
+      await tester.pumpWidget(buildApp());
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+
+      // Debe mostrar la página de onboarding (paso 1: botón Continuar).
+      expect(find.text('Continuar'), findsOneWidget);
+    });
+
+    testWidgets(
+        'redirige a Onboarding cuando no existe la key onboarding_complete',
+        (tester) async {
+      // Eliminar la key de la instancia mock.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('onboarding_complete');
+
+      await tester.pumpWidget(buildApp());
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+
+      // Sin la key, debe mostrar el onboarding.
+      expect(find.text('Continuar'), findsOneWidget);
     });
   });
 }

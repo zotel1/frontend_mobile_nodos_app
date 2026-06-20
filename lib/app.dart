@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:frontend_mobile_nodos_app/core/di/injection_container.dart';
 import 'package:frontend_mobile_nodos_app/core/theme/app_theme.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
@@ -9,6 +10,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_eve
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/bloc/node_list_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/pages/home_page.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/pages/node_detail_page.dart';
+import 'package:frontend_mobile_nodos_app/features/onboarding/presentation/pages/onboarding_page.dart';
 import 'package:frontend_mobile_nodos_app/features/user/presentation/bloc/user_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/user/presentation/pages/settings_page.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_bloc.dart';
@@ -143,9 +145,34 @@ class NodosApp extends StatelessWidget {
   }
 }
 
+/// Router principal con redirect guard de onboarding.
+///
+/// QUÉ: si el flag `onboarding_complete` en SharedPreferences es false
+/// o no existe, redirige a `/onboarding`. Si es true y el usuario está
+/// en `/onboarding`, redirige a `/` (HomePage).
+///
+/// POR QUÉ: el onboarding solo debe verse una vez en la primera
+/// ejecución de la app. Después de configurar perfil, nunca más.
 final _router = GoRouter(
-  initialLocation: '/',
+  initialLocation: '/onboarding',
+  redirect: (context, state) async {
+    final prefs = await SharedPreferences.getInstance();
+    final onboardingComplete = prefs.getBool('onboarding_complete') ?? false;
+    final isOnboarding = state.matchedLocation == '/onboarding';
+
+    // Si ya completó onboarding y está en /onboarding → ir a Home.
+    if (onboardingComplete && isOnboarding) return '/';
+    // Si no completó onboarding y no está en /onboarding → forzar onboarding.
+    if (!onboardingComplete && !isOnboarding) return '/onboarding';
+    // Si está donde debe estar, no redirigir.
+    return null;
+  },
   routes: [
+    // PR3: Ruta de onboarding — primera ejecución.
+    GoRoute(
+      path: '/onboarding',
+      builder: (_, _) => const OnboardingPage(),
+    ),
     // T1.9: BottomNavigationBar con 3 tabs usando IndexedStack.
     // Cada tab preserva su estado al cambiar entre ellas.
     StatefulShellRoute.indexedStack(
