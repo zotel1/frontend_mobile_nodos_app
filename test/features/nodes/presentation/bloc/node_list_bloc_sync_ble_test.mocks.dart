@@ -158,4 +158,22 @@ class MockNodeRepository extends _i1.Mock implements _i2.NodeRepository {
             returnValueForMissingStub: _i5.Future<void>.value(),
           )
           as _i5.Future<void>);
+
+  @override
+  _i5.Future<void> clearAllNodes() =>
+      (super.noSuchMethod(
+            Invocation.method(#clearAllNodes, []),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<_i6.Node?> getNodeByBleAddress(String? bleAddress) =>
+      (super.noSuchMethod(
+            Invocation.method(#getNodeByBleAddress, [bleAddress]),
+            returnValue: _i5.Future<_i6.Node?>.value(),
+            returnValueForMissingStub: _i5.Future<_i6.Node?>.value(),
+          )
+          as _i5.Future<_i6.Node?>);
 }

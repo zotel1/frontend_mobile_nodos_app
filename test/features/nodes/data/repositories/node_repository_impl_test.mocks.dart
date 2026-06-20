@@ -66,4 +66,22 @@ class MockNodeLocalDataSource extends _i1.Mock
             returnValueForMissingStub: _i3.Future<void>.value(),
           )
           as _i3.Future<void>);
+
+  @override
+  _i3.Future<void> deleteAllNodes() =>
+      (super.noSuchMethod(
+            Invocation.method(#deleteAllNodes, []),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Future<_i4.Node?> getNodeByBleAddress(String? bleAddress) =>
+      (super.noSuchMethod(
+            Invocation.method(#getNodeByBleAddress, [bleAddress]),
+            returnValue: _i3.Future<_i4.Node?>.value(),
+            returnValueForMissingStub: _i3.Future<_i4.Node?>.value(),
+          )
+          as _i3.Future<_i4.Node?>);
 }

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bloc_test/bloc_test.dart';
+import 'package:dartz/dartz.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
@@ -229,6 +230,107 @@ void main() {
           2, // testNodes tiene 2 nodos
         ),
       ],
+    );
+  });
+
+  // ─── PR1.8: ClearNodes, UpdateNodeName, UpdateNodeColor ──────
+  // QUÉ: ClearNodes emite NodeListEmpty tras limpiar la BD.
+  // UpdateNodeName/Color emiten NodeListLoaded con el nodo actualizado.
+  // POR QUÉ: pipeline para limpiar al apagar BT (R5.17) y para
+  // metadata del bottom sheet de identidad (R5.5-R5.7).
+
+  group('ClearNodes', () {
+    blocTest<NodeListBloc, NodeListState>(
+      'ClearNodes emite NodeListEmpty tras clearAllNodes y re-suscripción',
+      build: () {
+        when(mockNodeRepository.clearAllNodes()).thenAnswer((_) async {});
+        // Después de clearAllNodes, la re-suscripción emite lista vacía.
+        when(mockObserveNodes.call())
+            .thenAnswer((_) => Stream.value([]));
+        return NodeListBloc(
+          observeNodes: mockObserveNodes,
+          updateNodeMetadata: mockUpdateNodeMetadata,
+          nodeRepository: mockNodeRepository,
+        );
+      },
+      act: (bloc) => bloc.add(const ClearNodes()),
+      expect: () => [
+        isA<NodeListLoading>(),
+        isA<NodeListEmpty>(),
+      ],
+      verify: (_) {
+        verify(mockNodeRepository.clearAllNodes()).called(1);
+      },
+    );
+  });
+
+  group('UpdateNodeName', () {
+    blocTest<NodeListBloc, NodeListState>(
+      'UpdateNodeName emite NodeListLoaded con el nombre actualizado',
+      build: () {
+        // updateNodeMetadata devuelve Right(null).
+        when(mockUpdateNodeMetadata(any))
+            .thenAnswer((_) async => const Right(null));
+        // Re-suscripción emite la lista de nodos con el nombre actualizado.
+        when(mockObserveNodes.call())
+            .thenAnswer((_) => Stream.value(testNodes));
+        return NodeListBloc(
+          observeNodes: mockObserveNodes,
+          updateNodeMetadata: mockUpdateNodeMetadata,
+          nodeRepository: mockNodeRepository,
+        );
+      },
+      act: (bloc) => bloc.add(const UpdateNodeName(1, 'Nuevo Nombre')),
+      expect: () => [
+        isA<NodeListLoading>(),
+        isA<NodeListLoaded>().having(
+          (s) => s.nodes,
+          'nodes',
+          equals(testNodes),
+        ),
+      ],
+      verify: (_) {
+        verify(mockUpdateNodeMetadata(
+          argThat(
+            predicate<UpdateNodeMetadataParams>((p) =>
+                p.id == 1 && p.name == 'Nuevo Nombre'),
+          ),
+        )).called(1);
+      },
+    );
+  });
+
+  group('UpdateNodeColor', () {
+    blocTest<NodeListBloc, NodeListState>(
+      'UpdateNodeColor emite NodeListLoaded con el color actualizado',
+      build: () {
+        when(mockUpdateNodeMetadata(any))
+            .thenAnswer((_) async => const Right(null));
+        when(mockObserveNodes.call())
+            .thenAnswer((_) => Stream.value(testNodes));
+        return NodeListBloc(
+          observeNodes: mockObserveNodes,
+          updateNodeMetadata: mockUpdateNodeMetadata,
+          nodeRepository: mockNodeRepository,
+        );
+      },
+      act: (bloc) => bloc.add(const UpdateNodeColor(2, '#FF0000')),
+      expect: () => [
+        isA<NodeListLoading>(),
+        isA<NodeListLoaded>().having(
+          (s) => s.nodes,
+          'nodes',
+          equals(testNodes),
+        ),
+      ],
+      verify: (_) {
+        verify(mockUpdateNodeMetadata(
+          argThat(
+            predicate<UpdateNodeMetadataParams>((p) =>
+                p.id == 2 && p.color == '#FF0000'),
+          ),
+        )).called(1);
+      },
     );
   });
 }
