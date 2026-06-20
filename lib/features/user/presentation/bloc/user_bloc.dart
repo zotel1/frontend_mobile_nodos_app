@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:equatable/equatable.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/uuid_generator.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/entities/user.dart';
@@ -42,7 +43,8 @@ class UpdateUserColorEvent extends UserEvent {
 
 /// Cambia el modo de tema (sistema / claro / oscuro).
 ///
-/// No persiste en DB — solo en memoria (deferido a Phase 3).
+/// Persiste en SharedPreferences bajo la clave 'theme_mode'
+/// para que sobreviva a reinicios de la app.
 class UpdateThemeMode extends UserEvent {
   final ThemeMode mode;
 
@@ -101,12 +103,19 @@ class UserBloc extends Bloc<UserEvent, UserState> {
   /// en caso de que getUser() retorne null.
   final UserRepository _userRepository;
 
+  /// SharedPreferences para persistir preferencias como el tema.
+  /// QUÉ: usado por _onLoadProfile para leer el tema guardado y
+  /// por _onUpdateThemeMode para persistir el cambio.
+  final SharedPreferences _prefs;
+
   UserBloc({
     required this.getProfile,
     required this.updateName,
     required this.updateColor,
     required UserRepository userRepository,
+    required SharedPreferences prefs,
   }) : _userRepository = userRepository,
+       _prefs = prefs,
        super(const UserInitial()) {
     on<LoadProfile>(_onLoadProfile);
     on<UpdateUserNameEvent>(_onUpdateName);
@@ -121,16 +130,27 @@ class UserBloc extends Bloc<UserEvent, UserState> {
   /// deviceType "android". Luego recarga el perfil para obtener los
   /// datos persistidos.
   ///
+  /// Tema: lee el tema guardado en SharedPreferences bajo la clave
+  /// 'theme_mode'. Si no existe, usa [ThemeMode.system] por defecto.
+  ///
   /// QUÉ problema resuelve: sin este fallback, Settings mostraba
   /// "Error: No user profile found" en primera ejecución porque
   /// la DB de usuarios estaba vacía.
   Future<void> _onLoadProfile(
       LoadProfile event, Emitter<UserState> emit) async {
     emit(const UserLoading());
+
+    // Leer tema persistido antes de cargar el perfil
+    final savedTheme = _prefs.getString('theme_mode');
+    final themeMode = _themeModeFromString(savedTheme);
+
     final result = await getProfile(const NoParams());
 
     if (result.isRight()) {
-      emit(UserLoaded(result.getOrElse(() => throw StateError('Imposible'))));
+      emit(UserLoaded(
+        result.getOrElse(() => throw StateError('Imposible')),
+        themeMode: themeMode,
+      ));
       return;
     }
 
@@ -148,7 +168,7 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     final reloadResult = await getProfile(const NoParams());
     reloadResult.fold(
       (failure) => emit(UserError(failure.message)),
-      (user) => emit(UserLoaded(user)),
+      (user) => emit(UserLoaded(user, themeMode: themeMode)),
     );
   }
 
@@ -162,9 +182,11 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     }
     // Reload profile to get updated user data.
     final profileResult = await getProfile(const NoParams());
+    final savedTheme = _prefs.getString('theme_mode');
     profileResult.fold(
       (failure) => emit(UserError(failure.message)),
-      (user) => emit(UserLoaded(user)),
+      (user) =>
+          emit(UserLoaded(user, themeMode: _themeModeFromString(savedTheme))),
     );
   }
 
@@ -177,22 +199,42 @@ class UserBloc extends Bloc<UserEvent, UserState> {
       return;
     }
     final profileResult = await getProfile(const NoParams());
+    final savedTheme = _prefs.getString('theme_mode');
     profileResult.fold(
       (failure) => emit(UserError(failure.message)),
-      (user) => emit(UserLoaded(user)),
+      (user) =>
+          emit(UserLoaded(user, themeMode: _themeModeFromString(savedTheme))),
     );
   }
 
-  /// Actualiza el modo de tema sin modificar datos del perfil.
+  /// Actualiza el modo de tema y lo persiste en SharedPreferences.
   ///
-  /// Solo cambia el campo [themeMode] en el estado actual.
-  /// No persiste en DB (deferido a Phase 3).
+  /// Guarda el valor como string ('system', 'light', 'dark') bajo la
+  /// clave 'theme_mode' para que sobreviva a reinicios de la app.
   /// Si el estado actual no es [UserLoaded], ignora el evento.
   void _onUpdateThemeMode(
       UpdateThemeMode event, Emitter<UserState> emit) {
     final currentState = state;
     if (currentState is UserLoaded) {
+      _prefs.setString('theme_mode', event.mode.name);
       emit(UserLoaded(currentState.user, themeMode: event.mode));
+    }
+  }
+
+  /// Convierte un string guardado en SharedPreferences a [ThemeMode].
+  ///
+  /// Si el string es null o no coincide con ningún valor conocido,
+  /// retorna [ThemeMode.system] como fallback seguro.
+  ThemeMode _themeModeFromString(String? value) {
+    switch (value) {
+      case 'light':
+        return ThemeMode.light;
+      case 'dark':
+        return ThemeMode.dark;
+      case 'system':
+        return ThemeMode.system;
+      default:
+        return ThemeMode.system;
     }
   }
 }
