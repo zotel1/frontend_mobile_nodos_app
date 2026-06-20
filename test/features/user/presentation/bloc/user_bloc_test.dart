@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:frontend_mobile_nodos_app/core/errors/failures.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/entities/user.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/repositories/user_repository.dart';
@@ -25,6 +26,7 @@ void main() {
   late MockUpdateUserName mockUpdateUserName;
   late MockUpdateUserColor mockUpdateUserColor;
   late MockUserRepository mockUserRepository;
+  late SharedPreferences prefs;
 
   final testUser = User(
     uuid: 'test-uuid-123',
@@ -34,22 +36,27 @@ void main() {
     createdAt: DateTime(2026, 1, 1),
   );
 
-  setUp(() {
+  setUp(() async {
     mockGetUserProfile = MockGetUserProfile();
     mockUpdateUserName = MockUpdateUserName();
     mockUpdateUserColor = MockUpdateUserColor();
     mockUserRepository = MockUserRepository();
+    SharedPreferences.setMockInitialValues({});
+    prefs = await SharedPreferences.getInstance();
   });
 
-  group('UserBloc', () {
-    blocTest<UserBloc, UserState>(
-      'emits [UserInitial] as initial state',
-      build: () => UserBloc(
+  UserBloc buildBloc() => UserBloc(
         getProfile: mockGetUserProfile,
         updateName: mockUpdateUserName,
         updateColor: mockUpdateUserColor,
         userRepository: mockUserRepository,
-      ),
+        prefs: prefs,
+      );
+
+  group('UserBloc', () {
+    blocTest<UserBloc, UserState>(
+      'emits [UserInitial] as initial state',
+      build: buildBloc,
       verify: (bloc) => expect(bloc.state, isA<UserInitial>()),
     );
 
@@ -58,12 +65,7 @@ void main() {
       build: () {
         when(mockGetUserProfile.call(any))
             .thenAnswer((_) async => Right(testUser));
-        return UserBloc(
-          getProfile: mockGetUserProfile,
-          updateName: mockUpdateUserName,
-          updateColor: mockUpdateUserColor,
-          userRepository: mockUserRepository,
-        );
+        return buildBloc();
       },
       act: (bloc) => bloc.add(LoadProfile()),
       expect: () => [
@@ -81,12 +83,7 @@ void main() {
       build: () {
         when(mockGetUserProfile.call(any))
             .thenAnswer((_) async => Left(CacheFailure('No user profile found')));
-        return UserBloc(
-          getProfile: mockGetUserProfile,
-          updateName: mockUpdateUserName,
-          updateColor: mockUpdateUserColor,
-          userRepository: mockUserRepository,
-        );
+        return buildBloc();
       },
       act: (bloc) => bloc.add(LoadProfile()),
       expect: () => [
@@ -107,12 +104,7 @@ void main() {
             .thenAnswer((_) async => const Right(null));
         when(mockGetUserProfile.call(any))
             .thenAnswer((_) async => Right(testUser.copyWith(name: 'New Name')));
-        return UserBloc(
-          getProfile: mockGetUserProfile,
-          updateName: mockUpdateUserName,
-          updateColor: mockUpdateUserColor,
-          userRepository: mockUserRepository,
-        );
+        return buildBloc();
       },
       act: (bloc) => bloc.add(const UpdateUserNameEvent('New Name')),
       expect: () => [
@@ -136,12 +128,7 @@ void main() {
       build: () {
         when(mockUpdateUserName.call(any)).thenAnswer(
             (_) async => Left(UnexpectedFailure('Save failed')));
-        return UserBloc(
-          getProfile: mockGetUserProfile,
-          updateName: mockUpdateUserName,
-          updateColor: mockUpdateUserColor,
-          userRepository: mockUserRepository,
-        );
+        return buildBloc();
       },
       act: (bloc) => bloc.add(const UpdateUserNameEvent('New Name')),
       expect: () => [
@@ -162,12 +149,7 @@ void main() {
             .thenAnswer((_) async => const Right(null));
         when(mockGetUserProfile.call(any))
             .thenAnswer((_) async => Right(testUser.copyWith(color: '#FF5722')));
-        return UserBloc(
-          getProfile: mockGetUserProfile,
-          updateName: mockUpdateUserName,
-          updateColor: mockUpdateUserColor,
-          userRepository: mockUserRepository,
-        );
+        return buildBloc();
       },
       act: (bloc) =>
           bloc.add(const UpdateUserColorEvent('#FF5722')),
@@ -192,12 +174,7 @@ void main() {
       build: () {
         when(mockUpdateUserColor.call(any)).thenAnswer(
             (_) async => Left(UnexpectedFailure('Save failed')));
-        return UserBloc(
-          getProfile: mockGetUserProfile,
-          updateName: mockUpdateUserName,
-          updateColor: mockUpdateUserColor,
-          userRepository: mockUserRepository,
-        );
+        return buildBloc();
       },
       act: (bloc) =>
           bloc.add(const UpdateUserColorEvent('#FF5722')),
@@ -212,21 +189,13 @@ void main() {
     );
 
     // ─── Tema (ThemeMode) ──────────────────────────────────
-    // QUÉ: verifica que UpdateThemeMode cambia el modo de tema
-    // POR QUÉ: el usuario puede elegir entre sistema/claro/oscuro
-    //   desde SettingsPage. El estado debe reflejar la elección.
 
     blocTest<UserBloc, UserState>(
       'initial LoadProfile emits UserLoaded with themeMode=system',
       build: () {
         when(mockGetUserProfile.call(any))
             .thenAnswer((_) async => Right(testUser));
-        return UserBloc(
-          getProfile: mockGetUserProfile,
-          updateName: mockUpdateUserName,
-          updateColor: mockUpdateUserColor,
-          userRepository: mockUserRepository,
-        );
+        return buildBloc();
       },
       act: (bloc) => bloc.add(LoadProfile()),
       expect: () => [
@@ -240,14 +209,45 @@ void main() {
     );
 
     blocTest<UserBloc, UserState>(
+      'LoadProfile reads saved dark theme from SharedPreferences',
+      setUp: () async {
+        SharedPreferences.setMockInitialValues({'theme_mode': 'dark'});
+        prefs = await SharedPreferences.getInstance();
+        when(mockGetUserProfile.call(any))
+            .thenAnswer((_) async => Right(testUser));
+      },
+      build: buildBloc,
+      act: (bloc) => bloc.add(LoadProfile()),
+      expect: () => [
+        isA<UserLoading>(),
+        isA<UserLoaded>()
+            .having((s) => s.themeMode, 'themeMode', ThemeMode.dark)
+            .having((s) => s.user, 'user', testUser),
+      ],
+    );
+
+    blocTest<UserBloc, UserState>(
+      'LoadProfile reads saved light theme from SharedPreferences',
+      setUp: () async {
+        SharedPreferences.setMockInitialValues({'theme_mode': 'light'});
+        prefs = await SharedPreferences.getInstance();
+        when(mockGetUserProfile.call(any))
+            .thenAnswer((_) async => Right(testUser));
+      },
+      build: buildBloc,
+      act: (bloc) => bloc.add(LoadProfile()),
+      expect: () => [
+        isA<UserLoading>(),
+        isA<UserLoaded>()
+            .having((s) => s.themeMode, 'themeMode', ThemeMode.light)
+            .having((s) => s.user, 'user', testUser),
+      ],
+    );
+
+    blocTest<UserBloc, UserState>(
       'UpdateThemeMode to dark changes themeMode in state',
       seed: () => UserLoaded(testUser),
-      build: () => UserBloc(
-        getProfile: mockGetUserProfile,
-        updateName: mockUpdateUserName,
-        updateColor: mockUpdateUserColor,
-        userRepository: mockUserRepository,
-      ),
+      build: buildBloc,
       act: (bloc) => bloc.add(const UpdateThemeMode(ThemeMode.dark)),
       expect: () => [
         isA<UserLoaded>()
@@ -257,14 +257,20 @@ void main() {
     );
 
     blocTest<UserBloc, UserState>(
+      'UpdateThemeMode to dark persists in SharedPreferences',
+      seed: () => UserLoaded(testUser),
+      build: buildBloc,
+      act: (bloc) => bloc.add(const UpdateThemeMode(ThemeMode.dark)),
+      verify: (_) async {
+        final p = await SharedPreferences.getInstance();
+        expect(p.getString('theme_mode'), equals('dark'));
+      },
+    );
+
+    blocTest<UserBloc, UserState>(
       'UpdateThemeMode to light changes themeMode in state',
       seed: () => UserLoaded(testUser),
-      build: () => UserBloc(
-        getProfile: mockGetUserProfile,
-        updateName: mockUpdateUserName,
-        updateColor: mockUpdateUserColor,
-        userRepository: mockUserRepository,
-      ),
+      build: buildBloc,
       act: (bloc) => bloc.add(const UpdateThemeMode(ThemeMode.light)),
       expect: () => [
         isA<UserLoaded>()
@@ -276,12 +282,7 @@ void main() {
     blocTest<UserBloc, UserState>(
       'UpdateThemeMode to system changes themeMode in state',
       seed: () => UserLoaded(testUser, themeMode: ThemeMode.dark),
-      build: () => UserBloc(
-        getProfile: mockGetUserProfile,
-        updateName: mockUpdateUserName,
-        updateColor: mockUpdateUserColor,
-        userRepository: mockUserRepository,
-      ),
+      build: buildBloc,
       act: (bloc) => bloc.add(const UpdateThemeMode(ThemeMode.system)),
       expect: () => [
         isA<UserLoaded>()
@@ -291,18 +292,9 @@ void main() {
     );
 
     // T1.7 F7: Auto-creación de User default cuando no existe en DB.
-    // QUÉ: si getProfile retorna Left (no hay usuario), el BLoC debe
-    // crear un User default (UUIDv4, "Mi dispositivo", azul, android),
-    // persistirlo vía userRepository.createUser(), recargar el perfil
-    // y emitir UserLoaded con el nuevo usuario.
-    // POR QUÉ: en primera ejecución no hay perfil → Settings mostraba
-    // "Error: No user profile found". Con el default auto-creado, la
-    // app siempre tiene un perfil funcional.
     blocTest<UserBloc, UserState>(
       'creates default User when LoadProfile returns Left (no user in DB)',
       build: () {
-        // Secuencia: primera llamada → Left (no hay perfil),
-        // segunda llamada (recarga tras createUser) → Right.
         var callCount = 0;
         when(mockGetUserProfile.call(any)).thenAnswer((_) async {
           callCount++;
@@ -315,15 +307,9 @@ void main() {
             deviceType: 'android',
           ));
         });
-        // Configurar createUser en el repositorio.
         when(mockUserRepository.createUser(any))
             .thenAnswer((_) async {});
-        return UserBloc(
-          getProfile: mockGetUserProfile,
-          updateName: mockUpdateUserName,
-          updateColor: mockUpdateUserColor,
-          userRepository: mockUserRepository,
-        );
+        return buildBloc();
       },
       act: (bloc) => bloc.add(LoadProfile()),
       expect: () => [
@@ -335,7 +321,6 @@ void main() {
         ),
       ],
       verify: (_) {
-        // Verifica que createUser fue llamado con los datos default.
         verify(mockUserRepository.createUser(argThat(
           predicate((u) =>
               u is User &&
