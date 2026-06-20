@@ -11,7 +11,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart';
-import 'package:frontend_mobile_nodos_app/features/user/domain/entities/user.dart';
 import 'package:frontend_mobile_nodos_app/features/user/presentation/bloc/user_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/onboarding/presentation/pages/onboarding_page.dart';
 
