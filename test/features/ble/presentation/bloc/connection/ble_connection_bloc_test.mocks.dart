@@ -7,6 +7,10 @@ import 'dart:async' as _i3;
 
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_gatt_datasource.dart'
     as _i2;
+import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart'
+    as _i5;
+import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart'
+    as _i4;
 import 'package:mockito/mockito.dart' as _i1;
 
 // ignore_for_file: type=lint
@@ -63,4 +67,96 @@ class MockBleGattDataSource extends _i1.Mock implements _i2.BleGattDataSource {
             returnValueForMissingStub: _i3.Stream<bool>.empty(),
           )
           as _i3.Stream<bool>);
+
+  @override
+  _i3.Future<List<_i2.BleServiceInfo>> discoverServices(String? remoteId) =>
+      (super.noSuchMethod(
+            Invocation.method(#discoverServices, [remoteId]),
+            returnValue: _i3.Future<List<_i2.BleServiceInfo>>.value(
+              <_i2.BleServiceInfo>[],
+            ),
+            returnValueForMissingStub:
+                _i3.Future<List<_i2.BleServiceInfo>>.value(
+                  <_i2.BleServiceInfo>[],
+                ),
+          )
+          as _i3.Future<List<_i2.BleServiceInfo>>);
+
+  @override
+  _i3.Future<List<int>?> readCharacteristic(
+    String? remoteId,
+    String? characteristicUuid,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#readCharacteristic, [
+              remoteId,
+              characteristicUuid,
+            ]),
+            returnValue: _i3.Future<List<int>?>.value(),
+            returnValueForMissingStub: _i3.Future<List<int>?>.value(),
+          )
+          as _i3.Future<List<int>?>);
+}
+
+/// A class which mocks [NodeRepository].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockNodeRepository extends _i1.Mock implements _i4.NodeRepository {
+  @override
+  _i3.Stream<List<_i5.Node>> observeNodes() =>
+      (super.noSuchMethod(
+            Invocation.method(#observeNodes, []),
+            returnValue: _i3.Stream<List<_i5.Node>>.empty(),
+            returnValueForMissingStub: _i3.Stream<List<_i5.Node>>.empty(),
+          )
+          as _i3.Stream<List<_i5.Node>>);
+
+  @override
+  _i3.Future<_i5.Node?> getNodeById(int? id) =>
+      (super.noSuchMethod(
+            Invocation.method(#getNodeById, [id]),
+            returnValue: _i3.Future<_i5.Node?>.value(),
+            returnValueForMissingStub: _i3.Future<_i5.Node?>.value(),
+          )
+          as _i3.Future<_i5.Node?>);
+
+  @override
+  _i3.Future<void> upsertNode(_i5.Node? node) =>
+      (super.noSuchMethod(
+            Invocation.method(#upsertNode, [node]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Future<void> updateNodeMetadata(int? id, {String? name, String? color}) =>
+      (super.noSuchMethod(
+            Invocation.method(
+              #updateNodeMetadata,
+              [id],
+              {#name: name, #color: color},
+            ),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Future<void> clearAllNodes() =>
+      (super.noSuchMethod(
+            Invocation.method(#clearAllNodes, []),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Future<_i5.Node?> getNodeByBleAddress(String? bleAddress) =>
+      (super.noSuchMethod(
+            Invocation.method(#getNodeByBleAddress, [bleAddress]),
+            returnValue: _i3.Future<_i5.Node?>.value(),
+            returnValueForMissingStub: _i3.Future<_i5.Node?>.value(),
+          )
+          as _i3.Future<_i5.Node?>);
 }

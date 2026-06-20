@@ -128,8 +128,14 @@ Future<void> initDependencies() async {
   sl.registerFactory(() => BleBloc(repository: sl()));
   // BleConnectionBloc: maneja el ciclo de vida de conexiones GATT.
   // Factory — cada BlocProvider obtiene su propia instancia.
+  // Depende de NodeRepository para lookup de nodeId y AppDatabase
+  // para insertar filas en la tabla connections.
   sl.registerFactory<BleConnectionBloc>(
-    () => BleConnectionBloc(gatt: sl()),
+    () => BleConnectionBloc(
+      gatt: sl(),
+      nodeRepository: sl(),
+      db: sl(),
+    ),
   );
   sl.registerFactory<NodeListBloc>(
     () => NodeListBloc(
