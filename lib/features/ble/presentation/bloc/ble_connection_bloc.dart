@@ -3,7 +3,6 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart' hide Column;
 import 'package:equatable/equatable.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
@@ -202,7 +201,7 @@ class BleConnectionBloc
         return;
       }
     } catch (_) {
-      // Entorno sin platform channel — continuar sin verificación
+      // Entorno sin platform channel (tests, web) — continuar sin verificación
     }
 
     try {
