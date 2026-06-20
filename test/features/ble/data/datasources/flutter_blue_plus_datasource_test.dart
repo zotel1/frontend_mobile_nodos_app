@@ -409,5 +409,55 @@ void main() {
       expect(device.timestamp, now);
       expect(device.proximity, rssiToProximity(-55));
     });
+
+    // ─── F4: Invocación de DeviceClassifier ────────────────────────
+    // QUÉ: mapScanResultToDevice debe invocar DeviceClassifier.classify()
+    // con los serviceUuids y manufacturerId del advertisement, y asignar
+    // el resultado a BleDevice.deviceType.
+    // POR QUÉ: sin esta invocación, deviceType siempre era null y los
+    // dispositivos se mostraban sin categoría legible.
+
+    test('F4: asigna deviceType "Reloj/Fitness" para Heart Rate (0x180D)',
+        () {
+      final scan = scanResult(
+        serviceUuids: [Guid('180D')],
+      );
+      final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
+      expect(device.deviceType, equals('Reloj/Fitness'));
+    });
+
+    test('F4: asigna "Nodo" para el service UUID de Nodos', () {
+      final scan = scanResult(
+        serviceUuids: [Guid('4fafc201-1fb5-459e-8fcc-c5c9c331914b')],
+      );
+      final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
+      expect(device.deviceType, equals('Nodo'));
+    });
+
+    test('F4: asigna tipo por manufacturer ID cuando no hay UUIDs', () {
+      final scan = scanResult(
+        serviceUuids: [],
+        manufacturerData: {0x004C: [1, 2, 3]},
+      );
+      final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
+      expect(device.deviceType, equals('Apple (Desconocido)'));
+    });
+
+    test('F4: deviceType es null cuando no se reconoce nada', () {
+      final scan = scanResult(
+        serviceUuids: [],
+        manufacturerData: {},
+      );
+      final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
+      expect(device.deviceType, isNull);
+    });
+
+    test('F4: deviceType null con UUIDs no reconocidos (sin crash)', () {
+      final scan = scanResult(
+        serviceUuids: [Guid('ABCD')],
+      );
+      final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
+      expect(device.deviceType, isNull);
+    });
   });
 }

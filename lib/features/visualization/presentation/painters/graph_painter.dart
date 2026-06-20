@@ -23,7 +23,12 @@ class GraphPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (layout.nodes.isEmpty) return;
+    // F2: Si el layout está vacío, renderizar mensaje de feedback
+    // en lugar de retornar silenciosamente (canvas en blanco).
+    if (layout.nodes.isEmpty) {
+      _drawEmptyState(canvas, size);
+      return;
+    }
 
     // Construir mapa id → GraphNode para lookup de aristas.
     final nodeMap = <int, GraphNode>{};
@@ -295,5 +300,36 @@ class GraphPainter extends CustomPainter {
     // el costo de repintar innecesariamente.
     return oldDelegate.layout != layout ||
         oldDelegate.selectedNodeId != selectedNodeId;
+  }
+
+  /// F2: Renderiza el mensaje "Sin datos de grafo" centrado en el canvas
+  /// cuando el layout no contiene nodos.
+  ///
+  /// QUÉ hace: dibuja el texto centrado horizontal y verticalmente en el
+  /// canvas, en color gris (#9E9E9E), fuente 20px, centrado.
+  ///
+  /// POR QUÉ: reemplaza el `if (nodes.isEmpty) return;` que dejaba al
+  /// usuario con un canvas completamente en blanco sin feedback alguno.
+  void _drawEmptyState(Canvas canvas, Size size) {
+    final textPainter = TextPainter(
+      text: const TextSpan(
+        text: 'Sin datos de grafo',
+        style: TextStyle(
+          color: Color(0xFF9E9E9E),
+          fontSize: 20.0,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      textAlign: TextAlign.center,
+      maxLines: 2,
+    )..layout(maxWidth: size.width - 40);
+
+    // Centrar horizontal y verticalmente
+    final offset = Offset(
+      (size.width - textPainter.width) / 2,
+      (size.height - textPainter.height) / 2,
+    );
+    textPainter.paint(canvas, offset);
   }
 }

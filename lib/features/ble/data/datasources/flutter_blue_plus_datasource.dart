@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
+import 'package:frontend_mobile_nodos_app/core/utils/device_classifier.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_scanner_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart';
@@ -66,6 +67,23 @@ class FlutterBluePlusDataSource implements BleScannerDataSource {
   /// sin depender de FlutterBluePlus platform (Extract-Before-Mock).
   @visibleForTesting
   static BleDevice mapScanResultToDevice(ScanResult r) {
+    // Extraer service UUIDs como List<String> para el classifier
+    final serviceUuidsStrings = r.advertisementData.serviceUuids.isNotEmpty
+        ? r.advertisementData.serviceUuids
+            .map((g) => g.toString())
+            .toList()
+        : <String>[];
+
+    // Extraer manufacturer ID del primer entry en manufacturerData
+    final manufacturerId = r.advertisementData.manufacturerData.isNotEmpty
+        ? r.advertisementData.manufacturerData.keys.first
+        : null;
+
+    // F4: Clasificar el dispositivo usando los service UUIDs y
+    // manufacturer ID. El classifier es estático y sync (~1μs).
+    final deviceType =
+        DeviceClassifier.classify(serviceUuidsStrings, manufacturerId);
+
     return BleDevice(
       deviceId: r.device.remoteId.toString(),
       deviceUuid: null,
@@ -78,11 +96,8 @@ class FlutterBluePlusDataSource implements BleScannerDataSource {
       platformName: r.device.platformName,
       txPowerLevel: r.advertisementData.txPowerLevel,
       connectable: r.advertisementData.connectable,
-      serviceUuids: r.advertisementData.serviceUuids.isNotEmpty
-          ? r.advertisementData.serviceUuids
-              .map((g) => g.toString())
-              .toList()
-          : null,
+      serviceUuids: serviceUuidsStrings.isNotEmpty ? serviceUuidsStrings : null,
+      deviceType: deviceType,
     );
   }
 
