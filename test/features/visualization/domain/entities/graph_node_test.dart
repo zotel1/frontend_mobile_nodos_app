@@ -74,30 +74,16 @@ void main() {
       expect(node1, isNot(equals(node2)));
     });
 
-    test('radius is derived from proximity', () {
-      final closeNode = GraphNode(
+    // T2.1: radio ahora basado en connectionCount, no en proximity.
+    test('radio por defecto es 12px con connectionCount=0', () {
+      final node = GraphNode(
         id: 1,
         x: 0.0,
         y: 0.0,
         proximity: ProximityLevel.close,
       );
-      final mediumNode = GraphNode(
-        id: 2,
-        x: 0.0,
-        y: 0.0,
-        proximity: ProximityLevel.medium,
-      );
-      final farNode = GraphNode(
-        id: 3,
-        x: 0.0,
-        y: 0.0,
-        proximity: ProximityLevel.far,
-      );
-
-      // close > medium > far
-      expect(closeNode.radius, 24.0);
-      expect(mediumNode.radius, 18.0);
-      expect(farNode.radius, 14.0);
+      // Sin connectionCount explícito → usa default 0 → radius=12
+      expect(node.radius, 12.0);
     });
 
     test('color is derived from proximity', () {
@@ -195,9 +181,9 @@ void main() {
         name: 'Test',
       );
 
-      // name debe estar en props: dos nodos con mismo id/pos/proximidad
-      // pero diferente nombre NO deben ser considerados iguales.
-      expect(node.props, [5, 150.0, 250.0, ProximityLevel.medium, 'Test', null]);
+      // T2.1: props incluyen connectionCount e isSelf
+      expect(node.props,
+          [5, 150.0, 250.0, ProximityLevel.medium, 'Test', null, 0, false]);
     });
 
     test('isKnown returns true when node has a name', () {
@@ -273,6 +259,147 @@ void main() {
       // BUG fix: dos nodos con distinto nombre NO deben ser iguales.
       // Antes del fix, name no estaba en props y eran considerados iguales.
       expect(nodeA, isNot(equals(nodeB)));
+    });
+
+    // ─── T2.1: connectionCount, isSelf, nuevo radius ─────────────
+    // QUÉ: radio ahora basado en connectionCount en vez de proximity.
+    // Fórmula: (12 + degree*3).clamp(12, 50)
+    // POR QUÉ: LinkedIn Maps style — nodos con más conexiones son más grandes.
+
+    test('radius es 12px cuando connectionCount=0', () {
+      final node = GraphNode(
+        id: 1,
+        x: 0.0,
+        y: 0.0,
+        proximity: ProximityLevel.close,
+        connectionCount: 0,
+      );
+      expect(node.radius, 12.0);
+    });
+
+    test('radius es 27px con 5 conexiones', () {
+      final node = GraphNode(
+        id: 1,
+        x: 0.0,
+        y: 0.0,
+        proximity: ProximityLevel.far,
+        connectionCount: 5,
+      );
+      expect(node.radius, 27.0);
+    });
+
+    test('radius se clampéa a 50px máximo con 20 conexiones', () {
+      final node = GraphNode(
+        id: 1,
+        x: 0.0,
+        y: 0.0,
+        proximity: ProximityLevel.medium,
+        connectionCount: 20,
+      );
+      expect(node.radius, 50.0);
+    });
+
+    test('radius se clampéa a 12px mínimo con 0 conexiones', () {
+      final node = GraphNode(
+        id: 1,
+        x: 0.0,
+        y: 0.0,
+        proximity: ProximityLevel.close,
+        connectionCount: 0,
+      );
+      expect(node.radius, 12.0);
+    });
+
+    test('radius=15px con 1 conexión', () {
+      final node = GraphNode(
+        id: 1,
+        x: 0.0,
+        y: 0.0,
+        proximity: ProximityLevel.close,
+        connectionCount: 1,
+      );
+      expect(node.radius, 15.0);
+    });
+
+    test('radius=18px con 2 conexiones', () {
+      final node = GraphNode(
+        id: 1,
+        x: 0.0,
+        y: 0.0,
+        proximity: ProximityLevel.close,
+        connectionCount: 2,
+      );
+      expect(node.radius, 18.0);
+    });
+
+    test('isSelf es false por defecto', () {
+      final node = GraphNode(
+        id: 1,
+        x: 0.0,
+        y: 0.0,
+        proximity: ProximityLevel.close,
+      );
+      expect(node.isSelf, isFalse);
+    });
+
+    test('isSelf es true cuando se especifica', () {
+      final node = GraphNode(
+        id: 1,
+        x: 0.0,
+        y: 0.0,
+        proximity: ProximityLevel.close,
+        isSelf: true,
+      );
+      expect(node.isSelf, isTrue);
+    });
+
+    test('connectionCount es 0 por defecto', () {
+      final node = GraphNode(
+        id: 1,
+        x: 0.0,
+        y: 0.0,
+        proximity: ProximityLevel.close,
+      );
+      expect(node.connectionCount, 0);
+    });
+
+    test('connectionCount y isSelf están en props para equality', () {
+      final nodeA = GraphNode(
+        id: 1,
+        x: 100.0,
+        y: 200.0,
+        proximity: ProximityLevel.close,
+        connectionCount: 3,
+        isSelf: true,
+      );
+      final nodeB = GraphNode(
+        id: 1,
+        x: 100.0,
+        y: 200.0,
+        proximity: ProximityLevel.close,
+        connectionCount: 3,
+        isSelf: true,
+      );
+      final nodeC = GraphNode(
+        id: 1,
+        x: 100.0,
+        y: 200.0,
+        proximity: ProximityLevel.close,
+        connectionCount: 5, // distinto
+        isSelf: true,
+      );
+      final nodeD = GraphNode(
+        id: 1,
+        x: 100.0,
+        y: 200.0,
+        proximity: ProximityLevel.close,
+        connectionCount: 3,
+        isSelf: false, // distinto
+      );
+
+      expect(nodeA, equals(nodeB));
+      expect(nodeA, isNot(equals(nodeC)));
+      expect(nodeA, isNot(equals(nodeD)));
     });
   });
 }

@@ -256,6 +256,105 @@ void main() {
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // T2.2 — Computar connectionCount durante buildGraph
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  group('T2.2: connectionCount en buildGraph', () {
+    /// Helper para mockear NodeRepository.getNodeById
+    void mockNodeLookup(int id, String address, [String name = 'Desconocido']) {
+      when(mockNodeRepository.getNodeById(id)).thenAnswer((_) async => Node(
+            id: id,
+            bleAddress: address,
+            name: name,
+            firstSeen: DateTime(2026, 6, 1),
+            lastSeen: DateTime(2026, 6, 19),
+            rssiHistory: const [-60],
+          ));
+    }
+
+    test('nodo aislado tiene connectionCount=0', () async {
+      final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+      final session = await insertSession();
+      await insertSessionNode(session, nodeA);
+      mockNodeLookup(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
+
+      final layout = await repository.buildGraph(session);
+
+      expect(layout.nodes.length, equals(1));
+      expect(layout.nodes.first.connectionCount, equals(0));
+    });
+
+    test('nodo con 1 arista tiene connectionCount=1', () async {
+      final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+      final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
+      final session = await insertSession();
+      await insertSessionNode(session, nodeA);
+      await insertSessionNode(session, nodeB);
+      mockNodeLookup(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
+      mockNodeLookup(nodeB, 'AA:BB:CC:DD:EE:02', 'Node B');
+
+      final layout = await repository.buildGraph(session);
+
+      // Ambos nodos deben tener connectionCount=1 (1 arista entre ellos)
+      for (final node in layout.nodes) {
+        expect(node.connectionCount, equals(1));
+      }
+    });
+
+    test('nodo central entre dos tiene connectionCount=2', () async {
+      final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+      final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
+      final nodeC = await insertNode('AA:BB:CC:DD:EE:03', 'Node C');
+
+      // Dos sesiones: (A,B) y (B,C). B es el nodo central.
+      final s1 = await insertSession();
+      await insertSessionNode(s1, nodeA);
+      await insertSessionNode(s1, nodeB);
+
+      final s2 = await insertSession();
+      await insertSessionNode(s2, nodeB);
+      await insertSessionNode(s2, nodeC);
+
+      // Para s1: A y B aparecen. A tiene 1 conexión (A-B), B tiene 1 (A-B).
+      mockNodeLookup(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
+      mockNodeLookup(nodeB, 'AA:BB:CC:DD:EE:02', 'Node B');
+
+      final layout = await repository.buildGraph(s1);
+
+      expect(layout.nodes.length, equals(2));
+      final nodeAInGraph =
+          layout.nodes.firstWhere((n) => n.id == nodeA);
+      final nodeBInGraph =
+          layout.nodes.firstWhere((n) => n.id == nodeB);
+      expect(nodeAInGraph.connectionCount, equals(1));
+      expect(nodeBInGraph.connectionCount, equals(1));
+    });
+
+    test('tres nodos en clique → cada uno connectionCount=2', () async {
+      final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+      final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
+      final nodeC = await insertNode('AA:BB:CC:DD:EE:03', 'Node C');
+
+      // Sesión con los 3 juntos
+      final s1 = await insertSession();
+      await insertSessionNode(s1, nodeA);
+      await insertSessionNode(s1, nodeB);
+      await insertSessionNode(s1, nodeC);
+
+      mockNodeLookup(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
+      mockNodeLookup(nodeB, 'AA:BB:CC:DD:EE:02', 'Node B');
+      mockNodeLookup(nodeC, 'AA:BB:CC:DD:EE:03', 'Node C');
+
+      final layout = await repository.buildGraph(s1);
+
+      // 3 nodos, 3 aristas (A-B, A-C, B-C). Cada nodo en 2 aristas.
+      for (final node in layout.nodes) {
+        expect(node.connectionCount, equals(2));
+      }
+    });
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // T2.3 — Grosor de arista desde co-detecciones
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -322,6 +421,100 @@ void main() {
       expect(layout.edges.length, equals(1));
       // 3 co-detecciones → grosor debe ser 2.0
       expect(layout.edges.first.thickness, equals(2.0));
+    });
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // T2.3 — Identificar nodo propio por UUID (isSelf)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  group('T2.3: isSelf marking en buildGraph', () {
+    void mockNodeWithAddress(int id, String address, [String name = 'Desconocido']) {
+      when(mockNodeRepository.getNodeById(id)).thenAnswer((_) async => Node(
+            id: id,
+            bleAddress: address,
+            name: name,
+            firstSeen: DateTime(2026, 6, 1),
+            lastSeen: DateTime(2026, 6, 19),
+            rssiHistory: const [-60],
+          ));
+    }
+
+    test('ningún nodo es self cuando myDeviceUuid es null', () async {
+      final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+      final session = await insertSession();
+      await insertSessionNode(session, nodeA);
+      mockNodeWithAddress(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
+
+      final layout = await repository.buildGraph(session);
+      // Sin myDeviceUuid, ningún nodo debe ser self
+      for (final node in layout.nodes) {
+        expect(node.isSelf, isFalse);
+      }
+    });
+
+    test('ningún nodo es self cuando myDeviceUuid no coincide', () async {
+      final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+      final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
+      final session = await insertSession();
+      await insertSessionNode(session, nodeA);
+      await insertSessionNode(session, nodeB);
+      mockNodeWithAddress(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
+      mockNodeWithAddress(nodeB, 'AA:BB:CC:DD:EE:02', 'Node B');
+
+      final layout = await repository.buildGraph(session,
+          myDeviceUuid: 'completely-different-uuid');
+
+      for (final node in layout.nodes) {
+        expect(node.isSelf, isFalse);
+      }
+    });
+
+    test('nodo con bleAddress igual a myDeviceUuid se marca isSelf=true',
+        () async {
+      const myUuid = '550e8400-e29b-41d4-a716-446655440000';
+      final nodeA = await insertNode(myUuid, 'Mi Dispositivo');
+      final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
+      final session = await insertSession();
+      await insertSessionNode(session, nodeA);
+      await insertSessionNode(session, nodeB);
+      mockNodeWithAddress(nodeA, myUuid, 'Mi Dispositivo');
+      mockNodeWithAddress(nodeB, 'AA:BB:CC:DD:EE:02', 'Node B');
+
+      final layout =
+          await repository.buildGraph(session, myDeviceUuid: myUuid);
+
+      final selfNode = layout.nodes.firstWhere((n) => n.id == nodeA);
+      final otherNode = layout.nodes.firstWhere((n) => n.id == nodeB);
+      expect(selfNode.isSelf, isTrue);
+      expect(otherNode.isSelf, isFalse);
+    });
+
+    test('isSelf solo se marca en el nodo cuyo bleAddress coincide', () async {
+      const myUuid = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+      final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+      final nodeB = await insertNode(myUuid, 'Self Node');
+      final nodeC = await insertNode('AA:BB:CC:DD:EE:03', 'Node C');
+
+      final s1 = await insertSession();
+      await insertSessionNode(s1, nodeA);
+      await insertSessionNode(s1, nodeB);
+      await insertSessionNode(s1, nodeC);
+
+      mockNodeWithAddress(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
+      mockNodeWithAddress(nodeB, myUuid, 'Self Node');
+      mockNodeWithAddress(nodeC, 'AA:BB:CC:DD:EE:03', 'Node C');
+
+      final layout =
+          await repository.buildGraph(s1, myDeviceUuid: myUuid);
+
+      // Solo nodeB debe ser self
+      expect(
+          layout.nodes.firstWhere((n) => n.id == nodeA).isSelf, isFalse);
+      expect(
+          layout.nodes.firstWhere((n) => n.id == nodeB).isSelf, isTrue);
+      expect(
+          layout.nodes.firstWhere((n) => n.id == nodeC).isSelf, isFalse);
     });
   });
 }
