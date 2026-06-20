@@ -216,6 +216,58 @@ void main() {
         expect(n['z'], equals(0));
       }
     });
+
+    // ─── T5.5: serializa z desde GraphNode.z (no hardcodeado) ─────
+    // QUÉ: layoutResultToJson debe leer n.z en lugar de hardcodear 0.
+    // POR QUÉ: R6.2–3 — el grafo 3D necesita coordenadas Z reales
+    // calculadas por el algoritmo FR extendido (T5.2).
+
+    test('T5.5: serializa z desde GraphNode.z en vez de hardcodear 0', () {
+      final layoutWithZ = LayoutResult(
+        nodes: [
+          const GraphNode(
+            id: 1, x: 100.0, y: 200.0,
+            proximity: ProximityLevel.close,
+            z: 350.0,
+          ),
+          const GraphNode(
+            id: 2, x: 300.0, y: 400.0,
+            proximity: ProximityLevel.medium,
+            z: 150.0,
+          ),
+        ],
+        edges: [],
+        iterations: 1,
+        converged: true,
+      );
+
+      final json = layoutResultToJson(layoutWithZ);
+      final nodes = json['nodes'] as List<dynamic>;
+      final node0 = nodes[0] as Map<String, dynamic>;
+      final node1 = nodes[1] as Map<String, dynamic>;
+
+      expect(node0['z'], equals(350.0));
+      expect(node1['z'], equals(150.0));
+    });
+
+    test('T5.5: z=0 para nodos sin z explícito (default)', () {
+      final layoutNoZ = LayoutResult(
+        nodes: [
+          const GraphNode(
+            id: 1, x: 100.0, y: 200.0,
+            proximity: ProximityLevel.close,
+          ),
+        ],
+        edges: [],
+        iterations: 1,
+        converged: true,
+      );
+
+      final json = layoutResultToJson(layoutNoZ);
+      final nodes = json['nodes'] as List<dynamic>;
+      final node0 = nodes[0] as Map<String, dynamic>;
+      expect(node0['z'], equals(0.0));
+    });
   });
 
   // ═══════════ T4.5: Widget GraphView3D ═══════════════════════════

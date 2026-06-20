@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:get_it/get_it.dart';
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
+import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
@@ -31,6 +33,48 @@ import 'package:frontend_mobile_nodos_app/features/nodes/presentation/pages/home
   MockSpec<BleConnectionBloc>(),
 ])
 import 'home_page_test.mocks.dart';
+
+// ─── Stub de WebViewPlatform para tests widget T5.7 ─────────────────
+
+class _StubHomeWebViewWidget extends PlatformWebViewWidget {
+  _StubHomeWebViewWidget(super.params) : super.implementation();
+  @override
+  Widget build(BuildContext context) => const SizedBox(key: Key('stub_webview'));
+}
+
+class _StubHomeWebViewController extends PlatformWebViewController {
+  _StubHomeWebViewController(super.params) : super.implementation();
+
+  @override
+  Future<void> loadFlutterAsset(String key) async {}
+  @override
+  Future<void> addJavaScriptChannel(JavaScriptChannelParams params) async {}
+  @override
+  Future<void> runJavaScript(String javaScript) async {}
+}
+
+class _StubHomeWebViewPlatform extends WebViewPlatform
+    with MockPlatformInterfaceMixin {
+  @override
+  PlatformWebViewController createPlatformWebViewController(
+    PlatformWebViewControllerCreationParams params,
+  ) => _StubHomeWebViewController(params);
+
+  @override
+  PlatformWebViewWidget createPlatformWebViewWidget(
+    PlatformWebViewWidgetCreationParams params,
+  ) => _StubHomeWebViewWidget(params);
+
+  @override
+  PlatformNavigationDelegate createPlatformNavigationDelegate(
+    PlatformNavigationDelegateCreationParams params,
+  ) => throw UnimplementedError();
+
+  @override
+  PlatformWebViewCookieManager createPlatformCookieManager(
+    PlatformWebViewCookieManagerCreationParams params,
+  ) => throw UnimplementedError();
+}
 
 Node _testNode(int id, String addr) => Node(
       id: id,
@@ -119,6 +163,8 @@ void main() {
     if (!GetIt.instance.isRegistered<AppDatabase>()) {
       GetIt.instance.registerSingleton<AppDatabase>(testDb);
     }
+    // T5.7: Registrar stub de WebViewPlatform para tests 3D
+    WebViewPlatform.instance = _StubHomeWebViewPlatform();
   });
 
   tearDown(() async {
@@ -913,6 +959,92 @@ void main() {
               e.remoteId == 'AA:BB:CC:DD:EE:FF'),
         ),
       )).called(1);
+    });
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // T5.6: Toggle 2D/3D en toolbar del grafo
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // QUÉ: cuando el grafo está visible (5+ nodos), debe aparecer un
+    // botón para alternar entre vista 2D (CustomPainter) y 3D (WebView).
+    // POR QUÉ: R6.1 — el usuario debe poder elegir la vista del grafo.
+
+    testWidgets('T5.6: muestra botón toggle 2D/3D en modo grafo (5+ nodos)',
+        (tester) async {
+      final nodes = List.generate(
+        6,
+        (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
+      );
+      await tester.pumpWidget(_pumpHomePage(
+        nodeListState: NodeListLoaded(nodes),
+        visualizationState: GraphReady(_testLayout),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Verifica que el botón toggle existe en la UI cuando el grafo es visible.
+      // Icono: view_in_ar (3D) o grid_view (2D)
+      expect(find.byIcon(Icons.view_in_ar), findsOneWidget,
+          reason: 'Debe mostrar el botón para cambiar a vista 3D');
+    });
+
+    testWidgets('T5.6: no muestra toggle en modo lista (≤4 nodos)',
+        (tester) async {
+      final nodes = [
+        _testNode(1, 'AA:BB:CC:DD:EE:01'),
+        _testNode(2, 'AA:BB:CC:DD:EE:02'),
+      ];
+      await tester.pumpWidget(_pumpHomePage(
+        nodeListState: NodeListLoaded(nodes),
+        visualizationState: const VisualizationInitial(),
+      ));
+
+      // En modo lista, el toggle no debe mostrarse
+      expect(find.byIcon(Icons.view_in_ar), findsNothing);
+      expect(find.byIcon(Icons.grid_view), findsNothing);
+    });
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // T5.7: Wire toggle → cambia entre GraphView (2D) y GraphView3D (3D)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // QUÉ: al presionar el toggle, el widget del grafo cambia de
+    // GraphView (2D CustomPainter) a GraphView3D (WebView Three.js).
+    // POR QUÉ: R6.1 + S6.1 — transición entre 2D y 3D con mismos datos.
+
+    testWidgets(
+        'T5.7: toggle cambia de 2D a 3D al presionar view_in_ar',
+        (tester) async {
+      final nodes = List.generate(
+        6,
+        (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
+      );
+      await tester.pumpWidget(_pumpHomePage(
+        nodeListState: NodeListLoaded(nodes),
+        visualizationState: GraphReady(_testLayout),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Estado inicial: modo 2D → icono view_in_ar (para cambiar a 3D)
+      expect(find.byIcon(Icons.view_in_ar), findsOneWidget,
+          reason: 'Modo 2D: botón para ir a 3D');
+
+      // Tocar el toggle para cambiar a 3D
+      await tester.tap(find.byIcon(Icons.view_in_ar));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Después del toggle: modo 3D → icono grid_view (para volver a 2D)
+      expect(find.byIcon(Icons.grid_view), findsOneWidget,
+          reason: 'Modo 3D: botón para volver a 2D');
+
+      // Tocar nuevamente para volver a 2D
+      await tester.tap(find.byIcon(Icons.grid_view));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // De vuelta en modo 2D
+      expect(find.byIcon(Icons.view_in_ar), findsOneWidget,
+          reason: 'Vuelta a modo 2D después del segundo toggle');
     });
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
