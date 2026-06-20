@@ -12,11 +12,20 @@ class _StubGattDataSource extends BleGattDataSource {
   String? lastDisconnectedRemoteId;
   String? lastIsConnectedRemoteId;
   String? lastConnectionStateRemoteId;
+  String? lastDiscoverServicesRemoteId;
+  String? lastReadCharRemoteId;
+  String? lastReadCharUuid;
 
   final _connectCompleter = Completer<void>();
   final _disconnectCompleter = Completer<void>();
   bool _isConnectedResult = false;
   final _connectionStateController = StreamController<bool>.broadcast();
+
+  /// Resultado configurable para discoverServices.
+  final List<BleServiceInfo> _discoverServicesResult = [];
+
+  /// Resultado configurable para readCharacteristic.
+  List<int>? _readCharResult;
 
   @override
   Future<void> connect(String remoteId) async {
@@ -40,6 +49,20 @@ class _StubGattDataSource extends BleGattDataSource {
   Stream<bool> connectionState(String remoteId) {
     lastConnectionStateRemoteId = remoteId;
     return _connectionStateController.stream;
+  }
+
+  @override
+  Future<List<BleServiceInfo>> discoverServices(String remoteId) async {
+    lastDiscoverServicesRemoteId = remoteId;
+    return _discoverServicesResult;
+  }
+
+  @override
+  Future<List<int>?> readCharacteristic(
+      String remoteId, String characteristicUuid) async {
+    lastReadCharRemoteId = remoteId;
+    lastReadCharUuid = characteristicUuid;
+    return _readCharResult;
   }
 }
 

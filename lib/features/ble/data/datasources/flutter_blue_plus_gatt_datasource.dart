@@ -19,6 +19,8 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
   final Future<void> Function(String remoteId) _connectFn;
   final Future<void> Function(String remoteId) _disconnectFn;
   final Stream<bool> Function(String remoteId) _connectionStateFn;
+  final Future<List<BleServiceInfo>> Function(String remoteId) _discoverServicesFn;
+  final Future<List<int>?> Function(String remoteId, String characteristicUuid) _readCharacteristicFn;
 
   /// Último valor emitido por el stream de estado de conexión para cada device.
   /// Usado por [isConnected] para retornar el estado actual sin esperar.
@@ -28,7 +30,9 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
   FlutterBluePlusGattDataSource()
       : _connectFn = _defaultConnect,
         _disconnectFn = _defaultDisconnect,
-        _connectionStateFn = _defaultConnectionState;
+        _connectionStateFn = _defaultConnectionState,
+        _discoverServicesFn = _defaultDiscoverServices,
+        _readCharacteristicFn = _defaultReadCharacteristic;
 
   /// Constructor de testing — inyecta funciones mock para cada operación.
   ///
@@ -39,9 +43,13 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
     required Future<void> Function(String remoteId) connectFn,
     required Future<void> Function(String remoteId) disconnectFn,
     required Stream<bool> Function(String remoteId) connectionStateFn,
+    required Future<List<BleServiceInfo>> Function(String remoteId) discoverServicesFn,
+    required Future<List<int>?> Function(String remoteId, String characteristicUuid) readCharacteristicFn,
   })  : _connectFn = connectFn,
         _disconnectFn = disconnectFn,
-        _connectionStateFn = connectionStateFn;
+        _connectionStateFn = connectionStateFn,
+        _discoverServicesFn = discoverServicesFn,
+        _readCharacteristicFn = readCharacteristicFn;
 
   // ── Implementaciones por defecto (producción) ──
 
@@ -74,6 +82,41 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
     );
   }
 
+  /// Descubre los servicios GATT del dispositivo reconstruido desde [remoteId].
+  ///
+  /// Mapea cada [BluetoothService] a [BleServiceInfo] con sus
+  /// caracteristicas asociadas.
+  static Future<List<BleServiceInfo>> _defaultDiscoverServices(
+      String remoteId) async {
+    final device = BluetoothDevice.fromId(remoteId);
+    final services = await device.discoverServices();
+    return services.map((s) => BleServiceInfo(
+      uuid: s.serviceUuid.toString(),
+      characteristicUuids: s.characteristics
+          .map((c) => c.characteristicUuid.toString())
+          .toList(),
+    )).toList();
+  }
+
+  /// Lee el valor de una característica GATT del dispositivo reconstruido.
+  ///
+  /// Busca la característica por UUID en los servicios descubiertos
+  /// y llama [BluetoothCharacteristic.read()].
+  /// Retorna null si la característica no existe.
+  static Future<List<int>?> _defaultReadCharacteristic(
+      String remoteId, String characteristicUuid) async {
+    final device = BluetoothDevice.fromId(remoteId);
+    final services = await device.discoverServices();
+    for (final service in services) {
+      for (final characteristic in service.characteristics) {
+        if (characteristic.characteristicUuid.toString() == characteristicUuid) {
+          return await characteristic.read();
+        }
+      }
+    }
+    return null;
+  }
+
   // ── Interfaz pública ──
 
   @override
@@ -98,4 +141,13 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
       return connected;
     });
   }
+
+  @override
+  Future<List<BleServiceInfo>> discoverServices(String remoteId) =>
+      _discoverServicesFn(remoteId);
+
+  @override
+  Future<List<int>?> readCharacteristic(
+          String remoteId, String characteristicUuid) =>
+      _readCharacteristicFn(remoteId, characteristicUuid);
 }
