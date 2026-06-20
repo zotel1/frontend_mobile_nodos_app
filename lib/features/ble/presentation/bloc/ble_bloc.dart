@@ -67,7 +67,11 @@ class BleBloc extends Bloc<BleEvent, BleState> {
 
   Future<void> _onStartAdvertise(
       StartAdvertise event, Emitter<BleState> emit) async {
-    await repository.startAdvertise(event.deviceUuid);
+    await repository.startAdvertise(
+      event.deviceUuid,
+      event.name,
+      event.color,
+    );
     emit(const BleAdvertising());
   }
 

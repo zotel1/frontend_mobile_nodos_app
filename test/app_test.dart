@@ -275,7 +275,10 @@ void main() {
       await tester.pumpWidget(
         BlocProvider<BleBloc>.value(
           value: bleBloc,
-          child: MaterialApp.router(routerConfig: testRouter),
+          child: BlocProvider<UserBloc>.value(
+            value: MockUserBloc(),
+            child: MaterialApp.router(routerConfig: testRouter),
+          ),
         ),
       );
       await tester.pump();
@@ -339,7 +342,10 @@ void main() {
       await tester.pumpWidget(
         BlocProvider<BleBloc>.value(
           value: bleBloc,
-          child: MaterialApp.router(routerConfig: testRouter),
+          child: BlocProvider<UserBloc>.value(
+            value: MockUserBloc(),
+            child: MaterialApp.router(routerConfig: testRouter),
+          ),
         ),
       );
       await tester.pump();

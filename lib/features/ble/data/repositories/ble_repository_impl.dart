@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_advertiser_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_scanner_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_repository.dart';
@@ -34,9 +33,15 @@ class BleRepositoryImpl implements BleRepository {
   @override
   Future<void> stopScan() => _scanner.stopScan();
 
+  /// Inicia el advertising BLE con los metadatos de identidad.
+  ///
+  /// Delega en el datasource [BleAdvertiserDataSource] con
+  /// deviceUuid, name y color para que otros dispositivos Nodos
+  /// detecten este dispositivo vía escaneo BLE.
   @override
-  Future<void> startAdvertise(String deviceUuid) =>
-      _advertiser.startAdvertise(deviceUuid, serviceUuid);
+  Future<void> startAdvertise(
+          String deviceUuid, String name, String color) =>
+      _advertiser.startAdvertise(deviceUuid, name, color);
 
   @override
   Future<void> stopAdvertise() => _advertiser.stopAdvertise();

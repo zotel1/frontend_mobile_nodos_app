@@ -76,9 +76,13 @@ class MockBleScannerDataSource extends _i1.Mock
 class MockBleAdvertiserDataSource extends _i1.Mock
     implements _i5.BleAdvertiserDataSource {
   @override
-  _i3.Future<void> startAdvertise(String? deviceUuid, String? serviceUuid) =>
+  _i3.Future<void> startAdvertise(
+    String? deviceUuid,
+    String? name,
+    String? color,
+  ) =>
       (super.noSuchMethod(
-            Invocation.method(#startAdvertise, [deviceUuid, serviceUuid]),
+            Invocation.method(#startAdvertise, [deviceUuid, name, color]),
             returnValue: _i3.Future<void>.value(),
             returnValueForMissingStub: _i3.Future<void>.value(),
           )
