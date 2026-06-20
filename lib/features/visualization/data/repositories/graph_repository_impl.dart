@@ -1,7 +1,6 @@
 import 'dart:math';
 
 import 'package:drift/drift.dart' hide Column;
-import 'package:flutter/material.dart';
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';

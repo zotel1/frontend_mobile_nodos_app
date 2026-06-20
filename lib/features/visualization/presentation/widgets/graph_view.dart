@@ -1,5 +1,4 @@
 import 'dart:math';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/painters/graph_painter.dart';
@@ -109,11 +108,13 @@ class _GraphViewState extends State<GraphView> {
     if (size == null || size.isEmpty) return;
 
     _hasCentered = true;
-    _transformController.value = Matrix4.identity()
-      ..translate(
-        -widget.barycenter!.dx + size.width / 2,
-        -widget.barycenter!.dy + size.height / 2,
-      );
+    final matrix = Matrix4.identity();
+    matrix.setTranslationRaw(
+      -widget.barycenter!.dx + size.width / 2,
+      -widget.barycenter!.dy + size.height / 2,
+      0,
+    );
+    _transformController.value = matrix;
   }
 
   /// Transforma la posición del tap al espacio del canvas mediante

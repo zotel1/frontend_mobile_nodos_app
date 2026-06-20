@@ -427,18 +427,6 @@ void main() {
           ));
     }
 
-    /// Helper para insertar una conexión en la tabla connections.
-    Future<void> insertConnection(int fromId, int toId) async {
-      await db.into(db.connections).insert(
-            ConnectionsCompanion.insert(
-              fromNodeId: fromId,
-              toNodeId: toId,
-              createdAt: DateTime(2026, 6, 19),
-            ),
-            mode: InsertMode.insertOrIgnore,
-          );
-    }
-
     test('ningún nodo es self cuando myDeviceUuid es null', () async {
       final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
       final session = await insertSession();

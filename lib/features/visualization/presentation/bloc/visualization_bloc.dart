@@ -69,13 +69,6 @@ class VisualizationBloc
   /// con converged=true (R5.13). Agregado en PR2.
   Offset? _barycenter;
 
-  /// Flag que evita re-centrar la vista después del primer centrado.
-  ///
-  /// Solo se centra una vez (cuando el grafo aparece por primera vez).
-  /// Después el usuario navega libremente con zoom/pan.
-  /// Se resetea en cada ciclo GraphBuilding → GraphReady. PR2.
-  bool _hasCentered = false;
-
   /// Expone [isBuilding] para tests (F1.2).
   @visibleForTesting
   bool get isBuilding => _isBuilding;
