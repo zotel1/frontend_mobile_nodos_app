@@ -380,39 +380,44 @@ void main() {
     testWidgets(
         'redirige a Home cuando onboarding_complete es true',
         (tester) async {
-      SharedPreferences.setMockInitialValues({'onboarding_complete': true});
-
+      // setUp() ya configura onboarding_complete: true
       await tester.pumpWidget(buildApp());
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+      // Varios pumps para que el redirect asíncrono de GoRouter se resuelva
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
-      // La app debe mostrar la HomePage, no el onboarding.
-      expect(find.text('Buscando nodos cercanos...'), findsOneWidget);
+      // La app debe mostrar la HomePage con BottomNavigationBar.
+      expect(find.byType(BottomNavigationBar), findsOneWidget);
+      // El botón "Continuar" del onboarding no debe aparecer.
       expect(find.text('Continuar'), findsNothing);
     });
 
     testWidgets(
         'redirige a Onboarding cuando onboarding_complete es false',
         (tester) async {
-      SharedPreferences.setMockInitialValues({'onboarding_complete': false});
+      // Forzar false en la instancia mock ya inicializada.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('onboarding_complete', false);
 
-      // Reconstruir SharedPreferences con el nuevo valor
       await tester.pumpWidget(buildApp());
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(seconds: 1));
 
-      // Debe mostrar la página de onboarding (paso 1: Contiuar)
+      // Debe mostrar la página de onboarding (paso 1: botón Continuar).
       expect(find.text('Continuar'), findsOneWidget);
     });
 
     testWidgets(
         'redirige a Onboarding cuando no existe la key onboarding_complete',
         (tester) async {
-      SharedPreferences.setMockInitialValues({});
+      // Eliminar la key de la instancia mock.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('onboarding_complete');
 
       await tester.pumpWidget(buildApp());
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(seconds: 1));
 
       // Sin la key, debe mostrar el onboarding.
       expect(find.text('Continuar'), findsOneWidget);
