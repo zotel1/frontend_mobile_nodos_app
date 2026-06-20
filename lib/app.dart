@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:frontend_mobile_nodos_app/core/di/injection_container.dart';
 import 'package:frontend_mobile_nodos_app/core/theme/app_theme.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/bloc/node_list_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/pages/home_page.dart';
@@ -86,6 +87,10 @@ class NodosApp extends StatelessWidget {
         BlocProvider<BleBloc>(create: (_) => sl<BleBloc>()),
         BlocProvider<NodeListBloc>(create: (_) => sl<NodeListBloc>()),
         BlocProvider<UserBloc>(create: (_) => sl<UserBloc>()),
+        // BleConnectionBloc: gestiona conexiones GATT punto a punto (Enlazar).
+        BlocProvider<BleConnectionBloc>(
+          create: (_) => sl<BleConnectionBloc>(),
+        ),
         // VisualizationBloc: construye y posiciona el grafo de nodos
         // cuando hay 5+ dispositivos BLE detectados.
         BlocProvider<VisualizationBloc>(

@@ -6,6 +6,7 @@ import 'package:android_intent_plus/android_intent.dart';
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
 import 'package:frontend_mobile_nodos_app/core/di/injection_container.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/widgets/bluetooth_off_banner.dart';
@@ -80,6 +81,13 @@ class _HomePageState extends State<HomePage> {
   /// en la barra de info superior.
   DateTime? _lastScanTime;
 
+  /// T3.8: Lista actual de nodos persistidos (Drift).
+  ///
+  /// Se actualiza en el [BlocListener<NodeListBloc>] cada vez que se
+  /// emite [NodeListLoaded]. Se usa para mapear [GraphNode].id → [Node].bleAddress
+  /// cuando el usuario presiona "Enlazar" en el tooltip.
+  List<Node> _currentNodes = [];
+
   /// Abre el tooltip para un nodo específico en el grafo.
   ///
   /// QUÉ hace: busca el GraphNode por ID en el layout, calcula su
@@ -128,6 +136,23 @@ class _HomePageState extends State<HomePage> {
           if (mounted) {
             context.read<VisualizationBloc>().add(const NodeDeselected());
           }
+        },
+        // T3.8: Al presionar "Enlazar", despacha ConnectToDevice al BleConnectionBloc.
+        // Mapea GraphNode.id → Node.bleAddress usando la lista de nodos actual.
+        onEnlazar: () {
+          final bleAddress = _currentNodes
+              .where((n) => n.id == node.id)
+              .map((n) => n.bleAddress)
+              .firstOrNull;
+          if (bleAddress != null && mounted) {
+            context
+                .read<BleConnectionBloc>()
+                .add(ConnectToDevice(bleAddress));
+          }
+          // Cerrar tooltip después de presionar Enlazar
+          _tooltipEntry?.remove();
+          _tooltipEntry = null;
+          _tooltipNodeId = null;
         },
       );
       _tooltipNodeId = nodeId;
@@ -185,7 +210,61 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      body: BlocListener<VisualizationBloc, VisualizationState>(
+      body: BlocListener<BleConnectionBloc, BleConnectionState>(
+        /// T3.9: Muestra el estado de la conexión GATT como SnackBar.
+        ///
+        /// - BleConnecting → "Conectando..."
+        /// - BleConnected → "Conectado ✅" (verde)
+        /// - BleConnectionError → muestra el error
+        listener: (context, connectionState) {
+          switch (connectionState) {
+            case BleConnecting(:final remoteId):
+              // Buscar nombre del nodo para el mensaje
+              final nodeName = _currentNodes
+                  .where((n) => n.bleAddress == remoteId)
+                  .map((n) => n.name ?? n.suggestedName ?? 'dispositivo')
+                  .firstOrNull;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Conectando a ${nodeName ?? remoteId}...'),
+                  duration: const Duration(seconds: 10),
+                ),
+              );
+            case BleConnected():
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text(
+                    'Conectado ✅',
+                    style: TextStyle(color: Colors.greenAccent),
+                  ),
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+            case BleConnectionError(:final message, :final retryable):
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              final action = retryable
+                  ? SnackBarAction(
+                      label: 'Reintentar',
+                      onPressed: () {
+                        // Reintentar con el último remoteId conocido
+                      },
+                    )
+                  : null;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error: $message'),
+                  backgroundColor: Colors.red.shade700,
+                  duration: const Duration(seconds: 5),
+                  action: action,
+                ),
+              );
+            case BleConnectionInitial():
+              // Nada que mostrar — estado inicial
+              break;
+          }
+        },
+        child: BlocListener<VisualizationBloc, VisualizationState>(
         /// Escucha cambios en el VisualizationBloc para mostrar/ocultar el
         /// NodeTooltip cuando cambia selectedNodeId.
         ///
@@ -254,6 +333,8 @@ class _HomePageState extends State<HomePage> {
         // reconstrucciones innecesarias.
         listener: (context, nodeListState) {
           if (nodeListState is NodeListLoaded) {
+            // T3.8: Guardar la lista actual de nodos para mapeo GraphNode.id → bleAddress
+            _currentNodes = nodeListState.nodes;
             _updateViewMode(nodeListState.nodes, context);
           }
         },
@@ -284,6 +365,7 @@ class _HomePageState extends State<HomePage> {
       ),
       ),
       ),
+      ), // cierra BlocListener<BleConnectionBloc>
     );
   }
 
