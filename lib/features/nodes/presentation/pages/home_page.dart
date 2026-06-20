@@ -18,6 +18,7 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bl
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_event.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_state.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/widgets/graph_view.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/presentation/widgets/graph_view_3d.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/widgets/node_tooltip.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
 
@@ -41,6 +42,10 @@ class _HomePageState extends State<HomePage> {
   /// Controla qué hijo del AnimatedCrossFade se muestra.
   /// true = grafo (secondChild), false = lista (firstChild).
   bool _showingGraph = false;
+
+  /// T5.6: Controla si el grafo se renderiza en 3D (WebView) o 2D (CustomPainter).
+  /// false = 2D (GraphView), true = 3D (GraphView3D).
+  bool _is3D = false;
 
   /// ID de la sesión de escaneo activa para el grafo.
   /// Se crea bajo demanda cuando se transiciona a modo grafo.
@@ -357,7 +362,9 @@ class _HomePageState extends State<HomePage> {
                       return const SizedBox.shrink();
                     },
                   ),
-                  Expanded(child: _buildContent()),
+                  // T5.6: Toolbar de grafo con toggle 2D/3D (solo visible en modo grafo)
+              if (_showingGraph) _buildGraphToolbar(),
+              Expanded(child: _buildContent()),
                 ],
               );
             },
@@ -529,6 +536,9 @@ class _HomePageState extends State<HomePage> {
   ///
   /// La histéresis (_showingGraph) evita que el crossfade oscile
   /// cuando la cantidad de nodos fluctúa alrededor del umbral.
+  ///
+  /// T5.7: Wiring — alterna entre GraphView (CustomPainter 2D) y
+  /// GraphView3D (WebView Three.js) según [_is3D].
   Widget _buildAnimatedContent(List<Node> nodes) {
     return AnimatedCrossFade(
       duration: const Duration(milliseconds: 300),
@@ -542,14 +552,27 @@ class _HomePageState extends State<HomePage> {
             VisualizationInitial() || GraphBuilding() =>
               const Center(child: CircularProgressIndicator()),
             GraphReady(:final layout, :final selectedNodeId) =>
-              GraphView(
-                key: _graphViewKey,
-                layout: layout,
-                selectedNodeId: selectedNodeId,
-                onNodeTapped: (nodeId) {
-                  context.read<VisualizationBloc>().add(NodeSelected(nodeId));
-                },
-              ),
+              _is3D
+                  // T5.7: Modo 3D — WebView con Three.js
+                  ? GraphView3D(
+                      layout: layout,
+                      onNodeTapped: (nodeId) {
+                        context
+                            .read<VisualizationBloc>()
+                            .add(NodeSelected(nodeId));
+                      },
+                    )
+                  // Modo 2D — CustomPainter (comportamiento original)
+                  : GraphView(
+                      key: _graphViewKey,
+                      layout: layout,
+                      selectedNodeId: selectedNodeId,
+                      onNodeTapped: (nodeId) {
+                        context
+                            .read<VisualizationBloc>()
+                            .add(NodeSelected(nodeId));
+                      },
+                    ),
             GraphError(:final message) => Center(
                 child: Text(
                   message,
@@ -559,6 +582,39 @@ class _HomePageState extends State<HomePage> {
             _ => const SizedBox.shrink(),
           };
         },
+      ),
+    );
+  }
+
+  /// T5.6: Barra de herramientas del grafo con toggle 2D/3D.
+  ///
+  /// QUÉ: muestra un IconButton para alternar entre vista 2D y 3D.
+  /// El icono cambia según el estado actual ([_is3D]).
+  /// Solo se muestra en modo grafo ([_showingGraph] == true).
+  /// POR QUÉ: R6.1 — el usuario debe poder alternar entre las dos vistas.
+  Widget _buildGraphToolbar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Text(
+            _is3D ? 'Vista 3D' : 'Vista 2D',
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            icon: Icon(_is3D ? Icons.grid_view : Icons.view_in_ar),
+            tooltip: _is3D ? 'Cambiar a vista 2D' : 'Cambiar a vista 3D',
+            onPressed: () => setState(() => _is3D = !_is3D),
+            iconSize: 24,
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
       ),
     );
   }

@@ -45,6 +45,14 @@ class GraphNode extends Equatable {
   /// de datos propague connectable desde BleDevice.
   final bool connectable;
 
+  /// Coordenada Z para el grafo 3D (profundidad).
+  ///
+  /// Default 0.0 preserva compatibilidad con el grafo 2D existente.
+  /// El algoritmo Fruchterman-Reingold 3D (T5.2) calcula este valor
+  /// solo cuando el canvas incluye profundidad. Para 2D, z=0.
+  /// Agregado en PR5 — FR Algorithm 3D + 2D/3D Toggle.
+  final double z;
+
   const GraphNode({
     this.id,
     required this.x,
@@ -55,6 +63,7 @@ class GraphNode extends Equatable {
     this.connectionCount = 0,
     this.isSelf = false,
     this.connectable = true,
+    this.z = 0.0,
   });
 
   /// Radio del círculo proporcional a la cantidad de conexiones.
@@ -85,5 +94,5 @@ class GraphNode extends Equatable {
 
   @override
   List<Object?> get props =>
-      [id, x, y, proximity, name, suggestedName, connectionCount, isSelf, connectable];
+      [id, x, y, proximity, name, suggestedName, connectionCount, isSelf, connectable, z];
 }

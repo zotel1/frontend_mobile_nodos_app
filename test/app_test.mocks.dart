@@ -857,14 +857,14 @@ class MockBleConnectionBloc extends _i1.Mock implements _i22.BleConnectionBloc {
           as _i17.Future<void>);
 
   @override
-  void onEvent(_i22.BleConnectionEvent? event) => super.noSuchMethod(
-    Invocation.method(#onEvent, [event]),
+  void add(_i22.BleConnectionEvent? event) => super.noSuchMethod(
+    Invocation.method(#add, [event]),
     returnValueForMissingStub: null,
   );
 
   @override
-  void add(_i22.BleConnectionEvent? event) => super.noSuchMethod(
-    Invocation.method(#add, [event]),
+  void onEvent(_i22.BleConnectionEvent? event) => super.noSuchMethod(
+    Invocation.method(#onEvent, [event]),
     returnValueForMissingStub: null,
   );
 

@@ -9,20 +9,25 @@ import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities
 ///
 /// [iterations], [k], [temperature] y [coolingFactor] controlan el
 /// comportamiento del algoritmo FR. [seed] opcional para tests deterministas.
+/// [depth]: profundidad del canvas 3D. Default 0 → modo 2D.
+/// Agregado en T5.4 para pasar el parámetro depth al algoritmo FR 3D.
 Map<String, dynamic> layoutResultToParams(
   LayoutResult result,
   double width,
   double height, {
+  double depth = 0.0,
   int iterations = 100,
   double k = 150.0,
   double temperature = 200.0,
   double coolingFactor = 0.95,
   int? seed,
 }) {
+  // T5.3: incluir z en la serialización para el pipeline 3D
   final nodesMap = result.nodes.map((node) => {
     'id': node.id,
     'x': node.x,
     'y': node.y,
+    'z': node.z,
   }).toList();
 
   final edgesMap = result.edges.map((edge) => {
@@ -35,6 +40,7 @@ Map<String, dynamic> layoutResultToParams(
     'edges': edgesMap,
     'width': width,
     'height': height,
+    'depth': depth,
     'iterations': iterations,
     'k': k,
     'temperature': temperature,
@@ -67,11 +73,13 @@ LayoutResult paramsToLayoutResult(
     final originalNode = originalNodeMap[id];
 
     if (originalNode != null) {
-      // Preservar campos del original que FR no modifica
+      // Preservar campos del original que FR no modifica.
+      // T5.3: z se lee del resultado del Isolate (default 0 para 2D).
       updatedNodes.add(GraphNode(
         id: id,
         x: (rn['x'] as num).toDouble(),
         y: (rn['y'] as num).toDouble(),
+        z: (rn['z'] as num?)?.toDouble() ?? 0.0,
         proximity: originalNode.proximity,
         name: originalNode.name,
       ));

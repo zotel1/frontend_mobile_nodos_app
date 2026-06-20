@@ -181,9 +181,9 @@ void main() {
         name: 'Test',
       );
 
-      // T3.10: props incluyen connectable
+      // T3.10: props incluyen connectable. T5.1: z agregado.
       expect(node.props,
-          [5, 150.0, 250.0, ProximityLevel.medium, 'Test', null, 0, false, true]);
+          [5, 150.0, 250.0, ProximityLevel.medium, 'Test', null, 0, false, true, 0.0]);
     });
 
     test('isKnown returns true when node has a name', () {
@@ -361,6 +361,67 @@ void main() {
         proximity: ProximityLevel.close,
       );
       expect(node.connectionCount, 0);
+    });
+
+    // ─── T5.1: campo z para grafo 3D ─────────────────────────────
+    // QUÉ: GraphNode incluye double z (default 0) para coordenadas 3D
+    // del algoritmo Fruchterman-Reingold extendido.
+    // POR QUÉ: R6.6 — la entidad debe soportar la tercera dimensión
+    // para el pipeline 3D. z=0 preserva compatibilidad con 2D.
+
+    test('T5.1: z es 0 por defecto para compatibilidad 2D', () {
+      final node = GraphNode(
+        id: 1,
+        x: 100.0,
+        y: 200.0,
+        proximity: ProximityLevel.close,
+      );
+      expect(node.z, 0.0);
+    });
+
+    test('T5.1: z puede especificarse con valor no cero', () {
+      final node = GraphNode(
+        id: 1,
+        x: 100.0,
+        y: 200.0,
+        proximity: ProximityLevel.close,
+        z: 350.0,
+      );
+      expect(node.z, 350.0);
+    });
+
+    test('T5.1: dos nodos con mismo z son iguales', () {
+      final a = GraphNode(
+        id: 1, x: 100, y: 200,
+        proximity: ProximityLevel.close, z: 150.0,
+      );
+      final b = GraphNode(
+        id: 1, x: 100, y: 200,
+        proximity: ProximityLevel.close, z: 150.0,
+      );
+      expect(a, equals(b));
+    });
+
+    test('T5.1: dos nodos con distinto z NO son iguales', () {
+      final a = GraphNode(
+        id: 1, x: 100, y: 200,
+        proximity: ProximityLevel.close, z: 100.0,
+      );
+      final b = GraphNode(
+        id: 1, x: 100, y: 200,
+        proximity: ProximityLevel.close, z: 200.0,
+      );
+      expect(a, isNot(equals(b)));
+    });
+
+    test('T5.1: z está en la lista props para equality', () {
+      final node = GraphNode(
+        id: 5, x: 150, y: 250,
+        proximity: ProximityLevel.medium,
+        name: 'Test', z: 42.0,
+      );
+      expect(node.props,
+          [5, 150.0, 250.0, ProximityLevel.medium, 'Test', null, 0, false, true, 42.0]);
     });
 
     test('connectionCount y isSelf están en props para equality', () {
