@@ -111,7 +111,7 @@ void main() {
         rssiHistory: const [-55, -70],
       );
 
-      expect(node.props.length, 9); // +2: suggestedName, deviceType
+      expect(node.props.length, 11); // +4: suggestedName, deviceType, connectable, estimatedDistance
       expect(node.props, containsAll([
         1,
         'AA:BB:CC:DD:EE:FF',
@@ -122,6 +122,8 @@ void main() {
         [-55, -70],
         null, // suggestedName
         null, // deviceType
+        false, // connectable (default)
+        null, // estimatedDistance (default)
       ]));
     });
 
@@ -204,6 +206,107 @@ void main() {
         lastSeen: now,
       );
       expect(node1, isNot(equals(node2)));
+    });
+
+    // ─── PR1.1: connectable y estimatedDistance ───────────────────
+    // QUÉ: Node ahora incluye connectable (bool, default false)
+    // y estimatedDistance (double?, nullable).
+    // POR QUÉ: Phase 5 necesita saber si un dispositivo acepta
+    // conexiones GATT (connectable) y la distancia estimada
+    // (estimatedDistance) para renderizar etiquetas de distancia
+    // y habilitar/deshabilitar el botón Enlazar.
+
+    test('connectable es false por defecto (backward-compatible)', () {
+      final node = Node(
+        bleAddress: 'AA:BB:CC:DD:EE:FF',
+        firstSeen: now,
+        lastSeen: now,
+      );
+      expect(node.connectable, isFalse);
+    });
+
+    test('connectable explícito true se almacena correctamente', () {
+      final node = Node(
+        bleAddress: 'AA:BB:CC:DD:EE:FF',
+        connectable: true,
+        firstSeen: now,
+        lastSeen: now,
+      );
+      expect(node.connectable, isTrue);
+    });
+
+    test('estimatedDistance es null por defecto', () {
+      final node = Node(
+        bleAddress: 'AA:BB:CC:DD:EE:FF',
+        firstSeen: now,
+        lastSeen: now,
+      );
+      expect(node.estimatedDistance, isNull);
+    });
+
+    test('estimatedDistance almacena valor double correctamente', () {
+      final node = Node(
+        bleAddress: 'AA:BB:CC:DD:EE:FF',
+        estimatedDistance: 3.16,
+        firstSeen: now,
+        lastSeen: now,
+      );
+      expect(node.estimatedDistance, 3.16);
+    });
+
+    test('dos nodos con diferente connectable no son iguales', () {
+      final node1 = Node(
+        id: 1,
+        bleAddress: 'AA:BB:CC:DD:EE:FF',
+        connectable: false,
+        firstSeen: now,
+        lastSeen: now,
+      );
+      final node2 = Node(
+        id: 1,
+        bleAddress: 'AA:BB:CC:DD:EE:FF',
+        connectable: true,
+        firstSeen: now,
+        lastSeen: now,
+      );
+      expect(node1, isNot(equals(node2)));
+    });
+
+    test('dos nodos con diferente estimatedDistance no son iguales', () {
+      final node1 = Node(
+        id: 1,
+        bleAddress: 'AA:BB:CC:DD:EE:FF',
+        estimatedDistance: 1.5,
+        firstSeen: now,
+        lastSeen: now,
+      );
+      final node2 = Node(
+        id: 1,
+        bleAddress: 'AA:BB:CC:DD:EE:FF',
+        estimatedDistance: 5.0,
+        firstSeen: now,
+        lastSeen: now,
+      );
+      expect(node1, isNot(equals(node2)));
+    });
+
+    test('props incluye connectable y estimatedDistance', () {
+      final node = Node(
+        id: 1,
+        bleAddress: 'AA:BB:CC:DD:EE:FF',
+        name: 'Node',
+        color: '#FF0000',
+        connectable: true,
+        estimatedDistance: 2.5,
+        firstSeen: now,
+        lastSeen: now,
+        rssiHistory: const [-60],
+      );
+      expect(node.props.length, 11); // 9 anteriores + 2 nuevos
+      expect(node.props, containsAll([
+        true,  // connectable
+        2.5,   // estimatedDistance
+      ]));
     });
   });
 }

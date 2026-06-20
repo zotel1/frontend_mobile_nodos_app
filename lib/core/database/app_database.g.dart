@@ -523,6 +523,33 @@ class $NodesTable extends Nodes with TableInfo<$NodesTable, NodeRow> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _connectableMeta = const VerificationMeta(
+    'connectable',
+  );
+  @override
+  late final GeneratedColumn<bool> connectable = GeneratedColumn<bool>(
+    'connectable',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("connectable" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _estimatedDistanceMeta = const VerificationMeta(
+    'estimatedDistance',
+  );
+  @override
+  late final GeneratedColumn<double> estimatedDistance =
+      GeneratedColumn<double>(
+        'estimated_distance',
+        aliasedName,
+        true,
+        type: DriftSqlType.double,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -536,6 +563,8 @@ class $NodesTable extends Nodes with TableInfo<$NodesTable, NodeRow> {
     rssiHistory,
     suggestedName,
     deviceType,
+    connectable,
+    estimatedDistance,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -627,6 +656,24 @@ class $NodesTable extends Nodes with TableInfo<$NodesTable, NodeRow> {
         deviceType.isAcceptableOrUnknown(data['device_type']!, _deviceTypeMeta),
       );
     }
+    if (data.containsKey('connectable')) {
+      context.handle(
+        _connectableMeta,
+        connectable.isAcceptableOrUnknown(
+          data['connectable']!,
+          _connectableMeta,
+        ),
+      );
+    }
+    if (data.containsKey('estimated_distance')) {
+      context.handle(
+        _estimatedDistanceMeta,
+        estimatedDistance.isAcceptableOrUnknown(
+          data['estimated_distance']!,
+          _estimatedDistanceMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -680,6 +727,14 @@ class $NodesTable extends Nodes with TableInfo<$NodesTable, NodeRow> {
         DriftSqlType.string,
         data['${effectivePrefix}device_type'],
       ),
+      connectable: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}connectable'],
+      )!,
+      estimatedDistance: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}estimated_distance'],
+      ),
     );
   }
 
@@ -701,6 +756,8 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
   final String? rssiHistory;
   final String? suggestedName;
   final String? deviceType;
+  final bool connectable;
+  final double? estimatedDistance;
   const NodeRow({
     required this.id,
     required this.bleAddress,
@@ -713,6 +770,8 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
     this.rssiHistory,
     this.suggestedName,
     this.deviceType,
+    required this.connectable,
+    this.estimatedDistance,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -742,6 +801,10 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
     if (!nullToAbsent || deviceType != null) {
       map['device_type'] = Variable<String>(deviceType);
     }
+    map['connectable'] = Variable<bool>(connectable);
+    if (!nullToAbsent || estimatedDistance != null) {
+      map['estimated_distance'] = Variable<double>(estimatedDistance);
+    }
     return map;
   }
 
@@ -770,6 +833,10 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
       deviceType: deviceType == null && nullToAbsent
           ? const Value.absent()
           : Value(deviceType),
+      connectable: Value(connectable),
+      estimatedDistance: estimatedDistance == null && nullToAbsent
+          ? const Value.absent()
+          : Value(estimatedDistance),
     );
   }
 
@@ -790,6 +857,10 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
       rssiHistory: serializer.fromJson<String?>(json['rssiHistory']),
       suggestedName: serializer.fromJson<String?>(json['suggestedName']),
       deviceType: serializer.fromJson<String?>(json['deviceType']),
+      connectable: serializer.fromJson<bool>(json['connectable']),
+      estimatedDistance: serializer.fromJson<double?>(
+        json['estimatedDistance'],
+      ),
     );
   }
   @override
@@ -807,6 +878,8 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
       'rssiHistory': serializer.toJson<String?>(rssiHistory),
       'suggestedName': serializer.toJson<String?>(suggestedName),
       'deviceType': serializer.toJson<String?>(deviceType),
+      'connectable': serializer.toJson<bool>(connectable),
+      'estimatedDistance': serializer.toJson<double?>(estimatedDistance),
     };
   }
 
@@ -822,6 +895,8 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
     Value<String?> rssiHistory = const Value.absent(),
     Value<String?> suggestedName = const Value.absent(),
     Value<String?> deviceType = const Value.absent(),
+    bool? connectable,
+    Value<double?> estimatedDistance = const Value.absent(),
   }) => NodeRow(
     id: id ?? this.id,
     bleAddress: bleAddress ?? this.bleAddress,
@@ -838,6 +913,10 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
         ? suggestedName.value
         : this.suggestedName,
     deviceType: deviceType.present ? deviceType.value : this.deviceType,
+    connectable: connectable ?? this.connectable,
+    estimatedDistance: estimatedDistance.present
+        ? estimatedDistance.value
+        : this.estimatedDistance,
   );
   NodeRow copyWithCompanion(NodesCompanion data) {
     return NodeRow(
@@ -862,6 +941,12 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
       deviceType: data.deviceType.present
           ? data.deviceType.value
           : this.deviceType,
+      connectable: data.connectable.present
+          ? data.connectable.value
+          : this.connectable,
+      estimatedDistance: data.estimatedDistance.present
+          ? data.estimatedDistance.value
+          : this.estimatedDistance,
     );
   }
 
@@ -878,7 +963,9 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
           ..write('proximityZone: $proximityZone, ')
           ..write('rssiHistory: $rssiHistory, ')
           ..write('suggestedName: $suggestedName, ')
-          ..write('deviceType: $deviceType')
+          ..write('deviceType: $deviceType, ')
+          ..write('connectable: $connectable, ')
+          ..write('estimatedDistance: $estimatedDistance')
           ..write(')'))
         .toString();
   }
@@ -896,6 +983,8 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
     rssiHistory,
     suggestedName,
     deviceType,
+    connectable,
+    estimatedDistance,
   );
   @override
   bool operator ==(Object other) =>
@@ -911,7 +1000,9 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
           other.proximityZone == this.proximityZone &&
           other.rssiHistory == this.rssiHistory &&
           other.suggestedName == this.suggestedName &&
-          other.deviceType == this.deviceType);
+          other.deviceType == this.deviceType &&
+          other.connectable == this.connectable &&
+          other.estimatedDistance == this.estimatedDistance);
 }
 
 class NodesCompanion extends UpdateCompanion<NodeRow> {
@@ -926,6 +1017,8 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
   final Value<String?> rssiHistory;
   final Value<String?> suggestedName;
   final Value<String?> deviceType;
+  final Value<bool> connectable;
+  final Value<double?> estimatedDistance;
   const NodesCompanion({
     this.id = const Value.absent(),
     this.bleAddress = const Value.absent(),
@@ -938,6 +1031,8 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
     this.rssiHistory = const Value.absent(),
     this.suggestedName = const Value.absent(),
     this.deviceType = const Value.absent(),
+    this.connectable = const Value.absent(),
+    this.estimatedDistance = const Value.absent(),
   });
   NodesCompanion.insert({
     this.id = const Value.absent(),
@@ -951,6 +1046,8 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
     this.rssiHistory = const Value.absent(),
     this.suggestedName = const Value.absent(),
     this.deviceType = const Value.absent(),
+    this.connectable = const Value.absent(),
+    this.estimatedDistance = const Value.absent(),
   }) : bleAddress = Value(bleAddress),
        firstSeen = Value(firstSeen),
        lastSeen = Value(lastSeen);
@@ -966,6 +1063,8 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
     Expression<String>? rssiHistory,
     Expression<String>? suggestedName,
     Expression<String>? deviceType,
+    Expression<bool>? connectable,
+    Expression<double>? estimatedDistance,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -979,6 +1078,8 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
       if (rssiHistory != null) 'rssi_history': rssiHistory,
       if (suggestedName != null) 'suggested_name': suggestedName,
       if (deviceType != null) 'device_type': deviceType,
+      if (connectable != null) 'connectable': connectable,
+      if (estimatedDistance != null) 'estimated_distance': estimatedDistance,
     });
   }
 
@@ -994,6 +1095,8 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
     Value<String?>? rssiHistory,
     Value<String?>? suggestedName,
     Value<String?>? deviceType,
+    Value<bool>? connectable,
+    Value<double?>? estimatedDistance,
   }) {
     return NodesCompanion(
       id: id ?? this.id,
@@ -1007,6 +1110,8 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
       rssiHistory: rssiHistory ?? this.rssiHistory,
       suggestedName: suggestedName ?? this.suggestedName,
       deviceType: deviceType ?? this.deviceType,
+      connectable: connectable ?? this.connectable,
+      estimatedDistance: estimatedDistance ?? this.estimatedDistance,
     );
   }
 
@@ -1046,6 +1151,12 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
     if (deviceType.present) {
       map['device_type'] = Variable<String>(deviceType.value);
     }
+    if (connectable.present) {
+      map['connectable'] = Variable<bool>(connectable.value);
+    }
+    if (estimatedDistance.present) {
+      map['estimated_distance'] = Variable<double>(estimatedDistance.value);
+    }
     return map;
   }
 
@@ -1062,7 +1173,320 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
           ..write('proximityZone: $proximityZone, ')
           ..write('rssiHistory: $rssiHistory, ')
           ..write('suggestedName: $suggestedName, ')
-          ..write('deviceType: $deviceType')
+          ..write('deviceType: $deviceType, ')
+          ..write('connectable: $connectable, ')
+          ..write('estimatedDistance: $estimatedDistance')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ConnectionsTable extends Connections
+    with TableInfo<$ConnectionsTable, Connection> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ConnectionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _fromNodeIdMeta = const VerificationMeta(
+    'fromNodeId',
+  );
+  @override
+  late final GeneratedColumn<int> fromNodeId = GeneratedColumn<int>(
+    'from_node_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES nodes (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _toNodeIdMeta = const VerificationMeta(
+    'toNodeId',
+  );
+  @override
+  late final GeneratedColumn<int> toNodeId = GeneratedColumn<int>(
+    'to_node_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES nodes (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, fromNodeId, toNodeId, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'connections';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Connection> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('from_node_id')) {
+      context.handle(
+        _fromNodeIdMeta,
+        fromNodeId.isAcceptableOrUnknown(
+          data['from_node_id']!,
+          _fromNodeIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_fromNodeIdMeta);
+    }
+    if (data.containsKey('to_node_id')) {
+      context.handle(
+        _toNodeIdMeta,
+        toNodeId.isAcceptableOrUnknown(data['to_node_id']!, _toNodeIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_toNodeIdMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Connection map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Connection(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      fromNodeId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}from_node_id'],
+      )!,
+      toNodeId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}to_node_id'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ConnectionsTable createAlias(String alias) {
+    return $ConnectionsTable(attachedDatabase, alias);
+  }
+}
+
+class Connection extends DataClass implements Insertable<Connection> {
+  final int id;
+  final int fromNodeId;
+  final int toNodeId;
+  final DateTime createdAt;
+  const Connection({
+    required this.id,
+    required this.fromNodeId,
+    required this.toNodeId,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['from_node_id'] = Variable<int>(fromNodeId);
+    map['to_node_id'] = Variable<int>(toNodeId);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  ConnectionsCompanion toCompanion(bool nullToAbsent) {
+    return ConnectionsCompanion(
+      id: Value(id),
+      fromNodeId: Value(fromNodeId),
+      toNodeId: Value(toNodeId),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory Connection.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Connection(
+      id: serializer.fromJson<int>(json['id']),
+      fromNodeId: serializer.fromJson<int>(json['fromNodeId']),
+      toNodeId: serializer.fromJson<int>(json['toNodeId']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'fromNodeId': serializer.toJson<int>(fromNodeId),
+      'toNodeId': serializer.toJson<int>(toNodeId),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  Connection copyWith({
+    int? id,
+    int? fromNodeId,
+    int? toNodeId,
+    DateTime? createdAt,
+  }) => Connection(
+    id: id ?? this.id,
+    fromNodeId: fromNodeId ?? this.fromNodeId,
+    toNodeId: toNodeId ?? this.toNodeId,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  Connection copyWithCompanion(ConnectionsCompanion data) {
+    return Connection(
+      id: data.id.present ? data.id.value : this.id,
+      fromNodeId: data.fromNodeId.present
+          ? data.fromNodeId.value
+          : this.fromNodeId,
+      toNodeId: data.toNodeId.present ? data.toNodeId.value : this.toNodeId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Connection(')
+          ..write('id: $id, ')
+          ..write('fromNodeId: $fromNodeId, ')
+          ..write('toNodeId: $toNodeId, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, fromNodeId, toNodeId, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Connection &&
+          other.id == this.id &&
+          other.fromNodeId == this.fromNodeId &&
+          other.toNodeId == this.toNodeId &&
+          other.createdAt == this.createdAt);
+}
+
+class ConnectionsCompanion extends UpdateCompanion<Connection> {
+  final Value<int> id;
+  final Value<int> fromNodeId;
+  final Value<int> toNodeId;
+  final Value<DateTime> createdAt;
+  const ConnectionsCompanion({
+    this.id = const Value.absent(),
+    this.fromNodeId = const Value.absent(),
+    this.toNodeId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  ConnectionsCompanion.insert({
+    this.id = const Value.absent(),
+    required int fromNodeId,
+    required int toNodeId,
+    required DateTime createdAt,
+  }) : fromNodeId = Value(fromNodeId),
+       toNodeId = Value(toNodeId),
+       createdAt = Value(createdAt);
+  static Insertable<Connection> custom({
+    Expression<int>? id,
+    Expression<int>? fromNodeId,
+    Expression<int>? toNodeId,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (fromNodeId != null) 'from_node_id': fromNodeId,
+      if (toNodeId != null) 'to_node_id': toNodeId,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  ConnectionsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? fromNodeId,
+    Value<int>? toNodeId,
+    Value<DateTime>? createdAt,
+  }) {
+    return ConnectionsCompanion(
+      id: id ?? this.id,
+      fromNodeId: fromNodeId ?? this.fromNodeId,
+      toNodeId: toNodeId ?? this.toNodeId,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (fromNodeId.present) {
+      map['from_node_id'] = Variable<int>(fromNodeId.value);
+    }
+    if (toNodeId.present) {
+      map['to_node_id'] = Variable<int>(toNodeId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ConnectionsCompanion(')
+          ..write('id: $id, ')
+          ..write('fromNodeId: $fromNodeId, ')
+          ..write('toNodeId: $toNodeId, ')
+          ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
   }
@@ -1677,6 +2101,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $UsersTable users = $UsersTable(this);
   late final $NodesTable nodes = $NodesTable(this);
+  late final $ConnectionsTable connections = $ConnectionsTable(this);
   late final $ScanSessionsTable scanSessions = $ScanSessionsTable(this);
   late final $ScanSessionNodesTable scanSessionNodes = $ScanSessionNodesTable(
     this,
@@ -1688,9 +2113,27 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     users,
     nodes,
+    connections,
     scanSessions,
     scanSessionNodes,
   ];
+  @override
+  StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'nodes',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('connections', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'nodes',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('connections', kind: UpdateKind.delete)],
+    ),
+  ]);
   @override
   DriftDatabaseOptions get options =>
       const DriftDatabaseOptions(storeDateTimeAsText: true);
@@ -1917,6 +2360,8 @@ typedef $$NodesTableCreateCompanionBuilder =
       Value<String?> rssiHistory,
       Value<String?> suggestedName,
       Value<String?> deviceType,
+      Value<bool> connectable,
+      Value<double?> estimatedDistance,
     });
 typedef $$NodesTableUpdateCompanionBuilder =
     NodesCompanion Function({
@@ -1931,6 +2376,8 @@ typedef $$NodesTableUpdateCompanionBuilder =
       Value<String?> rssiHistory,
       Value<String?> suggestedName,
       Value<String?> deviceType,
+      Value<bool> connectable,
+      Value<double?> estimatedDistance,
     });
 
 final class $$NodesTableReferences
@@ -2018,6 +2465,16 @@ class $$NodesTableFilterComposer extends Composer<_$AppDatabase, $NodesTable> {
 
   ColumnFilters<String> get deviceType => $composableBuilder(
     column: $table.deviceType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get connectable => $composableBuilder(
+    column: $table.connectable,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get estimatedDistance => $composableBuilder(
+    column: $table.estimatedDistance,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2110,6 +2567,16 @@ class $$NodesTableOrderingComposer
     column: $table.deviceType,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get connectable => $composableBuilder(
+    column: $table.connectable,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get estimatedDistance => $composableBuilder(
+    column: $table.estimatedDistance,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$NodesTableAnnotationComposer
@@ -2161,6 +2628,16 @@ class $$NodesTableAnnotationComposer
 
   GeneratedColumn<String> get deviceType => $composableBuilder(
     column: $table.deviceType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get connectable => $composableBuilder(
+    column: $table.connectable,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get estimatedDistance => $composableBuilder(
+    column: $table.estimatedDistance,
     builder: (column) => column,
   );
 
@@ -2229,6 +2706,8 @@ class $$NodesTableTableManager
                 Value<String?> rssiHistory = const Value.absent(),
                 Value<String?> suggestedName = const Value.absent(),
                 Value<String?> deviceType = const Value.absent(),
+                Value<bool> connectable = const Value.absent(),
+                Value<double?> estimatedDistance = const Value.absent(),
               }) => NodesCompanion(
                 id: id,
                 bleAddress: bleAddress,
@@ -2241,6 +2720,8 @@ class $$NodesTableTableManager
                 rssiHistory: rssiHistory,
                 suggestedName: suggestedName,
                 deviceType: deviceType,
+                connectable: connectable,
+                estimatedDistance: estimatedDistance,
               ),
           createCompanionCallback:
               ({
@@ -2255,6 +2736,8 @@ class $$NodesTableTableManager
                 Value<String?> rssiHistory = const Value.absent(),
                 Value<String?> suggestedName = const Value.absent(),
                 Value<String?> deviceType = const Value.absent(),
+                Value<bool> connectable = const Value.absent(),
+                Value<double?> estimatedDistance = const Value.absent(),
               }) => NodesCompanion.insert(
                 id: id,
                 bleAddress: bleAddress,
@@ -2267,6 +2750,8 @@ class $$NodesTableTableManager
                 rssiHistory: rssiHistory,
                 suggestedName: suggestedName,
                 deviceType: deviceType,
+                connectable: connectable,
+                estimatedDistance: estimatedDistance,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -2322,6 +2807,384 @@ typedef $$NodesTableProcessedTableManager =
       (NodeRow, $$NodesTableReferences),
       NodeRow,
       PrefetchHooks Function({bool scanSessionNodesRefs})
+    >;
+typedef $$ConnectionsTableCreateCompanionBuilder =
+    ConnectionsCompanion Function({
+      Value<int> id,
+      required int fromNodeId,
+      required int toNodeId,
+      required DateTime createdAt,
+    });
+typedef $$ConnectionsTableUpdateCompanionBuilder =
+    ConnectionsCompanion Function({
+      Value<int> id,
+      Value<int> fromNodeId,
+      Value<int> toNodeId,
+      Value<DateTime> createdAt,
+    });
+
+final class $$ConnectionsTableReferences
+    extends BaseReferences<_$AppDatabase, $ConnectionsTable, Connection> {
+  $$ConnectionsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $NodesTable _fromNodeIdTable(_$AppDatabase db) =>
+      db.nodes.createAlias('connections__from_node_id__nodes__id');
+
+  $$NodesTableProcessedTableManager get fromNodeId {
+    final $_column = $_itemColumn<int>('from_node_id')!;
+
+    final manager = $$NodesTableTableManager(
+      $_db,
+      $_db.nodes,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_fromNodeIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $NodesTable _toNodeIdTable(_$AppDatabase db) =>
+      db.nodes.createAlias('connections__to_node_id__nodes__id');
+
+  $$NodesTableProcessedTableManager get toNodeId {
+    final $_column = $_itemColumn<int>('to_node_id')!;
+
+    final manager = $$NodesTableTableManager(
+      $_db,
+      $_db.nodes,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_toNodeIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ConnectionsTableFilterComposer
+    extends Composer<_$AppDatabase, $ConnectionsTable> {
+  $$ConnectionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$NodesTableFilterComposer get fromNodeId {
+    final $$NodesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.fromNodeId,
+      referencedTable: $db.nodes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NodesTableFilterComposer(
+            $db: $db,
+            $table: $db.nodes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$NodesTableFilterComposer get toNodeId {
+    final $$NodesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.toNodeId,
+      referencedTable: $db.nodes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NodesTableFilterComposer(
+            $db: $db,
+            $table: $db.nodes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ConnectionsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ConnectionsTable> {
+  $$ConnectionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$NodesTableOrderingComposer get fromNodeId {
+    final $$NodesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.fromNodeId,
+      referencedTable: $db.nodes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NodesTableOrderingComposer(
+            $db: $db,
+            $table: $db.nodes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$NodesTableOrderingComposer get toNodeId {
+    final $$NodesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.toNodeId,
+      referencedTable: $db.nodes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NodesTableOrderingComposer(
+            $db: $db,
+            $table: $db.nodes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ConnectionsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ConnectionsTable> {
+  $$ConnectionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$NodesTableAnnotationComposer get fromNodeId {
+    final $$NodesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.fromNodeId,
+      referencedTable: $db.nodes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NodesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.nodes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$NodesTableAnnotationComposer get toNodeId {
+    final $$NodesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.toNodeId,
+      referencedTable: $db.nodes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NodesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.nodes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ConnectionsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ConnectionsTable,
+          Connection,
+          $$ConnectionsTableFilterComposer,
+          $$ConnectionsTableOrderingComposer,
+          $$ConnectionsTableAnnotationComposer,
+          $$ConnectionsTableCreateCompanionBuilder,
+          $$ConnectionsTableUpdateCompanionBuilder,
+          (Connection, $$ConnectionsTableReferences),
+          Connection,
+          PrefetchHooks Function({bool fromNodeId, bool toNodeId})
+        > {
+  $$ConnectionsTableTableManager(_$AppDatabase db, $ConnectionsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ConnectionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ConnectionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ConnectionsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> fromNodeId = const Value.absent(),
+                Value<int> toNodeId = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => ConnectionsCompanion(
+                id: id,
+                fromNodeId: fromNodeId,
+                toNodeId: toNodeId,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int fromNodeId,
+                required int toNodeId,
+                required DateTime createdAt,
+              }) => ConnectionsCompanion.insert(
+                id: id,
+                fromNodeId: fromNodeId,
+                toNodeId: toNodeId,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ConnectionsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({fromNodeId = false, toNodeId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (fromNodeId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.fromNodeId,
+                                referencedTable: $$ConnectionsTableReferences
+                                    ._fromNodeIdTable(db),
+                                referencedColumn: $$ConnectionsTableReferences
+                                    ._fromNodeIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+                    if (toNodeId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.toNodeId,
+                                referencedTable: $$ConnectionsTableReferences
+                                    ._toNodeIdTable(db),
+                                referencedColumn: $$ConnectionsTableReferences
+                                    ._toNodeIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ConnectionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ConnectionsTable,
+      Connection,
+      $$ConnectionsTableFilterComposer,
+      $$ConnectionsTableOrderingComposer,
+      $$ConnectionsTableAnnotationComposer,
+      $$ConnectionsTableCreateCompanionBuilder,
+      $$ConnectionsTableUpdateCompanionBuilder,
+      (Connection, $$ConnectionsTableReferences),
+      Connection,
+      PrefetchHooks Function({bool fromNodeId, bool toNodeId})
     >;
 typedef $$ScanSessionsTableCreateCompanionBuilder =
     ScanSessionsCompanion Function({
@@ -3002,6 +3865,8 @@ class $AppDatabaseManager {
       $$UsersTableTableManager(_db, _db.users);
   $$NodesTableTableManager get nodes =>
       $$NodesTableTableManager(_db, _db.nodes);
+  $$ConnectionsTableTableManager get connections =>
+      $$ConnectionsTableTableManager(_db, _db.connections);
   $$ScanSessionsTableTableManager get scanSessions =>
       $$ScanSessionsTableTableManager(_db, _db.scanSessions);
   $$ScanSessionNodesTableTableManager get scanSessionNodes =>

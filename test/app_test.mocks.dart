@@ -549,6 +549,15 @@ class MockUserBloc extends _i1.Mock implements _i10.UserBloc {
 /// See the documentation for Mockito's code generation for more information.
 class MockVisualizationBloc extends _i1.Mock implements _i20.VisualizationBloc {
   @override
+  bool get isBuilding =>
+      (super.noSuchMethod(
+            Invocation.getter(#isBuilding),
+            returnValue: false,
+            returnValueForMissingStub: false,
+          )
+          as bool);
+
+  @override
   bool get isClosed =>
       (super.noSuchMethod(
             Invocation.getter(#isClosed),
@@ -581,6 +590,18 @@ class MockVisualizationBloc extends _i1.Mock implements _i20.VisualizationBloc {
                 _i17.Stream<_i11.VisualizationState>.empty(),
           )
           as _i17.Stream<_i11.VisualizationState>);
+
+  @override
+  _i17.Future<void> processBuildRequest(
+    _i21.BuildGraphRequested? event,
+    _i19.Emitter<_i11.VisualizationState>? emit,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#processBuildRequest, [event, emit]),
+            returnValue: _i17.Future<void>.value(),
+            returnValueForMissingStub: _i17.Future<void>.value(),
+          )
+          as _i17.Future<void>);
 
   @override
   void add(_i21.VisualizationEvent? event) => super.noSuchMethod(
