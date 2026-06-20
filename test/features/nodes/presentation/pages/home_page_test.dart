@@ -54,6 +54,21 @@ class _StubHomeWebViewController extends PlatformWebViewController {
   Future<void> addJavaScriptChannel(JavaScriptChannelParams params) async {}
   @override
   Future<void> runJavaScript(String javaScript) async {}
+  @override
+  Future<void> setPlatformNavigationDelegate(
+    covariant PlatformNavigationDelegate handler,
+  ) async {}
+}
+
+/// Stub de PlatformNavigationDelegate para tests de WebView.
+///
+/// Permite que los tests que renderizan GraphView3D (como los de toggle 2D/3D)
+/// no lancen UnimplementedError al crear el NavigationDelegate del WebView.
+class _StubHomeNavigationDelegate extends PlatformNavigationDelegate {
+  _StubHomeNavigationDelegate(super.params) : super.implementation();
+
+  @override
+  Future<void> setOnPageFinished(PageEventCallback? onPageFinished) async {}
 }
 
 class _StubHomeWebViewPlatform extends WebViewPlatform
@@ -71,7 +86,7 @@ class _StubHomeWebViewPlatform extends WebViewPlatform
   @override
   PlatformNavigationDelegate createPlatformNavigationDelegate(
     PlatformNavigationDelegateCreationParams params,
-  ) => throw UnimplementedError();
+  ) => _StubHomeNavigationDelegate(params);
 
   @override
   PlatformWebViewCookieManager createPlatformCookieManager(

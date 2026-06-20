@@ -17,11 +17,13 @@ class StopScan extends BleEvent {
 
 class StartAdvertise extends BleEvent {
   final String deviceUuid;
+  final String name;
+  final String color;
 
-  const StartAdvertise(this.deviceUuid);
+  const StartAdvertise(this.deviceUuid, this.name, this.color);
 
   @override
-  List<Object> get props => [deviceUuid];
+  List<Object> get props => [deviceUuid, name, color];
 }
 
 class StopAdvertise extends BleEvent {

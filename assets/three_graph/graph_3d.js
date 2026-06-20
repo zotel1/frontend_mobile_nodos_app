@@ -243,8 +243,15 @@
    * @param {Object} data — { nodes: [{id,x,y,z,radius,color,label,isSelf}], edges: [{fromId,toId,thickness}] }
    */
   window.loadGraphData = function (data) {
+    try {
     if (!renderer) initScene();
-    if (!data || !data.nodes) return;
+    if (!data || !data.nodes) {
+      _log('loadGraphData: datos vacíos o nulos, ignorando');
+      return;
+    }
+
+    _log('loadGraphData: renderizando ' + data.nodes.length + ' nodos y ' + 
+         (data.edges ? data.edges.length : 0) + ' aristas');
 
     // Limpiar escena anterior
     while (group.children.length > 0) {
@@ -310,8 +317,21 @@
 
       group.add(mesh);
     });
+    } catch (err) {
+      _log('loadGraphData ERROR: ' + (err && err.message ? err.message : String(err)));
+    }
   };
 
   // Mantener referencia para el bridge de comunicación Dart→JS
   window.THREE = THREE;
+
+  /// Envía un mensaje de log al canal onConsoleLog de Dart.
+  /// Si el canal no está disponible (tests), usa console.log como fallback.
+  function _log(msg) {
+    if (window.onConsoleLog && window.onConsoleLog.postMessage) {
+      window.onConsoleLog.postMessage(String(msg));
+    } else {
+      console.log(msg);
+    }
+  }
 })();

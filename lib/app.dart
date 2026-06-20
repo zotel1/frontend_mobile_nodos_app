@@ -36,13 +36,30 @@ class ScaffoldWithNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // T2.5: Acceder al BleBloc para controlar el escaneo por tab.
-    // Se captura en build() porque onTap es un callback sin context propio.
     final bleBloc = context.read<BleBloc>();
 
-    return Scaffold(
-      body: navigationShell,
-      bottomNavigationBar: BottomNavigationBar(
+    /// Escucha el UserBloc para iniciar advertising cuando el perfil
+    /// del usuario esté cargado (uuid, name, color).
+    ///
+    /// QUÉ hace: cuando UserBloc emite [UserLoaded], despacha
+    /// [StartAdvertise] al BleBloc con los metadatos de identidad.
+    /// Solo se dispara una vez por perfil (cada UserLoaded).
+    ///
+    /// POR QUÉ: sin este listener el dispositivo nunca anuncia el UUID
+    /// Nodos, por lo que otros dispositivos no pueden detectarlo.
+    return BlocListener<UserBloc, UserState>(
+      listener: (context, userState) {
+        if (userState is UserLoaded) {
+          bleBloc.add(StartAdvertise(
+            userState.user.uuid,
+            userState.user.name,
+            userState.user.color,
+          ));
+        }
+      },
+      child: Scaffold(
+        body: navigationShell,
+        bottomNavigationBar: BottomNavigationBar(
         currentIndex: navigationShell.currentIndex,
         onTap: (index) {
           // T2.5: Auto-scan lifecycle por tab
@@ -73,6 +90,7 @@ class ScaffoldWithNavBar extends StatelessWidget {
             label: 'Stats',
           ),
         ],
+      ),
       ),
     );
   }

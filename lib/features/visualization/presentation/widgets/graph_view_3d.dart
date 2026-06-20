@@ -12,6 +12,11 @@ import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities
 /// La comunicación inversa (tap en nodo 3D → Dart) se realiza vía
 /// `JavaScriptChannel('onNodeTapped')`.
 ///
+/// FIX(PR2): La inyección de datos ahora espera a que la página
+/// termine de cargar (onPageFinished) para evitar pantalla en blanco.
+/// Si los datos llegan antes, se almacenan en [_pendingData] y se
+/// inyectan cuando el callback lo indique.
+///
 /// Parámetros:
 /// - [layout]: resultado del algoritmo FR con nodos y aristas
 /// - [onNodeTapped]: callback al tocar un nodo en 3D, recibe el nodeId
@@ -32,6 +37,14 @@ class GraphView3D extends StatefulWidget {
 class _GraphView3DState extends State<GraphView3D> {
   late final WebViewController _controller;
 
+  /// Flag que indica si la página HTML ya terminó de cargar.
+  /// true → es seguro llamar a _injectData().
+  bool _pageLoaded = false;
+
+  /// Datos pendientes de inyectar si llegaron antes de
+  /// que la página terminara de cargar.
+  String? _pendingData;
+
   @override
   void initState() {
     super.initState();
@@ -39,10 +52,25 @@ class _GraphView3DState extends State<GraphView3D> {
     _loadContent();
   }
 
-  /// Crea y configura el WebViewController con el canal JavaScript
-  /// para recibir eventos de tap en nodos desde el WebView.
+  /// Crea y configura el WebViewController con los canales JavaScript
+  /// para recibir eventos de tap en nodos y logs de consola.
   WebViewController _createController() {
     final controller = WebViewController();
+
+    /// Callback que se dispara cuando la página HTML termina de cargar.
+    /// Si hay datos pendientes de [_pendingData], se inyectan aquí.
+    controller.setNavigationDelegate(
+      NavigationDelegate(
+        onPageFinished: (_) {
+          _pageLoaded = true;
+          if (_pendingData != null) {
+            _controller.runJavaScript(
+                'window.loadGraphData($_pendingData)');
+            _pendingData = null;
+          }
+        },
+      ),
+    );
 
     // Canal de comunicación JS → Dart para detección de tap en nodos.
     // graph_3d.js llama a onNodeTapped.postMessage(nodeId) al tocar una esfera.
@@ -56,10 +84,22 @@ class _GraphView3DState extends State<GraphView3D> {
       },
     );
 
+    // Canal de logs de consola JS → Dart para depuración.
+    // Captura console.log/error/warn del WebView para diagnosticar
+    // errores en la escena Three.js sin necesidad de DevTools.
+    controller.addJavaScriptChannel(
+      'onConsoleLog',
+      onMessageReceived: (JavaScriptMessage message) {
+        debugPrint('[3D WebView] ${message.message}');
+      },
+    );
+
     return controller;
   }
 
   /// Carga el HTML del grafo 3D desde los assets e inyecta los datos.
+  /// Si la página ya cargó, inyecta directamente; si no, almacena en
+  /// [_pendingData] para que [onPageFinished] la inyecte.
   Future<void> _loadContent() async {
     await _controller.loadFlutterAsset('assets/three_graph/graph_3d.html');
     _injectData();
@@ -67,9 +107,17 @@ class _GraphView3DState extends State<GraphView3D> {
 
   /// Serializa el [LayoutResult] a JSON y lo inyecta en el WebView
   /// llamando a `window.loadGraphData(json)` en el contexto JavaScript.
+  ///
+  /// Si la página aún no terminó de cargar ([_pageLoaded] = false),
+  /// almacena el JSON en [_pendingData] para inyectarlo en
+  /// [onPageFinished].
   void _injectData() {
     final json = jsonEncode(layoutResultToJson(widget.layout));
-    _controller.runJavaScript('window.loadGraphData($json)');
+    if (_pageLoaded) {
+      _controller.runJavaScript('window.loadGraphData($json)');
+    } else {
+      _pendingData = json;
+    }
   }
 
   @override
