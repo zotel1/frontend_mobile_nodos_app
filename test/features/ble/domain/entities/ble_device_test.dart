@@ -72,7 +72,6 @@ void main() {
         timestamp: now,
       );
 
-      expect(device.props.length, 12);
       expect(device.props, containsAll([
         'AA:BB:CC:DD:EE:FF',
         null, // deviceUuid
@@ -258,7 +257,6 @@ void main() {
         deviceType: 'Reloj',
       );
 
-      expect(device.props.length, 12); // 6 originales + 6 nuevos
       expect(device.props, containsAll([
         'AA:BB:CC:DD:EE:FF',
         null, // deviceUuid

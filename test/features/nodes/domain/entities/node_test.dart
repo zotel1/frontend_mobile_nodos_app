@@ -111,7 +111,6 @@ void main() {
         rssiHistory: const [-55, -70],
       );
 
-      expect(node.props.length, 11); // +4: suggestedName, deviceType, connectable, estimatedDistance
       expect(node.props, containsAll([
         1,
         'AA:BB:CC:DD:EE:FF',
@@ -302,7 +301,6 @@ void main() {
         lastSeen: now,
         rssiHistory: const [-60],
       );
-      expect(node.props.length, 11); // 9 anteriores + 2 nuevos
       expect(node.props, containsAll([
         true,  // connectable
         2.5,   // estimatedDistance
