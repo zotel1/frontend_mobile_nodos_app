@@ -26,3 +26,11 @@ class Logger {
     );
   }
 }
+
+/// Convenience function para loguear mensajes de debug.
+///
+/// QUÉ: wrapper de [developer.log] con tag 'Nodos' y nivel 500 (debug).
+/// Usado por [AppBlocObserver] y otros componentes de infraestructura.
+void logDebug(String message) {
+  developer.log(message, name: 'Nodos', level: 500);
+}

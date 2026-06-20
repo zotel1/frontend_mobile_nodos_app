@@ -27,12 +27,12 @@ sealed class BleConnectionEvent extends Equatable {
 /// en la tabla connections (R5.2).
 class ConnectToDevice extends BleConnectionEvent {
   final String remoteId;
-  final int? myNodeId;
+  final int myNodeId;
 
-  const ConnectToDevice(this.remoteId, {this.myNodeId});
+  const ConnectToDevice(this.remoteId, {required this.myNodeId});
 
   @override
-  List<Object?> get props => [remoteId, myNodeId];
+  List<Object> get props => [remoteId, myNodeId];
 }
 
 /// Desconecta del dispositivo identificado por [remoteId].
@@ -260,12 +260,10 @@ class BleConnectionBloc
     try {
       final remoteNode =
           await _nodeRepository.getNodeByBleAddress(remoteId);
-      if (remoteNode != null &&
-          remoteNode.id != null &&
-          event.myNodeId != null) {
+      if (remoteNode != null && remoteNode.id != null) {
         await _db.into(_db.connections).insert(
               ConnectionsCompanion.insert(
-                fromNodeId: event.myNodeId!,
+                fromNodeId: event.myNodeId,
                 toNodeId: remoteNode.id!,
                 createdAt: DateTime.now(),
               ),
@@ -356,14 +354,14 @@ class BleConnectionBloc
 class _ConnectionStateChanged extends BleConnectionEvent {
   final String remoteId;
   final bool connected;
-  final int? myNodeId;
+  final int myNodeId;
 
   const _ConnectionStateChanged({
     required this.remoteId,
     required this.connected,
-    this.myNodeId,
+    required this.myNodeId,
   });
 
   @override
-  List<Object?> get props => [remoteId, connected, myNodeId];
+  List<Object> get props => [remoteId, connected, myNodeId];
 }
