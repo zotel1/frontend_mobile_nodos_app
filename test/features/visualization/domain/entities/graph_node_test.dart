@@ -181,9 +181,9 @@ void main() {
         name: 'Test',
       );
 
-      // T2.1: props incluyen connectionCount e isSelf
+      // T3.10: props incluyen connectable
       expect(node.props,
-          [5, 150.0, 250.0, ProximityLevel.medium, 'Test', null, 0, false]);
+          [5, 150.0, 250.0, ProximityLevel.medium, 'Test', null, 0, false, true]);
     });
 
     test('isKnown returns true when node has a name', () {

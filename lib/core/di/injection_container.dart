@@ -1,8 +1,11 @@
 import 'package:get_it/get_it.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_scanner_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_advertiser_datasource.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_gatt_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/flutter_blue_plus_datasource.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/flutter_blue_plus_gatt_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/flutter_ble_peripheral_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/repositories/ble_repository_impl.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_repository.dart';
@@ -11,6 +14,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/usecases/stop_ble_
 import 'package:frontend_mobile_nodos_app/features/ble/domain/usecases/start_ble_advertise.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/usecases/stop_ble_advertise.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/data/datasources/node_local_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/data/datasources/node_drift_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/data/repositories/node_repository_impl.dart';
@@ -40,6 +44,12 @@ import 'package:frontend_mobile_nodos_app/features/history/presentation/bloc/his
 final sl = GetIt.instance;
 
 Future<void> initDependencies() async {
+  // ── BLE Platform Config ──
+  // R5.6: Modo de cola de operaciones por dispositivo.
+  // Evita que operaciones en un dispositivo bloqueen a otros dispositivos.
+  // Debe configurarse antes de cualquier operación BLE.
+  FlutterBluePlus.setOperationQueueMode(OperationQueueMode.perDevice);
+
   // ── Database ──
   sl.registerLazySingleton<AppDatabase>(() => AppDatabase());
 
@@ -49,6 +59,14 @@ Future<void> initDependencies() async {
   );
   sl.registerLazySingleton<BleAdvertiserDataSource>(
     () => FlutterBlePeripheralDataSource(),
+  );
+
+  // ── GATT datasource ──
+  // Implementación concreta de conexión punto a punto por BLE.
+  // Se registra como singleton — una sola instancia maneja todas las
+  // conexiones por dispositivo vía remoteId.
+  sl.registerLazySingleton<BleGattDataSource>(
+    () => FlutterBluePlusGattDataSource(),
   );
 
   // ── Node data sources ──
@@ -108,6 +126,11 @@ Future<void> initDependencies() async {
 
   // ── BLoCs (factory — new instance per BlocProvider) ──
   sl.registerFactory(() => BleBloc(repository: sl()));
+  // BleConnectionBloc: maneja el ciclo de vida de conexiones GATT.
+  // Factory — cada BlocProvider obtiene su propia instancia.
+  sl.registerFactory<BleConnectionBloc>(
+    () => BleConnectionBloc(gatt: sl()),
+  );
   sl.registerFactory<NodeListBloc>(
     () => NodeListBloc(
       observeNodes: sl(),

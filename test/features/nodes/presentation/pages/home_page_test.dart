@@ -19,6 +19,7 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bl
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_node.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_edge.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/pages/home_page.dart';
@@ -27,6 +28,7 @@ import 'package:frontend_mobile_nodos_app/features/nodes/presentation/pages/home
   MockSpec<NodeListBloc>(),
   MockSpec<BleBloc>(),
   MockSpec<VisualizationBloc>(),
+  MockSpec<BleConnectionBloc>(),
 ])
 import 'home_page_test.mocks.dart';
 
@@ -56,6 +58,14 @@ final _testLayout = LayoutResult(
   converged: true,
 );
 
+/// Helper que construye un BleConnectionBloc mock con estado inicial.
+MockBleConnectionBloc _mockConnBloc() {
+  final mock = MockBleConnectionBloc();
+  when(mock.state).thenReturn(const BleConnectionInitial());
+  when(mock.stream).thenAnswer((_) => Stream.value(const BleConnectionInitial()));
+  return mock;
+}
+
 /// Helper que construye el widget HomePage con los BLoCs mockeados.
 ///
 /// Registra GetIt con una BD en memoria para que _triggerGraphBuild
@@ -68,6 +78,7 @@ Widget _pumpHomePage({
   final mockNodeListBloc = MockNodeListBloc();
   final mockBleBloc = MockBleBloc();
   final mockVizBloc = MockVisualizationBloc();
+  final mockConnectionBloc = MockBleConnectionBloc();
 
   when(mockNodeListBloc.state).thenReturn(nodeListState);
   when(mockNodeListBloc.stream)
@@ -77,6 +88,9 @@ Widget _pumpHomePage({
   when(mockVizBloc.state).thenReturn(visualizationState);
   when(mockVizBloc.stream)
       .thenAnswer((_) => Stream.value(visualizationState));
+  when(mockConnectionBloc.state).thenReturn(const BleConnectionInitial());
+  when(mockConnectionBloc.stream)
+      .thenAnswer((_) => Stream.value(const BleConnectionInitial()));
 
   return MaterialApp(
     home: MultiBlocProvider(
@@ -84,6 +98,7 @@ Widget _pumpHomePage({
         BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
         BlocProvider<BleBloc>.value(value: mockBleBloc),
         BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+        BlocProvider<BleConnectionBloc>.value(value: mockConnectionBloc),
       ],
       child: const HomePage(),
     ),
@@ -93,6 +108,10 @@ Widget _pumpHomePage({
 void main() {
   // ── Inicializar GetIt con BD en memoria para los tests ──
   late AppDatabase testDb;
+
+  // Mockito no puede generar dummy values para sealed classes.
+  // Proveemos BleConnectionInitial como valor por defecto.
+  provideDummy<BleConnectionState>(const BleConnectionInitial());
 
   setUp(() async {
     testDb = AppDatabase.inMemory();
@@ -263,6 +282,7 @@ void main() {
             BlocProvider<NodeListBloc>.value(value: mockNodeListBloc3),
             BlocProvider<BleBloc>.value(value: mockBleBloc3),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc3),
+            BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
           ],
           child: const HomePage(),
         ),
@@ -349,6 +369,7 @@ void main() {
             BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
           ],
           child: const HomePage(),
         ),
@@ -417,6 +438,7 @@ void main() {
             BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
           ],
           child: const HomePage(),
         ),
@@ -459,6 +481,7 @@ void main() {
                 BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
                 BlocProvider<BleBloc>.value(value: mockBleBloc),
                 BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+                BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
               ],
               child: const HomePage(),
             ),
@@ -510,6 +533,7 @@ void main() {
             BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
           ],
           child: const HomePage(),
         ),
@@ -550,6 +574,7 @@ void main() {
             BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
           ],
           child: const HomePage(),
         ),
@@ -596,6 +621,7 @@ void main() {
             BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
           ],
           child: const HomePage(),
         ),
@@ -656,6 +682,7 @@ void main() {
             BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
           ],
           child: const HomePage(),
         ),
@@ -705,6 +732,7 @@ void main() {
             BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
           ],
           child: const HomePage(),
         ),
@@ -747,6 +775,7 @@ void main() {
             BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
           ],
           child: const HomePage(),
         ),
@@ -805,6 +834,133 @@ void main() {
       ));
 
       expect(find.textContaining('nodos detectados'), findsNothing);
+    });
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // T3.8: Wire onEnlazar — al tocar "Enlazar" en el tooltip,
+    // HomePage despacha ConnectToDevice al BleConnectionBloc.
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    testWidgets('T3.8: al tocar Enlazar se despacha ConnectToDevice',
+        (tester) async {
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+      final mockConnectionBloc = MockBleConnectionBloc();
+
+      // Nodos que se usarán para mapear GraphNode.id → Node.bleAddress
+      final nodes = [
+        Node(
+          id: 1,
+          bleAddress: 'AA:BB:CC:DD:EE:FF',
+          name: 'Nodo Alpha',
+          firstSeen: DateTime(2026, 1, 1),
+          lastSeen: DateTime(2026, 6, 19),
+          rssiHistory: const [-50],
+        ),
+        ...List.generate(
+          4,
+          (i) => _testNode(i + 2, 'AA:BB:CC:DD:EE:0${i + 2}'),
+        ),
+      ];
+
+      when(mockNodeListBloc.state).thenReturn(NodeListLoaded(nodes));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(NodeListLoaded(nodes)));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream)
+          .thenAnswer((_) => Stream.value(const BleStopped()));
+      when(mockVizBloc.state).thenReturn(
+        GraphReady(_testLayout, selectedNodeId: 1),
+      );
+      when(mockVizBloc.stream).thenAnswer(
+        (_) => Stream.value(GraphReady(_testLayout, selectedNodeId: 1)),
+      );
+      when(mockConnectionBloc.state)
+          .thenReturn(const BleConnectionInitial());
+      when(mockConnectionBloc.stream)
+          .thenAnswer((_) => Stream.value(const BleConnectionInitial()));
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(
+                value: mockConnectionBloc),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Verificar que el tooltip se muestra con el nombre del nodo
+      // "Nodo Alpha" aparece también en el info bar (nodos detectados)
+      expect(find.text('Nodo Alpha'), findsAtLeast(1));
+
+      // Al tocar Enlazar → dispatch ConnectToDevice
+      await tester.tap(find.text('Enlazar'));
+      await tester.pump();
+
+      // Verificar que ConnectToDevice fue despachado
+      verify(mockConnectionBloc.add(
+        argThat(
+          predicate((e) =>
+              e is ConnectToDevice &&
+              e.remoteId == 'AA:BB:CC:DD:EE:FF'),
+        ),
+      )).called(1);
+    });
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // T3.9: SnackBar de estado de conexión
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    testWidgets(
+        'T3.9: muestra SnackBar "Conectando..." al emitir BleConnecting',
+        (tester) async {
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+      final mockConnectionBloc = MockBleConnectionBloc();
+
+      when(mockNodeListBloc.state).thenReturn(const NodeListLoaded([]));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(const NodeListLoaded([])));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream)
+          .thenAnswer((_) => Stream.value(const BleStopped()));
+      when(mockVizBloc.state).thenReturn(const VisualizationInitial());
+      when(mockVizBloc.stream)
+          .thenAnswer((_) => Stream.value(const VisualizationInitial()));
+      when(mockConnectionBloc.state)
+          .thenReturn(const BleConnectionInitial());
+      when(mockConnectionBloc.stream).thenAnswer(
+        (_) => Stream.fromIterable([
+          const BleConnecting(remoteId: 'AA:BB:CC:DD:EE:FF'),
+        ]),
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(
+                value: mockConnectionBloc),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Verificar el SnackBar "Conectando..."
+      expect(find.textContaining('Conectando'), findsOneWidget);
     });
   });
 }

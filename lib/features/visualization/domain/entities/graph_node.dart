@@ -38,6 +38,13 @@ class GraphNode extends Equatable {
   /// Se renderiza con un anillo azul de glow (T2.5).
   final bool isSelf;
 
+  /// Indica si el dispositivo acepta conexiones GATT (Enlazar).
+  ///
+  /// false → el botón "Enlazar" se deshabilita con estilo gris.
+  /// Valor por defecto true — se actualizará cuando el pipeline
+  /// de datos propague connectable desde BleDevice.
+  final bool connectable;
+
   const GraphNode({
     this.id,
     required this.x,
@@ -47,6 +54,7 @@ class GraphNode extends Equatable {
     this.suggestedName,
     this.connectionCount = 0,
     this.isSelf = false,
+    this.connectable = true,
   });
 
   /// Radio del círculo proporcional a la cantidad de conexiones.
@@ -77,5 +85,5 @@ class GraphNode extends Equatable {
 
   @override
   List<Object?> get props =>
-      [id, x, y, proximity, name, suggestedName, connectionCount, isSelf];
+      [id, x, y, proximity, name, suggestedName, connectionCount, isSelf, connectable];
 }
