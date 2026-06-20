@@ -40,6 +40,9 @@ import 'package:frontend_mobile_nodos_app/features/history/domain/usecases/get_s
 import 'package:frontend_mobile_nodos_app/features/history/domain/usecases/get_session_detail.dart';
 import 'package:frontend_mobile_nodos_app/features/history/domain/usecases/get_history_stats.dart';
 import 'package:frontend_mobile_nodos_app/features/history/presentation/bloc/history_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/scan_session/domain/repositories/scan_session_repository.dart';
+import 'package:frontend_mobile_nodos_app/features/scan_session/data/datasources/scan_session_drift_datasource.dart';
+import 'package:frontend_mobile_nodos_app/features/scan_session/presentation/bloc/scan_session_bloc.dart';
 
 final sl = GetIt.instance;
 
@@ -169,5 +172,14 @@ Future<void> initDependencies() async {
       getSessionDetail: sl(),
       getHistoryStats: sl(),
     ),
+  );
+
+  // ScanSessionBloc: gestiona el ciclo de vida de sesiones de escaneo.
+  // Repositorio como LazySingleton, BLoC como Factory.
+  sl.registerLazySingleton<ScanSessionRepository>(
+    () => ScanSessionRepositoryImpl(sl<AppDatabase>()),
+  );
+  sl.registerFactory<ScanSessionBloc>(
+    () => ScanSessionBloc(repository: sl()),
   );
 }

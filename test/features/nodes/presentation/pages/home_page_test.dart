@@ -26,12 +26,14 @@ import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/pages/home_page.dart';
+import 'package:frontend_mobile_nodos_app/features/scan_session/presentation/bloc/scan_session_bloc.dart';
 
 @GenerateNiceMocks([
   MockSpec<NodeListBloc>(),
   MockSpec<BleBloc>(),
   MockSpec<VisualizationBloc>(),
   MockSpec<BleConnectionBloc>(),
+  MockSpec<ScanSessionBloc>(),
 ])
 import 'home_page_test.mocks.dart';
 
@@ -111,6 +113,14 @@ MockBleConnectionBloc _mockConnBloc() {
   return mock;
 }
 
+/// Helper que construye un ScanSessionBloc mock con estado inicial.
+MockScanSessionBloc _mockSessionBloc() {
+  final mock = MockScanSessionBloc();
+  when(mock.state).thenReturn(const SessionInitial());
+  when(mock.stream).thenAnswer((_) => Stream.value(const SessionInitial()));
+  return mock;
+}
+
 /// Helper que construye el widget HomePage con los BLoCs mockeados.
 ///
 /// Registra GetIt con una BD en memoria para que _triggerGraphBuild
@@ -124,6 +134,7 @@ Widget _pumpHomePage({
   final mockBleBloc = MockBleBloc();
   final mockVizBloc = MockVisualizationBloc();
   final mockConnectionBloc = MockBleConnectionBloc();
+  final mockSessionBloc = MockScanSessionBloc();
 
   when(mockNodeListBloc.state).thenReturn(nodeListState);
   when(mockNodeListBloc.stream)
@@ -136,6 +147,9 @@ Widget _pumpHomePage({
   when(mockConnectionBloc.state).thenReturn(const BleConnectionInitial());
   when(mockConnectionBloc.stream)
       .thenAnswer((_) => Stream.value(const BleConnectionInitial()));
+  when(mockSessionBloc.state).thenReturn(const SessionInitial());
+  when(mockSessionBloc.stream)
+      .thenAnswer((_) => Stream.value(const SessionInitial()));
 
   return MaterialApp(
     home: MultiBlocProvider(
@@ -144,6 +158,7 @@ Widget _pumpHomePage({
         BlocProvider<BleBloc>.value(value: mockBleBloc),
         BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
         BlocProvider<BleConnectionBloc>.value(value: mockConnectionBloc),
+        BlocProvider<ScanSessionBloc>.value(value: mockSessionBloc),
       ],
       child: const HomePage(),
     ),
@@ -330,6 +345,7 @@ void main() {
             BlocProvider<BleBloc>.value(value: mockBleBloc3),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc3),
             BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
+            BlocProvider<ScanSessionBloc>.value(value: _mockSessionBloc()),
           ],
           child: const HomePage(),
         ),
@@ -417,6 +433,7 @@ void main() {
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
             BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
+            BlocProvider<ScanSessionBloc>.value(value: _mockSessionBloc()),
           ],
           child: const HomePage(),
         ),
@@ -486,6 +503,7 @@ void main() {
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
             BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
+            BlocProvider<ScanSessionBloc>.value(value: _mockSessionBloc()),
           ],
           child: const HomePage(),
         ),
@@ -529,6 +547,7 @@ void main() {
                 BlocProvider<BleBloc>.value(value: mockBleBloc),
                 BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
                 BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
+                BlocProvider<ScanSessionBloc>.value(value: _mockSessionBloc()),
               ],
               child: const HomePage(),
             ),
@@ -581,6 +600,7 @@ void main() {
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
             BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
+            BlocProvider<ScanSessionBloc>.value(value: _mockSessionBloc()),
           ],
           child: const HomePage(),
         ),
@@ -622,6 +642,7 @@ void main() {
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
             BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
+            BlocProvider<ScanSessionBloc>.value(value: _mockSessionBloc()),
           ],
           child: const HomePage(),
         ),
@@ -669,6 +690,7 @@ void main() {
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
             BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
+            BlocProvider<ScanSessionBloc>.value(value: _mockSessionBloc()),
           ],
           child: const HomePage(),
         ),
@@ -730,6 +752,7 @@ void main() {
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
             BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
+            BlocProvider<ScanSessionBloc>.value(value: _mockSessionBloc()),
           ],
           child: const HomePage(),
         ),
@@ -780,6 +803,7 @@ void main() {
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
             BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
+            BlocProvider<ScanSessionBloc>.value(value: _mockSessionBloc()),
           ],
           child: const HomePage(),
         ),
@@ -823,6 +847,7 @@ void main() {
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
             BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
+            BlocProvider<ScanSessionBloc>.value(value: _mockSessionBloc()),
           ],
           child: const HomePage(),
         ),
@@ -935,6 +960,7 @@ void main() {
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
             BlocProvider<BleConnectionBloc>.value(
                 value: mockConnectionBloc),
+            BlocProvider<ScanSessionBloc>.value(value: _mockSessionBloc()),
           ],
           child: const HomePage(),
         ),
@@ -1084,6 +1110,7 @@ void main() {
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
             BlocProvider<BleConnectionBloc>.value(
                 value: mockConnectionBloc),
+            BlocProvider<ScanSessionBloc>.value(value: _mockSessionBloc()),
           ],
           child: const HomePage(),
         ),
@@ -1123,6 +1150,7 @@ void main() {
             BlocProvider<BleBloc>.value(value: mockBleBloc),
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
             BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
+            BlocProvider<ScanSessionBloc>.value(value: _mockSessionBloc()),
           ],
           child: const HomePage(),
         ),
@@ -1192,6 +1220,7 @@ void main() {
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
             BlocProvider<BleConnectionBloc>.value(
                 value: mockConnectionBloc),
+            BlocProvider<ScanSessionBloc>.value(value: _mockSessionBloc()),
           ],
           child: const HomePage(),
         ),
@@ -1257,6 +1286,7 @@ void main() {
             BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
             BlocProvider<BleConnectionBloc>.value(
                 value: mockConnectionBloc),
+            BlocProvider<ScanSessionBloc>.value(value: _mockSessionBloc()),
           ],
           child: const HomePage(),
         ),

@@ -15,6 +15,8 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bl
 import 'package:frontend_mobile_nodos_app/features/history/presentation/bloc/history_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/history/domain/entities/history_stats.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/scan_session/presentation/bloc/scan_session_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/scan_session/domain/repositories/scan_session_repository.dart';
 
 import 'package:frontend_mobile_nodos_app/app.dart';
 
@@ -25,6 +27,8 @@ import 'package:frontend_mobile_nodos_app/app.dart';
   MockSpec<VisualizationBloc>(),
   MockSpec<HistoryBloc>(),
   MockSpec<BleConnectionBloc>(),
+  MockSpec<ScanSessionBloc>(),
+  MockSpec<ScanSessionRepository>(),
 ])
 import 'app_test.mocks.dart';
 
@@ -38,6 +42,8 @@ void main() {
   late MockVisualizationBloc mockVizBloc;
   late MockHistoryBloc mockHistoryBloc;
   late MockBleConnectionBloc mockBleConnectionBloc;
+  late MockScanSessionBloc mockSessionBloc;
+  late MockScanSessionRepository mockSessionRepo;
   late AppDatabase testDb;
 
   setUp(() async {
@@ -47,6 +53,8 @@ void main() {
     mockVizBloc = MockVisualizationBloc();
     mockHistoryBloc = MockHistoryBloc();
     mockBleConnectionBloc = MockBleConnectionBloc();
+    mockSessionBloc = MockScanSessionBloc();
+    mockSessionRepo = MockScanSessionRepository();
 
     // Configurar mocks para evitar crashes
     when(mockBleBloc.state).thenReturn(const BleStopped());
@@ -84,6 +92,9 @@ void main() {
     when(mockBleConnectionBloc.state).thenReturn(const BleConnectionInitial());
     when(mockBleConnectionBloc.stream)
         .thenAnswer((_) => Stream.value(const BleConnectionInitial()));
+    when(mockSessionBloc.state).thenReturn(const SessionInitial());
+    when(mockSessionBloc.stream)
+        .thenAnswer((_) => Stream.value(const SessionInitial()));
 
     // Registrar mocks en GetIt para que NodosApp los resuelva.
     if (!GetIt.instance.isRegistered<BleBloc>()) {
@@ -104,6 +115,13 @@ void main() {
     if (!GetIt.instance.isRegistered<BleConnectionBloc>()) {
       GetIt.instance
           .registerFactory<BleConnectionBloc>(() => mockBleConnectionBloc);
+    }
+    if (!GetIt.instance.isRegistered<ScanSessionRepository>()) {
+      GetIt.instance
+          .registerLazySingleton<ScanSessionRepository>(() => mockSessionRepo);
+    }
+    if (!GetIt.instance.isRegistered<ScanSessionBloc>()) {
+      GetIt.instance.registerFactory<ScanSessionBloc>(() => mockSessionBloc);
     }
 
     testDb = AppDatabase.inMemory();
@@ -135,6 +153,12 @@ void main() {
     }
     if (GetIt.instance.isRegistered<BleConnectionBloc>()) {
       GetIt.instance.unregister<BleConnectionBloc>();
+    }
+    if (GetIt.instance.isRegistered<ScanSessionRepository>()) {
+      GetIt.instance.unregister<ScanSessionRepository>();
+    }
+    if (GetIt.instance.isRegistered<ScanSessionBloc>()) {
+      GetIt.instance.unregister<ScanSessionBloc>();
     }
   });
 
