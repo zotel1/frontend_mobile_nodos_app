@@ -18,6 +18,16 @@ class Node extends Equatable {
   /// Calculado por DeviceClassifier a partir de los service UUIDs.
   final String? deviceType;
 
+  /// Si el dispositivo BLE acepta conexiones GATT.
+  /// Se propaga desde [BleDevice.connectable] en el mapeo del BLoC.
+  /// Por defecto false — solo true si el advertisement lo indica.
+  final bool connectable;
+
+  /// Distancia estimada en metros, calculada desde el último RSSI.
+  /// Se computa en [NodeListBloc._onSyncBleDevices] usando [rssiToDistance].
+  /// Null si no hay RSSI válido todavía.
+  final double? estimatedDistance;
+
   /// Whether this node has been identified/named by the user.
   bool get isKnown => name != null;
 
@@ -31,9 +41,22 @@ class Node extends Equatable {
     this.rssiHistory = const [],
     this.suggestedName,
     this.deviceType,
+    this.connectable = false,
+    this.estimatedDistance,
   });
 
   @override
-  List<Object?> get props =>
-      [id, bleAddress, name, color, firstSeen, lastSeen, rssiHistory, suggestedName, deviceType];
+  List<Object?> get props => [
+        id,
+        bleAddress,
+        name,
+        color,
+        firstSeen,
+        lastSeen,
+        rssiHistory,
+        suggestedName,
+        deviceType,
+        connectable,
+        estimatedDistance,
+      ];
 }
