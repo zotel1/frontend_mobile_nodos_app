@@ -10,6 +10,8 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_r
     as _i5;
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart'
     as _i10;
+import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart'
+    as _i14;
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart'
     as _i11;
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart'
@@ -27,6 +29,7 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bl
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_state.dart'
     as _i7;
 import 'package:mockito/mockito.dart' as _i1;
+import 'package:mockito/src/dummies.dart' as _i15;
 
 // ignore_for_file: type=lint
 // ignore_for_file: avoid_redundant_argument_values
@@ -424,6 +427,119 @@ class MockVisualizationBloc extends _i1.Mock implements _i12.VisualizationBloc {
 
   @override
   void onChange(_i9.Change<_i7.VisualizationState>? change) =>
+      super.noSuchMethod(
+        Invocation.method(#onChange, [change]),
+        returnValueForMissingStub: null,
+      );
+
+  @override
+  void addError(Object? error, [StackTrace? stackTrace]) => super.noSuchMethod(
+    Invocation.method(#addError, [error, stackTrace]),
+    returnValueForMissingStub: null,
+  );
+
+  @override
+  void onError(Object? error, StackTrace? stackTrace) => super.noSuchMethod(
+    Invocation.method(#onError, [error, stackTrace]),
+    returnValueForMissingStub: null,
+  );
+}
+
+/// A class which mocks [BleConnectionBloc].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockBleConnectionBloc extends _i1.Mock implements _i14.BleConnectionBloc {
+  @override
+  bool get isClosed =>
+      (super.noSuchMethod(
+            Invocation.getter(#isClosed),
+            returnValue: false,
+            returnValueForMissingStub: false,
+          )
+          as bool);
+
+  @override
+  _i14.BleConnectionState get state =>
+      (super.noSuchMethod(
+            Invocation.getter(#state),
+            returnValue: _i15.dummyValue<_i14.BleConnectionState>(
+              this,
+              Invocation.getter(#state),
+            ),
+            returnValueForMissingStub: _i15.dummyValue<_i14.BleConnectionState>(
+              this,
+              Invocation.getter(#state),
+            ),
+          )
+          as _i14.BleConnectionState);
+
+  @override
+  _i8.Stream<_i14.BleConnectionState> get stream =>
+      (super.noSuchMethod(
+            Invocation.getter(#stream),
+            returnValue: _i8.Stream<_i14.BleConnectionState>.empty(),
+            returnValueForMissingStub:
+                _i8.Stream<_i14.BleConnectionState>.empty(),
+          )
+          as _i8.Stream<_i14.BleConnectionState>);
+
+  @override
+  _i8.Future<void> close() =>
+      (super.noSuchMethod(
+            Invocation.method(#close, []),
+            returnValue: _i8.Future<void>.value(),
+            returnValueForMissingStub: _i8.Future<void>.value(),
+          )
+          as _i8.Future<void>);
+
+  @override
+  void onEvent(_i14.BleConnectionEvent? event) => super.noSuchMethod(
+    Invocation.method(#onEvent, [event]),
+    returnValueForMissingStub: null,
+  );
+
+  @override
+  void add(_i14.BleConnectionEvent? event) => super.noSuchMethod(
+    Invocation.method(#add, [event]),
+    returnValueForMissingStub: null,
+  );
+
+  @override
+  void emit(_i14.BleConnectionState? state) => super.noSuchMethod(
+    Invocation.method(#emit, [state]),
+    returnValueForMissingStub: null,
+  );
+
+  @override
+  void on<E extends _i14.BleConnectionEvent>(
+    _i9.EventHandler<E, _i14.BleConnectionState>? handler, {
+    _i9.EventTransformer<E>? transformer,
+  }) => super.noSuchMethod(
+    Invocation.method(#on, [handler], {#transformer: transformer}),
+    returnValueForMissingStub: null,
+  );
+
+  @override
+  void onTransition(
+    _i9.Transition<_i14.BleConnectionEvent, _i14.BleConnectionState>?
+    transition,
+  ) => super.noSuchMethod(
+    Invocation.method(#onTransition, [transition]),
+    returnValueForMissingStub: null,
+  );
+
+  @override
+  void onDone(
+    _i14.BleConnectionEvent? event, [
+    Object? error,
+    StackTrace? stackTrace,
+  ]) => super.noSuchMethod(
+    Invocation.method(#onDone, [event, error, stackTrace]),
+    returnValueForMissingStub: null,
+  );
+
+  @override
+  void onChange(_i9.Change<_i14.BleConnectionState>? change) =>
       super.noSuchMethod(
         Invocation.method(#onChange, [change]),
         returnValueForMissingStub: null,
