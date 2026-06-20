@@ -72,6 +72,7 @@ class MockCalculateLayout extends _i1.Mock implements _i7.CalculateLayout {
     _i6.LayoutResult? layout,
     double? width,
     double? height, {
+    double? depth = 0.0,
     _i6.LayoutResult? priorLayout,
     int? seed,
   }) =>
@@ -79,7 +80,7 @@ class MockCalculateLayout extends _i1.Mock implements _i7.CalculateLayout {
             Invocation.method(
               #call,
               [layout, width, height],
-              {#priorLayout: priorLayout, #seed: seed},
+              {#depth: depth, #priorLayout: priorLayout, #seed: seed},
             ),
             returnValue:
                 _i4.Future<_i2.Either<_i5.Failure, _i6.LayoutResult>>.value(
@@ -88,7 +89,7 @@ class MockCalculateLayout extends _i1.Mock implements _i7.CalculateLayout {
                     Invocation.method(
                       #call,
                       [layout, width, height],
-                      {#priorLayout: priorLayout, #seed: seed},
+                      {#depth: depth, #priorLayout: priorLayout, #seed: seed},
                     ),
                   ),
                 ),
@@ -99,7 +100,7 @@ class MockCalculateLayout extends _i1.Mock implements _i7.CalculateLayout {
                     Invocation.method(
                       #call,
                       [layout, width, height],
-                      {#priorLayout: priorLayout, #seed: seed},
+                      {#depth: depth, #priorLayout: priorLayout, #seed: seed},
                     ),
                   ),
                 ),

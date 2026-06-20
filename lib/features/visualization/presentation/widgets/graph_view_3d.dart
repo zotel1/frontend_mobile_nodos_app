@@ -100,7 +100,7 @@ Map<String, dynamic> layoutResultToJson(LayoutResult layout) {
       'id': n.id,
       'x': n.x,
       'y': n.y,
-      'z': 0, // PR5 agregará n.z
+      'z': n.z, // T5.5: coordenada Z calculada por FR 3D
       'radius': n.radius,
       'color': '#${n.color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}',
       'label': n.label,
