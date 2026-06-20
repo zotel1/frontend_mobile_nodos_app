@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:bloc_test/bloc_test.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/annotations.dart';
@@ -47,6 +49,20 @@ void main() {
   );
 
   final testNodes = <Node>[];
+
+  // Fixtures para tests de F1 (dedup por IDs)
+  final testNodeA = Node(
+    id: 1,
+    bleAddress: 'AA:BB:CC:DD:EE:FF',
+    firstSeen: DateTime.fromMillisecondsSinceEpoch(0),
+    lastSeen: DateTime.fromMillisecondsSinceEpoch(0),
+  );
+  final testNodeB = Node(
+    id: 2,
+    bleAddress: '11:22:33:44:55:66',
+    firstSeen: DateTime.fromMillisecondsSinceEpoch(0),
+    lastSeen: DateTime.fromMillisecondsSinceEpoch(0),
+  );
 
   // ── Helper: configura mocks por defecto ──
 
@@ -337,6 +353,194 @@ void main() {
           bloc.close();
         });
       },
+    );
+
+    // ─── F1 T1.1: Dedup por IDs de nodo ──────────────────────────
+    // QUÉ: BuildGraphRequested con los mismos node IDs que el request
+    // anterior NO debe disparar un nuevo build (debounce starvation fix).
+    // POR QUÉ: sin este fix, cada BuildGraphRequested incrementa el
+    // contador de secuencia, reseteando el debounce y previniendo que
+    // el grafo se construya durante escaneo continuo.
+
+    blocTest<VisualizationBloc, VisualizationState>(
+      'T1.1: BuildGraphRequested con mismos node IDs saltea segundo request',
+      build: () {
+        setupDefaultMocks();
+        return VisualizationBloc(
+          buildGraph: mockBuildGraph,
+          calculateLayout: mockCalculateLayout,
+          debounceDuration: const Duration(milliseconds: 10),
+        );
+      },
+      act: (bloc) async {
+        // Primer build con nodos [A] — procesa normalmente
+        bloc.add(
+          BuildGraphRequested(scanSessionId: 1, nodes: [testNodeA]),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        // Segundo build con los MISMOS nodos — debe ser ignorado
+        bloc.add(
+          BuildGraphRequested(scanSessionId: 1, nodes: [testNodeA]),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      },
+      expect: () => [
+        isA<GraphBuilding>(),
+        isA<GraphReady>(),
+        // No debe haber segundo GraphBuilding/GraphReady
+      ],
+      verify: (_) {
+        // Solo se llamó a buildGraph UNA vez
+        verify(mockBuildGraph.call(any)).called(1);
+        verify(mockCalculateLayout.call(
+          any,
+          any,
+          any,
+          priorLayout: anyNamed('priorLayout'),
+        )).called(1);
+      },
+    );
+
+    blocTest<VisualizationBloc, VisualizationState>(
+      'T1.1: BuildGraphRequested con node IDs distintos SÍ procesa',
+      build: () {
+        setupDefaultMocks();
+        return VisualizationBloc(
+          buildGraph: mockBuildGraph,
+          calculateLayout: mockCalculateLayout,
+          debounceDuration: const Duration(milliseconds: 10),
+        );
+      },
+      act: (bloc) async {
+        // Primer build con testNodeA (id=1)
+        bloc.add(
+          BuildGraphRequested(scanSessionId: 1, nodes: [testNodeA]),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        // Segundo build con testNodeB (id=2, DISTINTO) — debe procesar
+        bloc.add(
+          BuildGraphRequested(scanSessionId: 2, nodes: [testNodeB]),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      },
+      expect: () => [
+        // Primer build
+        isA<GraphBuilding>(),
+        isA<GraphReady>(),
+        // Segundo build con nodos distintos SÍ se procesa
+        isA<GraphBuilding>(),
+        isA<GraphReady>(),
+      ],
+      verify: (_) {
+        verify(mockBuildGraph.call(1)).called(1);
+        verify(mockBuildGraph.call(2)).called(1);
+      },
+    );
+
+    // ─── F1 T1.2: Guardia _isBuilding contra builds concurrentes ──
+    // QUÉ: verifica que el flag _isBuilding se activa durante un build
+    // y previene que un segundo llamado a processBuildRequest ejecute.
+    // POR QUÉ: cubre el edge case donde el timer de debounce dispara
+    // mientras un build anterior todavía está en vuelo (flatMap
+    // concurrente podría procesar dos eventos a la vez).
+    // CÓMO: fakeAsync + Completer bloqueante + verificación del flag.
+
+    test('T1.2: _isBuilding previene builds concurrentes', () {
+      fakeAsync((async) {
+        final buildCompleter = Completer<Either<Failure, LayoutResult>>();
+
+        when(mockBuildGraph.call(any))
+            .thenAnswer((_) => buildCompleter.future);
+        when(
+          mockCalculateLayout.call(
+            any,
+            any,
+            any,
+            priorLayout: anyNamed('priorLayout'),
+          ),
+        ).thenAnswer((_) async => const Right(testLayout));
+
+        final bloc = VisualizationBloc(
+          buildGraph: mockBuildGraph,
+          calculateLayout: mockCalculateLayout,
+          debounceDuration: Duration.zero,
+        );
+
+        // Verificar estado inicial: flag en false
+        expect(bloc.isBuilding, isFalse);
+
+        // Primer evento: inicia el build
+        bloc.add(
+          BuildGraphRequested(scanSessionId: 1, nodes: [testNodeA]),
+        );
+        async.elapse(Duration.zero);
+        async.flushMicrotasks();
+
+        // Durante el build (bloqueado por el Completer), flag en true
+        expect(bloc.isBuilding, isTrue);
+
+        // Segundo evento con nodo distinto (bypass dedup T1.1):
+        // en producción con flatMap concurrente, este evento se
+        // procesaría mientras el primero está en vuelo. processBuildRequest
+        // detecta _isBuilding=true y retorna sin hacer nada.
+        bloc.add(
+          BuildGraphRequested(scanSessionId: 2, nodes: [testNodeB]),
+        );
+        async.elapse(Duration.zero);
+        async.flushMicrotasks();
+
+        // Flag sigue en true (el primer build no terminó)
+        expect(bloc.isBuilding, isTrue);
+
+        // Completar el primer build
+        buildCompleter.complete(const Right(testLayout));
+        async.elapse(Duration.zero);
+        async.flushMicrotasks();
+
+        // Flag vuelve a false
+        expect(bloc.isBuilding, isFalse);
+
+        bloc.close();
+      });
+    });
+
+    // ─── F2 T2.3: GraphError cuando buildGraph retorna layout vacío ─
+    // QUÉ: si buildGraph retorna un LayoutResult con nodes.isEmpty,
+    // el BLoC debe emitir GraphError en lugar de proceder al layout.
+    // POR QUÉ: el usuario debe recibir feedback claro cuando no hay
+    // nodos en la sesión, en lugar de un canvas en blanco.
+
+    blocTest<VisualizationBloc, VisualizationState>(
+      'T2.3: emite GraphError cuando buildGraph retorna layout vacío',
+      build: () {
+        const emptyLayout = LayoutResult(
+          nodes: [],
+          edges: [],
+          iterations: 0,
+          converged: false,
+        );
+        when(mockBuildGraph.call(any)).thenAnswer(
+          (_) async => Right(emptyLayout),
+        );
+        return VisualizationBloc(
+          buildGraph: mockBuildGraph,
+          calculateLayout: mockCalculateLayout,
+          debounceDuration: Duration.zero,
+        );
+      },
+      act: (bloc) => bloc.add(
+        BuildGraphRequested(scanSessionId: 1, nodes: [testNodeA]),
+      ),
+      skip: 1, // GraphBuilding
+      expect: () => [
+        isA<GraphError>().having(
+          (s) => s.message,
+          'message',
+          contains('No se encontraron nodos'),
+        ),
+      ],
     );
   });
 }

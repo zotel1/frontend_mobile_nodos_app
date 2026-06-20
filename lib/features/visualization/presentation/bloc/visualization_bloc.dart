@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
@@ -48,6 +49,22 @@ class VisualizationBloc
   /// coincide con el valor al inicio de la espera.
   int _debounceSeq = 0;
 
+  /// Último conjunto de IDs de nodo procesados.
+  /// Se usa para evitar reconstrucciones cuando los mismos dispositivos
+  /// se anuncian repetidamente durante el escaneo continuo (F1: dedup).
+  final Set<int> _lastNodeIds = {};
+
+  /// Guardia contra builds concurrentes (F1: _isBuilding).
+  ///
+  /// Cubre el edge case donde el timer de debounce dispara mientras
+  /// un build anterior todavía está en vuelo. `true` mientras
+  /// [processBuildRequest] está ejecutándose.
+  bool _isBuilding = false;
+
+  /// Expone [isBuilding] para tests (F1.2).
+  @visibleForTesting
+  bool get isBuilding => _isBuilding;
+
   /// Tamaño fijo del canvas donde se posiciona el grafo.
   /// 2000×2000 píxeles da espacio suficiente para 50+ nodos sin
   /// solapamiento.
@@ -83,6 +100,26 @@ class VisualizationBloc
     BuildGraphRequested event,
     Emitter<VisualizationState> emit,
   ) async {
+    // F1: Dedup por IDs de nodo — si los mismos dispositivos se anuncian
+    // repetidamente, no reiniciar el contador de debounce. Esto previene
+    // el starvation: durante escaneo continuo, cada paquete de advertisement
+    // disparaba BuildGraphRequested con los mismos nodos, reseteando el
+    // debounce y evitando que el grafo se construya.
+    final currentIds = event.nodes
+        .where((n) => n.id != null)
+        .map((n) => n.id!)
+        .toSet();
+
+    if (_lastNodeIds.isNotEmpty &&
+        _lastNodeIds.length == currentIds.length &&
+        _lastNodeIds.containsAll(currentIds)) {
+      return; // Mismos nodos que el request anterior: ignorar
+    }
+
+    // Actualizar el cache de últimos IDs ANTES de incrementar el contador
+    _lastNodeIds
+      ..clear()
+      ..addAll(currentIds);
     _debounceSeq++;
     final int currentSeq = _debounceSeq;
 
@@ -90,7 +127,7 @@ class VisualizationBloc
 
     if (currentSeq != _debounceSeq || isClosed) return;
 
-    await _processBuildRequest(event, emit);
+    await processBuildRequest(event, emit);
   }
 
   /// Procesa la construcción y layout del grafo.
@@ -104,41 +141,62 @@ class VisualizationBloc
   ///    iteraciones de 100 a 30 y la temperatura inicial, acelerando
   ///    la convergencia para recomputaciones.
   /// 4. Emite [GraphReady] con el resultado, o [GraphError] si falla.
-  Future<void> _processBuildRequest(
+  ///
+  /// F1: _isBuilding previene llamados concurrentes — si otro build
+  /// está en vuelo, el nuevo request se ignora.
+  @visibleForTesting
+  Future<void> processBuildRequest(
     BuildGraphRequested event,
     Emitter<VisualizationState> emit,
   ) async {
-    emit(const GraphBuilding());
+    // F1: Guardia contra builds concurrentes
+    if (_isBuilding) return;
+    _isBuilding = true;
 
-    // Paso 1: Construir grafo desde el repositorio
-    final buildResult = await _buildGraph(event.scanSessionId);
+    try {
+      emit(const GraphBuilding());
 
-    final initialLayout = buildResult.fold<LayoutResult?>(
-      (failure) {
-        emit(GraphError(failure.message));
-        return null;
-      },
-      (layout) => layout,
-    );
+      // Paso 1: Construir grafo desde el repositorio
+      final buildResult = await _buildGraph(event.scanSessionId);
 
-    if (initialLayout == null) return;
+      final initialLayout = buildResult.fold<LayoutResult?>(
+        (failure) {
+          emit(GraphError(failure.message));
+          return null;
+        },
+        (layout) => layout,
+      );
 
-    // Paso 2: Calcular layout con FR, reusando cache si existe
-    final calcResult = await _calculateLayout(
-      initialLayout,
-      _canvasWidth,
-      _canvasHeight,
-      priorLayout: _lastLayout,
-    );
+      if (initialLayout == null) return;
 
-    calcResult.fold(
-      (failure) => emit(GraphError(failure.message)),
-      (layout) {
-        // Cachear layout para el próximo BuildGraphRequested
-        _lastLayout = layout;
-        emit(GraphReady(layout));
-      },
-    );
+      // F2: Si buildGraph retorna un layout sin nodos, emitir error
+      // en lugar de proceder con el cálculo de layout (que también
+      // sería vacío). El usuario recibe feedback claro en lugar de
+      // un canvas en blanco.
+      if (initialLayout.nodes.isEmpty) {
+        emit(const GraphError('No se encontraron nodos en la sesión'));
+        return;
+      }
+
+      // Paso 2: Calcular layout con FR, reusando cache si existe
+      final calcResult = await _calculateLayout(
+        initialLayout,
+        _canvasWidth,
+        _canvasHeight,
+        priorLayout: _lastLayout,
+      );
+
+      calcResult.fold(
+        (failure) => emit(GraphError(failure.message)),
+        (layout) {
+          // Cachear layout para el próximo BuildGraphRequested
+          _lastLayout = layout;
+          emit(GraphReady(layout));
+        },
+      );
+    } finally {
+      _isBuilding = false;
+    }
   }
 
   /// El usuario seleccionó un nodo: actualiza el estado para

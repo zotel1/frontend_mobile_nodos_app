@@ -130,4 +130,159 @@ void main() {
       expect(result.nodes[0].z, equals(0.0));
     });
   });
+
+  // ═══════════ F3: Preservación de metadata en round-trip ═══════════
+  // QUÉ: paramsToLayoutResult debe preservar connectionCount,
+  // suggestedName, isSelf y connectable del nodo original al
+  // reconstruir el LayoutResult después del Isolate.
+  // POR QUÉ: sin esta preservación, todos los nodos pierden su
+  // metadata visual (connectionCount→radio=12px fijo, isSelf→sin glow,
+  // suggestedName→labels incorrectos).
+
+  group('F3: paramsToLayoutResult preserva metadata del original', () {
+    test('preserva connectionCount del nodo original', () {
+      final original = LayoutResult(
+        nodes: [
+          const GraphNode(
+            id: 1, x: 0.0, y: 0.0,
+            proximity: ProximityLevel.close,
+            connectionCount: 5,
+          ),
+        ],
+        edges: [
+          const GraphEdge(fromId: 1, toId: 2, thickness: 1.0),
+        ],
+        iterations: 0,
+        converged: false,
+      );
+
+      final resultMap = <String, dynamic>{
+        'nodes': [
+          {'id': 1, 'x': 500.0, 'y': 600.0},
+        ],
+        'edges': [],
+        'iterations': 100,
+        'converged': true,
+      };
+
+      final result = paramsToLayoutResult(resultMap, original);
+      expect(result.nodes[0].connectionCount, equals(5));
+      expect(result.nodes[0].radius, equals(12.0 + 5 * 3.0)); // 27px
+    });
+
+    test('preserva suggestedName del nodo original', () {
+      final original = LayoutResult(
+        nodes: [
+          const GraphNode(
+            id: 1, x: 0.0, y: 0.0,
+            proximity: ProximityLevel.close,
+            suggestedName: 'AirPods Pro',
+          ),
+        ],
+        edges: [],
+        iterations: 0,
+        converged: false,
+      );
+
+      final resultMap = <String, dynamic>{
+        'nodes': [
+          {'id': 1, 'x': 500.0, 'y': 600.0},
+        ],
+        'edges': [],
+        'iterations': 100,
+        'converged': true,
+      };
+
+      final result = paramsToLayoutResult(resultMap, original);
+      expect(result.nodes[0].suggestedName, equals('AirPods Pro'));
+      expect(result.nodes[0].label, equals('AirPods Pro'));
+    });
+
+    test('preserva isSelf del nodo original', () {
+      final original = LayoutResult(
+        nodes: [
+          const GraphNode(
+            id: 1, x: 0.0, y: 0.0,
+            proximity: ProximityLevel.close,
+            isSelf: true,
+          ),
+        ],
+        edges: [],
+        iterations: 0,
+        converged: false,
+      );
+
+      final resultMap = <String, dynamic>{
+        'nodes': [
+          {'id': 1, 'x': 500.0, 'y': 600.0},
+        ],
+        'edges': [],
+        'iterations': 100,
+        'converged': true,
+      };
+
+      final result = paramsToLayoutResult(resultMap, original);
+      expect(result.nodes[0].isSelf, isTrue);
+    });
+
+    test('preserva connectable del nodo original', () {
+      final original = LayoutResult(
+        nodes: [
+          const GraphNode(
+            id: 1, x: 0.0, y: 0.0,
+            proximity: ProximityLevel.close,
+            connectable: false,
+          ),
+        ],
+        edges: [],
+        iterations: 0,
+        converged: false,
+      );
+
+      final resultMap = <String, dynamic>{
+        'nodes': [
+          {'id': 1, 'x': 500.0, 'y': 600.0},
+        ],
+        'edges': [],
+        'iterations': 100,
+        'converged': true,
+      };
+
+      final result = paramsToLayoutResult(resultMap, original);
+      expect(result.nodes[0].connectable, isFalse);
+    });
+
+    test('preserva todos los campos metadata simultáneamente', () {
+      final original = LayoutResult(
+        nodes: [
+          const GraphNode(
+            id: 1, x: 0.0, y: 0.0,
+            proximity: ProximityLevel.close,
+            connectionCount: 3,
+            suggestedName: 'Nodo Test',
+            isSelf: true,
+            connectable: false,
+          ),
+        ],
+        edges: [],
+        iterations: 0,
+        converged: false,
+      );
+
+      final resultMap = <String, dynamic>{
+        'nodes': [
+          {'id': 1, 'x': 500.0, 'y': 600.0},
+        ],
+        'edges': [],
+        'iterations': 100,
+        'converged': true,
+      };
+
+      final result = paramsToLayoutResult(resultMap, original);
+      expect(result.nodes[0].connectionCount, equals(3));
+      expect(result.nodes[0].suggestedName, equals('Nodo Test'));
+      expect(result.nodes[0].isSelf, isTrue);
+      expect(result.nodes[0].connectable, isFalse);
+    });
+  });
 }

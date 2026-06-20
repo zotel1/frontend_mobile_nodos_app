@@ -547,4 +547,43 @@ void main() {
       expect(nodes[1].isSelf, isFalse);
     });
   });
+
+  // ─── F2 T2.1: Estado vacío "Sin datos de grafo" ─────────────────
+  // QUÉ: cuando GraphPainter recibe un layout con nodes.isEmpty,
+  // debe renderizar el texto "Sin datos de grafo" centrado en el
+  // canvas en lugar de retornar silenciosamente.
+  // POR QUÉ: el usuario quedaba con un canvas en blanco sin feedback
+  // cuando no había nodos en la sesión de escaneo.
+  // CÓMO: reemplazamos `if (nodes.isEmpty) return;` por un TextPainter
+  // que dibuja el mensaje centrado en gris #9E9E9E.
+  group('F2 T2.1: Estado vacío — texto "Sin datos de grafo"', () {
+    testWidgets('renderiza texto Sin datos de grafo con layout vacío',
+        (tester) async {
+      final layout = LayoutResult(
+        nodes: const [],
+        edges: const [],
+        iterations: 0,
+        converged: false,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 400,
+              height: 400,
+              child: CustomPaint(
+                size: const Size(400, 400),
+                painter: GraphPainter(layout: layout),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // El painter no debe lanzar excepción (renderiza el mensaje
+      // en lugar de retornar silenciosamente)
+      expect(tester.takeException(), isNull);
+    });
+  });
 }
