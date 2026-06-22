@@ -106,6 +106,7 @@ Future<void> initDependencies() async {
     () => BleRepositoryImpl(
       scanner: sl(),
       advertiser: sl(),
+      sessionRepository: sl<ScanSessionRepository>(),
     ),
   );
   sl.registerLazySingleton<NodeRepository>(

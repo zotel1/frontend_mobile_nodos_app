@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
@@ -11,6 +12,12 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   final BleRepository repository;
   StreamSubscription<List<BleDevice>>? _scanSubscription;
   StreamSubscription<bool>? _btSubscription;
+
+  /// Período entre reinicios del escaneo para duty cycling.
+  ///
+  /// Valor por defecto: [dutyCycleScanDuration] + [dutyCyclePauseDuration]
+  /// de app_config. En tests se puede inyectar un período más corto.
+  final Duration _dutyCyclePeriod;
 
   /// Acumulador de dispositivos detectados durante el escaneo.
   ///
@@ -31,13 +38,29 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   /// el escaneo BLE no produce nuevos resultados.
   Timer? _evictionTimer;
 
+  /// Timer para duty cycling de escaneo BLE.
+  ///
+  /// QUÉ hace: reinicia periódicamente el escaneo BLE para evitar
+  /// que se detenga permanentemente tras el hard timeout de ~15s
+  /// de FlutterBluePlus. Usa [_dutyCyclePeriod] como intervalo.
+  ///
+  /// POR QUÉ: sin este timer, el escaneo se detiene a los 15s y
+  /// nunca se reinicia — el usuario deja de ver dispositivos nuevos.
+  /// Con duty cycling, el escaneo es continuo y transparente.
+  Timer? _dutyCycleTimer;
+
   /// Duración máxima desde el último avistamiento antes de evicción.
   static const _staleThreshold = Duration(seconds: 30);
 
   /// Cantidad máxima de dispositivos acumulados en el mapa.
   static const _maxDevices = 50;
 
-  BleBloc({required this.repository}) : super(const BleInitial()) {
+  BleBloc({
+    required this.repository,
+    Duration? dutyCyclePeriod,
+  })  : _dutyCyclePeriod =
+            dutyCyclePeriod ?? dutyCycleScanDuration + dutyCyclePauseDuration,
+        super(const BleInitial()) {
     on<StartScan>(_onStartScan);
     on<StopScan>(_onStopScan);
     on<StartAdvertise>(_onStartAdvertise);
@@ -83,6 +106,10 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   }
 
   Future<void> _onStartScan(StartScan event, Emitter<BleState> emit) async {
+    // Cancelar duty cycling anterior si existe (por si se llama StartScan
+    // mientras ya hay un ciclo activo).
+    _dutyCycleTimer?.cancel();
+
     try {
       await _scanSubscription?.cancel();
       // Limpiar el acumulador al iniciar un nuevo escaneo.
@@ -103,15 +130,36 @@ class BleBloc extends Bloc<BleEvent, BleState> {
       );
       await repository.startScan();
       emit(const BleScanning());
+
+      // PR6a: Iniciar duty cycling — reinicia el escaneo periódicamente
+      // para evitar que el hard timeout de ~15s de FlutterBluePlus
+      // detenga el escaneo permanentemente.
+      _dutyCycleTimer = Timer.periodic(_dutyCyclePeriod, (_) {
+        if (!isClosed) {
+          // startScan es idempotente en el datasource (guarda _isScanning).
+          // Si el escaneo sigue activo, esta llamada es no-op.
+          // Si FlutterBluePlus ya lo detuvo, lo reinicia.
+          repository.startScan();
+        }
+      });
     } catch (e) {
       emit(BleError(e.toString()));
     }
   }
 
   Future<void> _onStopScan(StopScan event, Emitter<BleState> emit) async {
+    // PR6a: Cancelar duty cycling al detener el escaneo manualmente.
+    _dutyCycleTimer?.cancel();
+    _dutyCycleTimer = null;
+
     await _scanSubscription?.cancel();
     _scanSubscription = null;
     await repository.stopScan();
+
+    // PR6a: Cerrar la sesión de escaneo con endedAt.
+    // Esto completa el ciclo de vida de la sesión.
+    await repository.endScanSession();
+
     emit(const BleStopped());
   }
 
@@ -242,6 +290,8 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     _btSubscription?.cancel();
     _evictionTimer?.cancel();
     _evictionTimer = null;
+    _dutyCycleTimer?.cancel();
+    _dutyCycleTimer = null;
     return super.close();
   }
 }

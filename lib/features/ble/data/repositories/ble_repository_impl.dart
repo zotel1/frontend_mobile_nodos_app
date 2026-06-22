@@ -3,16 +3,20 @@ import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_adve
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_scanner_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart';
+import 'package:frontend_mobile_nodos_app/features/scan_session/domain/repositories/scan_session_repository.dart';
 
 class BleRepositoryImpl implements BleRepository {
   final BleScannerDataSource _scanner;
   final BleAdvertiserDataSource _advertiser;
+  final ScanSessionRepository? _sessionRepository;
 
   BleRepositoryImpl({
     required BleScannerDataSource scanner,
     required BleAdvertiserDataSource advertiser,
+    ScanSessionRepository? sessionRepository,
   })  : _scanner = scanner,
-        _advertiser = advertiser;
+        _advertiser = advertiser,
+        _sessionRepository = sessionRepository;
 
   @override
   Stream<List<BleDevice>> get scanResults => _scanner.scanResults;
@@ -51,4 +55,28 @@ class BleRepositoryImpl implements BleRepository {
   /// deriva de [FlutterBluePlus.adapterState].
   @override
   Stream<bool> get bluetoothState => _scanner.bluetoothState;
+
+  /// Cierra la sesión de escaneo activa delegando al
+  /// [ScanSessionRepository].
+  ///
+  /// QUÉ hace: busca la sesión activa (endedAt=null) y la cierra
+  /// estableciendo endedAt=now().
+  ///
+  /// POR QUÉ: completa el ciclo de vida de la sesión cuando el
+  /// escaneo se detiene, permitiendo al historial distinguir
+  /// sesiones finalizadas de activas.
+  ///
+  /// Lanza [StateError] si no se inyectó [ScanSessionRepository].
+  @override
+  Future<void> endScanSession() async {
+    if (_sessionRepository == null) {
+      throw StateError(
+        'ScanSessionRepository no fue inyectado en BleRepositoryImpl',
+      );
+    }
+    final activeId = await _sessionRepository.getActiveSession();
+    if (activeId != null) {
+      await _sessionRepository.endSession(activeId);
+    }
+  }
 }

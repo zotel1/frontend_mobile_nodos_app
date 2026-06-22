@@ -11,6 +11,8 @@ import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_scan
     as _i2;
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart'
     as _i4;
+import 'package:frontend_mobile_nodos_app/features/scan_session/domain/repositories/scan_session_repository.dart'
+    as _i6;
 import 'package:mockito/mockito.dart' as _i1;
 
 // ignore_for_file: type=lint
@@ -102,4 +104,46 @@ class MockBleAdvertiserDataSource extends _i1.Mock
             returnValueForMissingStub: _i3.Future<void>.value(),
           )
           as _i3.Future<void>);
+}
+
+/// A class which mocks [ScanSessionRepository].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockScanSessionRepository extends _i1.Mock
+    implements _i6.ScanSessionRepository {
+  @override
+  _i3.Future<int> startSession() =>
+      (super.noSuchMethod(
+            Invocation.method(#startSession, []),
+            returnValue: _i3.Future<int>.value(0),
+            returnValueForMissingStub: _i3.Future<int>.value(0),
+          )
+          as _i3.Future<int>);
+
+  @override
+  _i3.Future<void> endSession(int? sessionId) =>
+      (super.noSuchMethod(
+            Invocation.method(#endSession, [sessionId]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Future<void> addNodesToSession(int? sessionId, List<int>? nodeIds) =>
+      (super.noSuchMethod(
+            Invocation.method(#addNodesToSession, [sessionId, nodeIds]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Future<int?> getActiveSession() =>
+      (super.noSuchMethod(
+            Invocation.method(#getActiveSession, []),
+            returnValue: _i3.Future<int?>.value(),
+            returnValueForMissingStub: _i3.Future<int?>.value(),
+          )
+          as _i3.Future<int?>);
 }
