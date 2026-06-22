@@ -216,6 +216,22 @@ void main() {
     if (!GetIt.instance.isRegistered<AppDatabase>()) {
       GetIt.instance.registerSingleton<AppDatabase>(testDb);
     }
+    // T2.10: Registrar SharedPreferences con GetIt (R12)
+    // La app usa sl<SharedPreferences>() en el toolbar toggle.
+    // setMockInitialValues puede fallar si otro test ya lo llamó.
+    if (!GetIt.instance.isRegistered<SharedPreferences>()) {
+      try {
+        SharedPreferences.setMockInitialValues({'is3D': false});
+      } catch (_) {
+        // Ya fue inicializado por otro archivo de test
+      }
+      final prefs = await SharedPreferences.getInstance();
+      GetIt.instance.registerSingleton<SharedPreferences>(prefs);
+    } else {
+      // Resetear is3D a false entre tests para evitar contaminación
+      final prefs = GetIt.instance<SharedPreferences>();
+      prefs.setBool('is3D', false);
+    }
     // T5.7: Registrar stub de WebViewPlatform para tests 3D
     WebViewPlatform.instance = _StubHomeWebViewPlatform();
   });
@@ -225,6 +241,8 @@ void main() {
     if (GetIt.instance.isRegistered<AppDatabase>()) {
       GetIt.instance.unregister<AppDatabase>();
     }
+    // SharedPreferences NO se desregistra de GetIt porque
+    // setMockInitialValues solo puede llamarse una vez por proceso.
   });
 
   group('HomePage', () {
@@ -1374,9 +1392,6 @@ void main() {
 
     testWidgets('T3.7: toggle is3D persiste a través de SharedPreferences',
         (tester) async {
-      // Inicializar SharedPreferences con valor inicial
-      SharedPreferences.setMockInitialValues({'is3D': false});
-
       final nodes = List.generate(
         6,
         (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
@@ -1399,6 +1414,67 @@ void main() {
       // Verificar que se guardó en SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getBool('is3D'), isTrue);
+    });
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // PR2 T2.4: Stack+Offstage preserva ambos widgets (R9)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // QUÉ: al usar Stack+Offstage en lugar de if/else condicional,
+    // ambos GraphView (2D) y GraphView3D (3D) deben estar siempre
+    // en el árbol de widgets, sin destruirse al togglear.
+    // POR QUÉ: R9, R10 — el WebView 3D no debe recargarse en cada
+    // toggle; ambos widgets deben coexistir para que la transición
+    // sea instantánea y sin pantalla en blanco (B2).
+
+    testWidgets(
+        'T2.4: Stack+Offstage mantiene ambos widgets al togglear 2D/3D',
+        (tester) async {
+      final nodes = List.generate(
+        6,
+        (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
+      );
+      await tester.pumpWidget(_pumpHomePage(
+        nodeListState: NodeListLoaded(nodes),
+        visualizationState: GraphReady(_testLayout),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Verificar que estamos en modo grafo (prerrequisito)
+      expect(find.byIcon(Icons.view_in_ar), findsOneWidget,
+          reason: 'Debe estar en modo grafo (2D) con 6 nodos');
+
+      // R9: Stack+Offstage — ambos widgets deben coexistir en el árbol.
+      // La app tiene ≥2 Offstage: uno para GraphView 2D y otro para
+      // GraphView3D (AnimatedCrossFade puede agregar uno adicional).
+      // Verificamos que hay al menos 2 y que la cantidad se mantiene
+      // después del toggle (prueba que no se destruyen/recrean).
+      final offstageBefore = find.byType(Offstage);
+      final offstageCountBefore = tester.widgetList(offstageBefore).length;
+      expect(offstageCountBefore, greaterThanOrEqualTo(2),
+          reason: 'Debe haber al menos 2 Offstage: uno para 2D, uno para 3D');
+
+      // Toggle a 3D
+      await tester.tap(find.byIcon(Icons.view_in_ar));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Después del toggle: el conteo de Offstage no cambia (R9 — sin destruir)
+      final offstageAfter = find.byType(Offstage);
+      final offstageCountAfter = tester.widgetList(offstageAfter).length;
+      expect(offstageCountAfter, equals(offstageCountBefore),
+          reason: 'Conteo de Offstage debe mantenerse después del toggle (R9)');
+
+      // Toggle de vuelta a 2D
+      await tester.tap(find.byIcon(Icons.grid_view));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Después de múltiples toggles: estructura se mantiene (R10)
+      final offstageFinal = find.byType(Offstage);
+      final offstageCountFinal = tester.widgetList(offstageFinal).length;
+      expect(offstageCountFinal, equals(offstageCountBefore),
+          reason: 'Conteo de Offstage debe mantenerse después de múltiples toggles (R10)');
     });
   });
 }

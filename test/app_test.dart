@@ -59,7 +59,22 @@ void main() {
 
     // Mock SharedPreferences con onboarding_complete=true para
     // que los tests existentes no redirijan a /onboarding.
-    SharedPreferences.setMockInitialValues({'onboarding_complete': true});
+    // setMockInitialValues solo puede llamarse una vez por proceso;
+    // try/catch para cuando home_page_test ya lo inicializó.
+    try {
+      SharedPreferences.setMockInitialValues({
+        'onboarding_complete': true,
+        'is3D': false,
+      });
+    } catch (_) {
+      // Ya fue inicializado por otro archivo de test
+    }
+    // Registrar SharedPreferences en GetIt para que sl<SharedPreferences>()
+    // funcione en la app (T2.10 — toolbar is3D persistence).
+    if (!GetIt.instance.isRegistered<SharedPreferences>()) {
+      final prefs = await SharedPreferences.getInstance();
+      GetIt.instance.registerSingleton<SharedPreferences>(prefs);
+    }
 
     // Configurar mocks para evitar crashes
     when(mockBleBloc.state).thenReturn(const BleStopped());

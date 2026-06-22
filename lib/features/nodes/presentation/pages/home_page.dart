@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:frontend_mobile_nodos_app/core/di/injection_container.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
@@ -44,9 +45,10 @@ class _HomePageState extends State<HomePage> {
   /// true = grafo (secondChild), false = lista (firstChild).
   bool _showingGraph = false;
 
-  /// T5.6: Controla si el grafo se renderiza en 3D (WebView) o 2D (CustomPainter).
-  /// false = 2D (GraphView), true = 3D (GraphView3D).
-  bool _is3D = false;
+  /// T2.9: Controla si el grafo se renderiza en 3D (WebView) o 2D (CustomPainter).
+  /// `ValueNotifier<bool>` permite que el toolbar use ValueListenableBuilder
+  /// para rebuilds limitados, sin reconstruir todo HomePage (R9).
+  final ValueNotifier<bool> _is3D = ValueNotifier<bool>(false);
 
   /// Guard contra stacking de [BluetoothOffDialog].
   ///
@@ -180,13 +182,18 @@ class _HomePageState extends State<HomePage> {
   /// T3.8: Carga la preferencia is3D desde SharedPreferences (R5.21).
   /// addPostFrameCallback asegura que el context ya tiene los BLoCs
   /// disponibles desde el árbol de providers.
+  /// T3.8: Carga la preferencia is3D desde SharedPreferences (R5.21).
+  /// addPostFrameCallback asegura que el context ya tiene los BLoCs
+  /// disponibles desde el árbol de providers.
+  /// NOTA: usa SharedPreferences.getInstance() (async) porque la inicialización
+  /// de mock en tests requiere compatibilidad con setMockInitialValues.
   @override
   void initState() {
     super.initState();
     // T3.8: Cargar preferencia is3D desde SharedPreferences (R5.22)
     SharedPreferences.getInstance().then((prefs) {
       if (mounted) {
-        setState(() => _is3D = prefs.getBool('is3D') ?? false);
+        _is3D.value = prefs.getBool('is3D') ?? false;
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -208,6 +215,7 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     _bleBloc?.add(const StopScan());
     _tooltipEntry?.remove();
+    _is3D.dispose(); // T2.9: liberar ValueNotifier
     super.dispose();
   }
 
@@ -356,12 +364,9 @@ class _HomePageState extends State<HomePage> {
                 .add(SyncBleDevices(bleState.devices));
             // T2.4: Registrar timestamp del último escaneo con dispositivos
             _lastScanTime = DateTime.now();
-            // Iniciar sesión de escaneo si no hay una activa
-            final sessionBloc = context.read<ScanSessionBloc>();
-            final sessionState = sessionBloc.state;
-            if (sessionState is! SessionActive) {
-              sessionBloc.add(const StartSession());
-            }
+            // PR1: StartSession se movió al listener de NodeListBloc
+            // para secuenciar correctamente SyncBleDevices → StartSession
+            // → AddNodesToSession → BuildGraphRequested (R3).
           }
           // Mostrar diálogo cuando BT está apagado.
           // El guard _dialogVisible previene stacking de múltiples diálogos.
@@ -413,18 +418,28 @@ class _HomePageState extends State<HomePage> {
           if (nodeListState is NodeListLoaded) {
             // T3.8: Guardar la lista actual de nodos para mapeo GraphNode.id → bleAddress
             _currentNodes = nodeListState.nodes;
-            // Registrar nodos en la sesión activa del ScanSessionBloc
+            // PR1: Secuenciar eventos — StartSession primero si no hay sesión,
+            // luego AddNodesToSession + BuildGraphRequested cuando la sesión
+            // esté activa (R3). Esto evita la race condition donde StartSession
+            // y SyncBleDevices se despachaban en paralelo desde listeners distintos.
             final sessionBloc = context.read<ScanSessionBloc>();
             final sessionState = sessionBloc.state;
-            if (sessionState is SessionActive &&
-                nodeListState.nodes.isNotEmpty) {
-              final nodeIds = nodeListState.nodes
-                  .map((n) => n.id)
-                  .whereType<int>()
-                  .toList();
-              if (nodeIds.isNotEmpty) {
-                sessionBloc
-                    .add(AddNodesToSession(sessionState.sessionId, nodeIds));
+            if (sessionState is! SessionActive) {
+              // Iniciar sesión si no hay una activa.
+              // Los nodos se agregarán en el próximo ciclo cuando SessionActive
+              // sea emitido y NodeListLoaded vuelva a dispararse.
+              sessionBloc.add(const StartSession());
+            } else {
+              // Sesión ya activa: agregar nodos detectados y construir grafo.
+              if (nodeListState.nodes.isNotEmpty) {
+                final nodeIds = nodeListState.nodes
+                    .map((n) => n.id)
+                    .whereType<int>()
+                    .toList();
+                if (nodeIds.isNotEmpty) {
+                  sessionBloc.add(
+                      AddNodesToSession(sessionState.sessionId, nodeIds));
+                }
               }
             }
             _updateViewMode(nodeListState.nodes, context);
@@ -604,28 +619,49 @@ class _HomePageState extends State<HomePage> {
               const Center(child: CircularProgressIndicator()),
             GraphReady(:final layout, :final selectedNodeId,
                 :final barycenter) =>
-              _is3D
-                  // T5.7: Modo 3D — WebView con Three.js
-                  ? GraphView3D(
-                      layout: layout,
-                      onNodeTapped: (nodeId) {
-                        context
-                            .read<VisualizationBloc>()
-                            .add(NodeSelected(nodeId));
-                      },
-                    )
-                  // Modo 2D — CustomPainter (comportamiento original)
-                  : GraphView(
-                      key: _graphViewKey,
-                      layout: layout,
-                      selectedNodeId: selectedNodeId,
-                      barycenter: barycenter,
-                      onNodeTapped: (nodeId) {
-                        context
-                            .read<VisualizationBloc>()
-                            .add(NodeSelected(nodeId));
-                      },
-                    ),
+              // T2.8: Stack+Offstage mantiene ambos widgets en el árbol (R9, R10).
+              // Ambos GraphView (2D) y GraphView3D (3D) se crean y se mantienen
+              // vivos siempre. Offstage oculta el que no está activo pero NO lo
+              // destruye, preservando el WebViewController 3D entre toggles.
+              //
+              // T2.9: ValueListenableBuilder limita el rebuild solo al Stack
+              // cuando _is3D cambia, sin reconstruir todo HomePage (R9).
+              ValueListenableBuilder<bool>(
+                valueListenable: _is3D,
+                builder: (context, is3D, _) {
+                  return Stack(
+                    children: [
+                      // Vista 2D — offstage cuando is3D = true
+                      Offstage(
+                        offstage: is3D,
+                        child: GraphView(
+                          key: _graphViewKey,
+                          layout: layout,
+                          selectedNodeId: selectedNodeId,
+                          barycenter: barycenter,
+                          onNodeTapped: (nodeId) {
+                            context
+                                .read<VisualizationBloc>()
+                                .add(NodeSelected(nodeId));
+                          },
+                        ),
+                      ),
+                      // Vista 3D — offstage cuando is3D = false
+                      Offstage(
+                        offstage: !is3D,
+                        child: GraphView3D(
+                          layout: layout,
+                          onNodeTapped: (nodeId) {
+                            context
+                                .read<VisualizationBloc>()
+                                .add(NodeSelected(nodeId));
+                          },
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
             GraphError(:final message) => Center(
                 child: Text(
                   message,
@@ -639,41 +675,48 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// T5.6: Barra de herramientas del grafo con toggle 2D/3D.
+  /// T2.9: Barra de herramientas del grafo con toggle 2D/3D.
   ///
-  /// QUÉ: muestra un IconButton para alternar entre vista 2D y 3D.
-  /// El icono cambia según el estado actual ([_is3D]).
+  /// QUÉ: usa ValueListenableBuilder para reconstruir SOLO el toolbar
+  /// cuando _is3D cambia, sin rebuild de todo HomePage (R9).
+  /// El icono y texto reflejan el estado actual.
   /// Solo se muestra en modo grafo ([_showingGraph] == true).
   /// POR QUÉ: R6.1 — el usuario debe poder alternar entre las dos vistas.
   Widget _buildGraphToolbar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          Text(
-            _is3D ? 'Vista 3D' : 'Vista 2D',
-            style: TextStyle(
-              fontSize: 12,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
+    return ValueListenableBuilder<bool>(
+      valueListenable: _is3D,
+      builder: (context, is3D, _) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Text(
+                is3D ? 'Vista 3D' : 'Vista 2D',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 4),
+              IconButton(
+                icon: Icon(is3D ? Icons.grid_view : Icons.view_in_ar),
+                tooltip: is3D ? 'Cambiar a vista 2D' : 'Cambiar a vista 3D',
+                onPressed: () {
+                  // T2.9: ValueNotifier elimina setState — el toolbar
+                  // se reconstruye automáticamente vía ValueListenableBuilder.
+                  _is3D.value = !_is3D.value;
+                  // T2.10: Persistir preferencia is3D vía GetIt (R12)
+                  sl<SharedPreferences>().setBool('is3D', _is3D.value);
+                },
+                iconSize: 24,
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
           ),
-          const SizedBox(width: 4),
-          IconButton(
-            icon: Icon(_is3D ? Icons.grid_view : Icons.view_in_ar),
-            tooltip: _is3D ? 'Cambiar a vista 2D' : 'Cambiar a vista 3D',
-            onPressed: () {
-              setState(() => _is3D = !_is3D);
-              // T3.8: Persistir preferencia is3D (R5.21)
-              SharedPreferences.getInstance()
-                  .then((prefs) => prefs.setBool('is3D', _is3D));
-            },
-            iconSize: 24,
-            visualDensity: VisualDensity.compact,
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 

@@ -77,7 +77,8 @@ class ScanSessions extends Table {
 /// La combinación (sessionId, nodeId) es única para evitar duplicados.
 class ScanSessionNodes extends Table {
   IntColumn get id => integer().autoIncrement()();
-  IntColumn get sessionId => integer().references(ScanSessions, #id)();
+  IntColumn get sessionId => integer().references(ScanSessions, #id,
+      onDelete: KeyAction.cascade)();
   IntColumn get nodeId => integer().references(Nodes, #id)();
   IntColumn get rssi => integer()();
 
@@ -99,13 +100,31 @@ final scanSessionNodesSessionIdIdx = Index(
 
 @DriftDatabase(tables: [Users, Nodes, Connections, ScanSessions, ScanSessionNodes])
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(driftDatabase(name: 'nodos'));
+  /// Constructor de producción con cifrado SQLCipher.
+  ///
+  /// QUÉ: abre la base de datos con una clave de cifrado derivada del dispositivo.
+  /// Sin la clave correcta, el archivo SQLite es ilegible.
+  ///
+  /// POR QUÉ: R14 — la base de datos debe estar cifrada en reposo para proteger
+  /// la privacidad de los datos de proximidad del usuario.
+  AppDatabase({required String encryptionKey})
+      : super(driftDatabase(
+          name: 'nodos',
+          native: DriftNativeOptions(
+            setup: (db) {
+              db.execute("PRAGMA key='$encryptionKey'");
+            },
+          ),
+        ));
 
-  /// Constructor en memoria para testing.
+  /// Constructor en memoria para testing (sin cifrado).
+  ///
+  /// QUÉ: crea una base de datos en memoria sin cifrar para pruebas unitarias.
+  /// Los tests no necesitan cifrado y requieren ejecución rápida.
   AppDatabase.inMemory() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -113,6 +132,9 @@ class AppDatabase extends _$AppDatabase {
           await m.createAll();
           // Índice para queries por sesión en scan_session_nodes.
           await m.createIndex(scanSessionNodesSessionIdIdx);
+          // Índices en connections para acelerar queries de grafo social (R15).
+          await m.createIndex(connectionsFromNodeIdIdx);
+          await m.createIndex(connectionsToNodeIdIdx);
         },
         onUpgrade: (Migrator m, int from, int to) async {
           if (from < 2) {
@@ -131,6 +153,36 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(nodes, nodes.connectable);
             await m.addColumn(nodes, nodes.estimatedDistance);
           }
+          if (from < 5) {
+            // PR4: índices en connections + CASCADE en scan_session_nodes
+            // R15: índices no únicos para acelerar búsquedas de aristas.
+            await m.createIndex(connectionsFromNodeIdIdx);
+            await m.createIndex(connectionsToNodeIdIdx);
+
+            // R16: recrear scan_session_nodes con ON DELETE CASCADE.
+            // SQLite no soporta ALTER TABLE para modificar FKs → recrear tabla.
+            await m.deleteTable(scanSessionNodes.actualTableName);
+            await m.createTable(scanSessionNodes);
+            await m.createIndex(scanSessionNodesSessionIdIdx);
+          }
+        },
+        beforeOpen: (details) async {
+          // Habilitar enforcement de foreign keys (requerido para CASCADE).
+          await customStatement('PRAGMA foreign_keys = ON');
         },
       );
 }
+
+/// Índice sobre fromNodeId en connections para acelerar queries
+/// de aristas salientes (R15).
+final connectionsFromNodeIdIdx = Index(
+  'idx_connections_from_node_id',
+  'CREATE INDEX idx_connections_from_node_id ON connections(from_node_id)',
+);
+
+/// Índice sobre toNodeId en connections para acelerar queries
+/// de aristas entrantes (R15).
+final connectionsToNodeIdIdx = Index(
+  'idx_connections_to_node_id',
+  'CREATE INDEX idx_connections_to_node_id ON connections(to_node_id)',
+);

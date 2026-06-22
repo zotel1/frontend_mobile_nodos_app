@@ -1828,7 +1828,7 @@ class $ScanSessionNodesTable extends ScanSessionNodes
     type: DriftSqlType.int,
     requiredDuringInsert: true,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES scan_sessions (id)',
+      'REFERENCES scan_sessions (id) ON DELETE CASCADE',
     ),
   );
   static const VerificationMeta _nodeIdMeta = const VerificationMeta('nodeId');
@@ -2132,6 +2132,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('connections', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'scan_sessions',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('scan_session_nodes', kind: UpdateKind.delete)],
     ),
   ]);
   @override

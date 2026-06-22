@@ -48,13 +48,28 @@ class FlutterBluePlusDataSource implements BleScannerDataSource {
       if (results.isEmpty) return;
       final mapped = results
           .map(mapScanResultToDevice)
-          .where((s) => s.rssi >= proximityThresholdMedium)
+          .where((s) => rssiPassesFilter(s.rssi))
           .toList();
       if (mapped.isNotEmpty) {
         _controller.add(mapped);
       }
     });
   }
+
+  /// Filtro RSSI: determina si un dispositivo con un RSSI dado debe
+  /// incluirse en los resultados de escaneo.
+  ///
+  /// Usa [proximityThresholdFar] (-95 dBm) como umbral. Dispositivos
+  /// con RSSI >= -95 pasan el filtro (señal suficientemente fuerte).
+  ///
+  /// QUÉ cambió: antes usaba [proximityThresholdMedium] (-85 dBm),
+  /// que era demasiado restrictivo y filtraba dispositivos a más
+  /// de 5-8m. Con -95 dBm detectamos dispositivos hasta ~10-15m.
+  ///
+  /// Es público y estático para permitir testing unitario sin
+  /// depender de la plataforma FlutterBluePlus.
+  @visibleForTesting
+  static bool rssiPassesFilter(int rssi) => rssi >= proximityThresholdFar;
 
   /// Convierte un [ScanResult] de flutter_blue_plus en un [BleDevice] de dominio.
   ///
@@ -152,5 +167,42 @@ class FlutterBluePlusDataSource implements BleScannerDataSource {
     // Garantiza que incluso si la plataforma lanza, _isScanning
     // refleje el estado real para el próximo startScan().
     _isScanning = false;
+  }
+
+  /// Expone si el StreamController interno está cerrado.
+  ///
+  /// QUÉ: permite a los tests verificar que dispose() efectivamente
+  /// cerró el controller sin necesidad de acceder al campo privado.
+  @visibleForTesting
+  bool get isControllerClosed => _controller.isClosed;
+
+  /// Libera los recursos del datasource: cierra el StreamController
+  /// y cancela la suscripción de escaneo BLE.
+  ///
+  /// QUÉ: llama _controller.close() (con try/catch para idempotencia)
+  /// y _scanSub?.cancel() para detener el listener de plataforma.
+  ///
+  /// POR QUÉ: el StreamController nunca se cerraba, causando un
+  /// memory leak (P1). El try/catch garantiza que llamar dispose()
+  /// dos veces no lance StateError (idempotente).
+  ///
+  /// CUÁNDO usarlo: cuando el datasource ya no se necesita (ej. al
+  /// cerrar la sesión de escaneo o al desmontar la feature de BLE).
+  @override
+  void dispose() {
+    // Cancelar suscripción de scan BLE (puede ser null en test mode).
+    _scanSub?.cancel();
+    _scanSub = null;
+
+    // Cerrar StreamController. Usamos try/catch en lugar de chequear
+    // _controller.isClosed porque:
+    //   - Evita race condition entre el chequeo y el close().
+    //   - El comportamiento ante un close() fallido es el mismo (no-op).
+    //   - La primera llamada siempre cierra; la segunda atrapa StateError.
+    try {
+      _controller.close();
+    } catch (_) {
+      // Controller ya cerrado — no-op. Esto hace al método idempotente.
+    }
   }
 }

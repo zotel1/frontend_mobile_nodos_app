@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:android_intent_plus/android_intent.dart';
@@ -309,14 +310,60 @@ class _OnboardingPageState extends State<OnboardingPage> {
     );
   }
 
+  /// Muestra un diálogo de confirmación al intentar salir del onboarding.
+  ///
+  /// QUÉ: pregunta al usuario si realmente desea salir sin completar
+  /// el perfil, ya que la app no puede funcionar sin un perfil configurado.
+  ///
+  /// POR QUÉ: el hardware back podría saltarse el onboarding (N1).
+  /// Este diálogo es la última defensa antes de cerrar la app.
+  void _showExitDialog() {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Salir sin completar el perfil?'),
+        content: const Text(
+          'La app necesita un perfil para funcionar. Si salís ahora, '
+          'deberás volver a configurarlo la próxima vez.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () {
+              // Cerrar el diálogo y luego cerrar la app vía SystemNavigator.
+              Navigator.of(ctx).pop();
+              SystemNavigator.pop();
+            },
+            child: const Text('Salir'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Paso ${_currentStep + 1} de 3'),
-        automaticallyImplyLeading: false,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, _) {
+        // Solo mostrar diálogo si NO se pudo popear (hardware back bloqueado).
+        // Si didPop == true, la página ya fue popeada (no debería pasar con
+        // canPop: false, pero lo chequeamos por seguridad).
+        if (!didPop) {
+          _showExitDialog();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text('Paso ${_currentStep + 1} de 3'),
+          automaticallyImplyLeading: false,
+        ),
+        body: _buildStep(),
       ),
-      body: _buildStep(),
     );
   }
 }
