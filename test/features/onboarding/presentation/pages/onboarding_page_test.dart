@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:get_it/get_it.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -66,7 +67,18 @@ void main() {
     when(mockUserBloc.stream)
         .thenAnswer((_) => Stream.value(const UserInitial()));
 
-    SharedPreferences.setMockInitialValues({});
+    // T3.5: Registrar SharedPreferences vía GetIt DI.
+    // OnboardingPage._saveAndStart() ahora usa sl<SharedPreferences>()
+    // para persistir onboarding_complete.
+    try {
+      SharedPreferences.setMockInitialValues({});
+    } catch (_) {
+      // Ya fue inicializado por otro archivo de test.
+    }
+    if (!GetIt.instance.isRegistered<SharedPreferences>()) {
+      final prefs = await SharedPreferences.getInstance();
+      GetIt.instance.registerSingleton<SharedPreferences>(prefs);
+    }
 
     // Mock del MethodChannel de permission_handler para entorno de test.
     // Sin este mock, Permission.bluetoothScan.request() cuelga indefinidamente.
@@ -261,8 +273,8 @@ void main() {
         predicate((e) => e is UpdateUserColorEvent && e.color == '#2196F3'),
       ))).called(1);
 
-      // Verificar que se guardó onboarding_complete en SharedPreferences
-      final prefs = await SharedPreferences.getInstance();
+      // Verificar que se guardó onboarding_complete en SharedPreferences vía GetIt.
+      final prefs = GetIt.instance<SharedPreferences>();
       expect(prefs.getBool('onboarding_complete'), isTrue);
 
       // Verificar navegación a Home
@@ -272,8 +284,9 @@ void main() {
     testWidgets(
         'Paso 3: tocar Comenzar usa el nombre ingresado por el usuario',
         (tester) async {
-      // Reconstruir con SharedPreferences limpio
-      SharedPreferences.setMockInitialValues({});
+      // Limpiar SharedPreferences vía GetIt para test aislado.
+      final prefs = GetIt.instance<SharedPreferences>();
+      prefs.clear();
 
       await tester.pumpWidget(_pumpOnboardingPage(
         mockUserBloc: mockUserBloc,

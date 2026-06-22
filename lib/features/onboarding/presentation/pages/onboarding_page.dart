@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:frontend_mobile_nodos_app/core/di/injection_container.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart';
 import 'package:frontend_mobile_nodos_app/features/user/presentation/bloc/user_bloc.dart';
@@ -124,8 +125,8 @@ class _OnboardingPageState extends State<OnboardingPage> {
     userBloc.add(UpdateUserNameEvent(_nameController.text));
     userBloc.add(UpdateUserColorEvent(_selectedColor));
 
-    // Persistir flag de onboarding completado.
-    final prefs = await SharedPreferences.getInstance();
+    // T3.5 (R12): Persistir flag de onboarding vía GetIt DI.
+    final prefs = sl<SharedPreferences>();
     await prefs.setBool('onboarding_complete', true);
 
     if (!mounted) return;
