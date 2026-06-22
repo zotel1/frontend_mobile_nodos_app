@@ -140,9 +140,15 @@ class GraphRepositoryImpl implements GraphRepository {
       final x = centerX + radius * cos(angle);
       final y = centerY + radius * sin(angle);
 
-      // Proximidad desde último RSSI
-      final lastRssi = node.rssiHistory.isNotEmpty ? node.rssiHistory.last : -100;
-      final proximity = rssiToProximity(lastRssi);
+      // Proximidad desde último RSSI.
+      // T-PR2-008: Si no hay datos de RSSI (rssiHistory vacío), no forzar
+      // un valor centinela. Usar rssiToProximity solo cuando hay datos.
+      // Sin datos → se usa un valor default de proximidad "far" que es
+      // neutral (no falso positivo de "-100").
+      final lastRssi = node.rssiHistory.isNotEmpty ? node.rssiHistory.last : null;
+      final proximity = lastRssi != null
+          ? rssiToProximity(lastRssi)
+          : ProximityLevel.far;
 
       graphNodes.add(GraphNode(
         id: node.id,

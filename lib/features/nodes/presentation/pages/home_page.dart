@@ -458,11 +458,16 @@ class _HomePageState extends State<HomePage> {
     // Insertar nodos en scan_session_nodes (insertOrIgnore evita duplicados)
     for (final node in nodes) {
       if (node.id != null) {
+        // T-PR2-008: Usar null como centinela para RSSI ausente, en lugar
+        // del valor mágico -100. Un RSSI null indica "sin datos medidos",
+        // que es semánticamente distinto de una señal RSSI real de -100 dBm
+        // (señal muy débil pero medida).
+        final rssi = node.rssiHistory.isNotEmpty ? node.rssiHistory.last : null;
         await db.into(db.scanSessionNodes).insert(
               ScanSessionNodesCompanion.insert(
                 sessionId: sessionId,
                 nodeId: node.id!,
-                rssi: node.rssiHistory.isNotEmpty ? node.rssiHistory.last : -100,
+                rssi: rssi != null ? Value(rssi) : const Value.absent(),
               ),
               mode: InsertMode.insertOrIgnore,
             );
