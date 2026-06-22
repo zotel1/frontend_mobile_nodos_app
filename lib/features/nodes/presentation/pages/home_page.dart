@@ -93,6 +93,15 @@ class _HomePageState extends State<HomePage> {
   /// cuando el usuario presiona "Enlazar" en el tooltip.
   List<Node> _currentNodes = [];
 
+  /// T-PR1-006: Último remoteId para el que se intentó conectar.
+  ///
+  /// Se almacena cuando [BleConnecting] es recibido. Se usa en el
+  /// botón "Reintentar" del SnackBar de error para redisparar
+  /// [ConnectToDevice] con el mismo remoteId.
+  /// QUÉ problema resuelve: antes el onPressed de Reintentar estaba
+  /// vacío — el usuario veía el botón pero al tocarlo no pasaba nada.
+  String? _lastRemoteId;
+
   /// Abre el tooltip para un nodo específico en el grafo.
   ///
   /// QUÉ hace: busca el GraphNode por ID en el layout, calcula su
@@ -175,18 +184,25 @@ class _HomePageState extends State<HomePage> {
   ///
   /// QUÉ: LoadNodes inicia la suscripción al stream Drift de nodos.
   /// StartScan inicia el escaneo BLE automáticamente sin FAB.
-  /// Guarda referencia a BleBloc para dispose() donde context no es seguro.
-  /// addPostFrameCallback asegura que el context ya tiene los BLoCs
-  /// disponibles desde el árbol de providers.
+  ///
+  /// T-PR1-010: Captura _bleBloc sincrónicamente ANTES del callback
+  /// asíncrono. Esto asegura que dispose() siempre tenga la referencia
+  /// para despachar StopScan, incluso si el widget se destruye antes
+  /// de que el postFrameCallback se ejecute.
+  ///
+  /// QUÉ problema resuelve: antes _bleBloc se capturaba DENTRO del
+  /// addPostFrameCallback. Si el widget se destruía sin que el callback
+  /// se ejecutara, _bleBloc quedaba null y dispose() nunca enviaba
+  /// StopScan → el escaneo seguía activo en background drenando batería.
   @override
   void initState() {
     super.initState();
+    // T-PR1-010: Capturar referencia a BleBloc ANTES del callback.
+    _bleBloc = context.read<BleBloc>();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final bleBloc = context.read<BleBloc>();
-      _bleBloc = bleBloc;
       context.read<NodeListBloc>().add(const LoadNodes());
-      bleBloc.add(const StartScan());
+      _bleBloc!.add(const StartScan());
     });
   }
 
@@ -224,6 +240,8 @@ class _HomePageState extends State<HomePage> {
         listener: (context, connectionState) {
           switch (connectionState) {
             case BleConnecting(:final remoteId):
+              // T-PR1-006: Almacenar el remoteId para el botón Reintentar.
+              _lastRemoteId = remoteId;
               // Buscar nombre del nodo para el mensaje
               final nodeName = _currentNodes
                   .where((n) => n.bleAddress == remoteId)
@@ -248,11 +266,18 @@ class _HomePageState extends State<HomePage> {
               );
             case BleConnectionError(:final message, :final retryable):
               ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              // T-PR1-006: El botón Reintentar ahora redispra ConnectToDevice
+              // con el último remoteId conocido (almacenado en BleConnecting).
+              // Antes el onPressed estaba vacío → el botón no hacía nada.
               final action = retryable
                   ? SnackBarAction(
                       label: 'Reintentar',
                       onPressed: () {
-                        // Reintentar con el último remoteId conocido
+                        if (_lastRemoteId != null && mounted) {
+                          context
+                              .read<BleConnectionBloc>()
+                              .add(ConnectToDevice(_lastRemoteId!));
+                        }
                       },
                     )
                   : null;
