@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:frontend_mobile_nodos_app/core/utils/app_theme_mode.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/entities/user.dart';
 import 'package:frontend_mobile_nodos_app/features/user/presentation/bloc/user_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/user/presentation/widgets/color_picker.dart';
@@ -65,7 +64,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final userBloc = context.read<UserBloc>();
     // Obtiene el themeMode actual del estado para reflejarlo en el toggle.
     final currentThemeMode =
-        (userBloc.state is UserLoaded) ? (userBloc.state as UserLoaded).themeMode : AppThemeMode.system;
+        (userBloc.state is UserLoaded) ? (userBloc.state as UserLoaded).themeMode : ThemeMode.system;
 
     // QUÉ: Inicializa el controller SOLO si está vacío, para preservar
     // ediciones no guardadas frente a reemisiones de UserLoaded.
@@ -94,20 +93,20 @@ class _SettingsPageState extends State<SettingsPage> {
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 12),
-        SegmentedButton<AppThemeMode>(
+        SegmentedButton<ThemeMode>(
           segments: const [
-            ButtonSegment<AppThemeMode>(
-              value: AppThemeMode.system,
+            ButtonSegment<ThemeMode>(
+              value: ThemeMode.system,
               label: Text('Sistema'),
               icon: Icon(Icons.brightness_auto),
             ),
-            ButtonSegment<AppThemeMode>(
-              value: AppThemeMode.light,
+            ButtonSegment<ThemeMode>(
+              value: ThemeMode.light,
               label: Text('Claro'),
               icon: Icon(Icons.brightness_5),
             ),
-            ButtonSegment<AppThemeMode>(
-              value: AppThemeMode.dark,
+            ButtonSegment<ThemeMode>(
+              value: ThemeMode.dark,
               label: Text('Oscuro'),
               icon: Icon(Icons.brightness_2),
             ),

@@ -1,11 +1,11 @@
 import 'package:bloc_test/bloc_test.dart';
 import 'package:dartz/dartz.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:frontend_mobile_nodos_app/core/errors/failures.dart';
-import 'package:frontend_mobile_nodos_app/core/utils/app_theme_mode.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/entities/user.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/repositories/user_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/usecases/get_user_profile.dart';
@@ -203,15 +203,15 @@ void main() {
         isA<UserLoaded>().having(
           (s) => s.themeMode,
           'themeMode',
-          AppThemeMode.system,
+          ThemeMode.system,
         ),
       ],
     );
 
     blocTest<UserBloc, UserState>(
       // PR4: En inicio fresco sin SharedPreferences configurado,
-      // el default sigue siendo AppThemeMode.system.
-      'LoadProfile usa AppThemeMode.system cuando no hay estado previo ni SharedPreferences',
+      // el default sigue siendo ThemeMode.system.
+      'LoadProfile usa ThemeMode.system cuando no hay estado previo ni SharedPreferences',
       setUp: () async {
         SharedPreferences.setMockInitialValues({});
         prefs = await SharedPreferences.getInstance();
@@ -223,7 +223,7 @@ void main() {
       expect: () => [
         isA<UserLoading>(),
         isA<UserLoaded>()
-            .having((s) => s.themeMode, 'themeMode', AppThemeMode.system)
+            .having((s) => s.themeMode, 'themeMode', ThemeMode.system)
             .having((s) => s.user, 'user', testUser),
       ],
     );
@@ -236,12 +236,12 @@ void main() {
             .thenAnswer((_) async => Right(testUser));
       },
       build: buildBloc,
-      seed: () => UserLoaded(testUser, themeMode: AppThemeMode.dark),
+      seed: () => UserLoaded(testUser, themeMode: ThemeMode.dark),
       act: (bloc) => bloc.add(LoadProfile()),
       expect: () => [
         isA<UserLoading>(),
         isA<UserLoaded>()
-            .having((s) => s.themeMode, 'themeMode', AppThemeMode.dark)
+            .having((s) => s.themeMode, 'themeMode', ThemeMode.dark)
             .having((s) => s.user, 'user', testUser),
       ],
     );
@@ -250,10 +250,10 @@ void main() {
       'UpdateThemeMode to dark changes themeMode in state',
       seed: () => UserLoaded(testUser),
       build: buildBloc,
-      act: (bloc) => bloc.add(const UpdateThemeMode(AppThemeMode.dark)),
+      act: (bloc) => bloc.add(const UpdateThemeMode(ThemeMode.dark)),
       expect: () => [
         isA<UserLoaded>()
-            .having((s) => s.themeMode, 'themeMode', AppThemeMode.dark)
+            .having((s) => s.themeMode, 'themeMode', ThemeMode.dark)
             .having((s) => s.user, 'user', testUser),
       ],
     );
@@ -262,7 +262,7 @@ void main() {
       'UpdateThemeMode to dark persists in SharedPreferences',
       seed: () => UserLoaded(testUser),
       build: buildBloc,
-      act: (bloc) => bloc.add(const UpdateThemeMode(AppThemeMode.dark)),
+      act: (bloc) => bloc.add(const UpdateThemeMode(ThemeMode.dark)),
       verify: (_) async {
         final p = await SharedPreferences.getInstance();
         expect(p.getString('theme_mode'), equals('dark'));
@@ -273,22 +273,22 @@ void main() {
       'UpdateThemeMode to light changes themeMode in state',
       seed: () => UserLoaded(testUser),
       build: buildBloc,
-      act: (bloc) => bloc.add(const UpdateThemeMode(AppThemeMode.light)),
+      act: (bloc) => bloc.add(const UpdateThemeMode(ThemeMode.light)),
       expect: () => [
         isA<UserLoaded>()
-            .having((s) => s.themeMode, 'themeMode', AppThemeMode.light)
+            .having((s) => s.themeMode, 'themeMode', ThemeMode.light)
             .having((s) => s.user, 'user', testUser),
       ],
     );
 
     blocTest<UserBloc, UserState>(
       'UpdateThemeMode to system changes themeMode in state',
-      seed: () => UserLoaded(testUser, themeMode: AppThemeMode.dark),
+      seed: () => UserLoaded(testUser, themeMode: ThemeMode.dark),
       build: buildBloc,
-      act: (bloc) => bloc.add(const UpdateThemeMode(AppThemeMode.system)),
+      act: (bloc) => bloc.add(const UpdateThemeMode(ThemeMode.system)),
       expect: () => [
         isA<UserLoaded>()
-            .having((s) => s.themeMode, 'themeMode', AppThemeMode.system)
+            .having((s) => s.themeMode, 'themeMode', ThemeMode.system)
             .having((s) => s.user, 'user', testUser),
       ],
     );
@@ -484,11 +484,11 @@ void main() {
     //
     // QUÉ: al iniciar la app (UserInitial), _onLoadProfile debe leer
     // el tema guardado en SharedPreferences bajo 'theme_mode', no
-    // usar AppThemeMode.system por defecto.
+    // usar ThemeMode.system por defecto.
     //
     // POR QUÉ: el usuario configura su tema en Settings y espera que
     // persista entre reinicios. Antes, _onLoadProfile siempre usaba
-    // AppThemeMode.system en primera carga (UserInitial), ignorando la
+    // ThemeMode.system en primera carga (UserInitial), ignorando la
     // preferencia guardada. El tema solo se preservaba en memoria
     // durante la sesión actual.
 
@@ -505,7 +505,7 @@ void main() {
       expect: () => [
         isA<UserLoading>(),
         isA<UserLoaded>()
-            .having((s) => s.themeMode, 'themeMode', AppThemeMode.dark)
+            .having((s) => s.themeMode, 'themeMode', ThemeMode.dark)
             .having((s) => s.user, 'user', testUser),
       ],
     );
@@ -523,13 +523,13 @@ void main() {
       expect: () => [
         isA<UserLoading>(),
         isA<UserLoaded>()
-            .having((s) => s.themeMode, 'themeMode', AppThemeMode.light)
+            .having((s) => s.themeMode, 'themeMode', ThemeMode.light)
             .having((s) => s.user, 'user', testUser),
       ],
     );
 
     blocTest<UserBloc, UserState>(
-      'PR4: usa AppThemeMode.system cuando no hay tema guardado en SharedPreferences',
+      'PR4: usa ThemeMode.system cuando no hay tema guardado en SharedPreferences',
       setUp: () async {
         SharedPreferences.setMockInitialValues({});
         prefs = await SharedPreferences.getInstance();
@@ -541,7 +541,7 @@ void main() {
       expect: () => [
         isA<UserLoading>(),
         isA<UserLoaded>()
-            .having((s) => s.themeMode, 'themeMode', AppThemeMode.system)
+            .having((s) => s.themeMode, 'themeMode', ThemeMode.system)
             .having((s) => s.user, 'user', testUser),
       ],
     );
@@ -558,12 +558,12 @@ void main() {
             .thenAnswer((_) async => Right(testUser));
       },
       build: buildBloc,
-      seed: () => UserLoaded(testUser, themeMode: AppThemeMode.dark),
+      seed: () => UserLoaded(testUser, themeMode: ThemeMode.dark),
       act: (bloc) => bloc.add(LoadProfile()),
       expect: () => [
         isA<UserLoading>(),
         isA<UserLoaded>()
-            .having((s) => s.themeMode, 'themeMode', AppThemeMode.dark)
+            .having((s) => s.themeMode, 'themeMode', ThemeMode.dark)
             .having((s) => s.user, 'user', testUser),
       ],
     );

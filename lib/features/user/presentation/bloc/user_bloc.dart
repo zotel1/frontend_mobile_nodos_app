@@ -1,8 +1,8 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:equatable/equatable.dart';
 import 'package:frontend_mobile_nodos_app/core/errors/failures.dart';
-import 'package:frontend_mobile_nodos_app/core/utils/app_theme_mode.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/uuid_generator.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/entities/user.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/repositories/user_repository.dart';
@@ -47,7 +47,7 @@ class UpdateUserColorEvent extends UserEvent {
 /// Persiste en SharedPreferences bajo la clave 'theme_mode'
 /// para que sobreviva a reinicios de la app.
 class UpdateThemeMode extends UserEvent {
-  final AppThemeMode mode;
+  final ThemeMode mode;
 
   const UpdateThemeMode(this.mode);
 
@@ -74,12 +74,12 @@ class UserLoading extends UserState {
 
 class UserLoaded extends UserState {
   final User user;
-  /// Modo de tema actual. Por defecto [AppThemeMode.system] (deferido al SO).
+  /// Modo de tema actual. Por defecto [ThemeMode.system] (deferido al SO).
   ///
-  /// PR5a: usa [AppThemeMode] en lugar de [ThemeMode] de Flutter.
-  final AppThemeMode themeMode;
+  /// PR5a: usa [ThemeMode] en lugar de [ThemeMode] de Flutter.
+  final ThemeMode themeMode;
 
-  const UserLoaded(this.user, {this.themeMode = AppThemeMode.system});
+  const UserLoaded(this.user, {this.themeMode = ThemeMode.system});
 
   @override
   List<Object?> get props => [user, themeMode];
@@ -151,8 +151,8 @@ class UserBloc extends Bloc<UserEvent, UserState> {
       LoadProfile event, Emitter<UserState> emit) async {
     // PR4: Capturar themeMode. Si hay estado previo UserLoaded, preservarlo.
     // Si es UserInitial (primera carga), leer de SharedPreferences.
-    // Si no hay valor guardado, usar AppThemeMode.system.
-    final AppThemeMode currentThemeMode;
+    // Si no hay valor guardado, usar ThemeMode.system.
+    final ThemeMode currentThemeMode;
     if (state is UserLoaded) {
       currentThemeMode = (state as UserLoaded).themeMode;
     } else {
@@ -192,7 +192,7 @@ class UserBloc extends Bloc<UserEvent, UserState> {
   /// los datos con el id asignado por Drift.
   Future<void> _createDefaultProfile(
     Emitter<UserState> emit,
-    AppThemeMode themeMode,
+    ThemeMode themeMode,
   ) async {
     // PR4: Reusar UUID persistido o generar uno nuevo.
     var uuid = _prefs.getString('device_uuid');
@@ -221,16 +221,20 @@ class UserBloc extends Bloc<UserEvent, UserState> {
   /// Lee el modo de tema desde SharedPreferences.
   ///
   /// QUÉ: convierte el string guardado bajo 'theme_mode' en un
-  /// [AppThemeMode]. Si la clave no existe o el valor es inválido,
-  /// retorna [AppThemeMode.system].
+  /// [ThemeMode]. Si la clave no existe o el valor es inválido,
+  /// retorna [ThemeMode.system].
   ///
-  /// PR5a: usa [AppThemeMode.fromString] en lugar de un switch manual.
+  /// PR5a: usa [ThemeMode.fromString] en lugar de un switch manual.
   /// POR QUÉ: centraliza la lógica de parseo para que _onLoadProfile
   /// y cualquier otro handler puedan leer el tema persistido sin
   /// repetir el switch.
-  AppThemeMode _themeModeFromPrefs() {
+  ThemeMode _themeModeFromPrefs() {
     final modeStr = _prefs.getString('theme_mode') ?? '';
-    return AppThemeMode.fromString(modeStr);
+    return switch (modeStr.toLowerCase()) {
+      'light' => ThemeMode.light,
+      'dark' => ThemeMode.dark,
+      _ => ThemeMode.system,
+    };
   }
 
   Future<void> _onUpdateName(
@@ -242,7 +246,7 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     // volvía a system. Ahora preserva el themeMode del estado anterior.
     final currentThemeMode = state is UserLoaded
         ? (state as UserLoaded).themeMode
-        : AppThemeMode.system;
+        : ThemeMode.system;
 
     emit(const UserLoading());
     final result = await updateName(UpdateUserNameParams(name: event.name));
@@ -265,7 +269,7 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     // cambiar el color, perdiendo la preferencia del usuario.
     final currentThemeMode = state is UserLoaded
         ? (state as UserLoaded).themeMode
-        : AppThemeMode.system;
+        : ThemeMode.system;
 
     emit(const UserLoading());
     final result = await updateColor(UpdateUserColorParams(color: event.color));
