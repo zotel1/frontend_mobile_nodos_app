@@ -48,13 +48,28 @@ class FlutterBluePlusDataSource implements BleScannerDataSource {
       if (results.isEmpty) return;
       final mapped = results
           .map(mapScanResultToDevice)
-          .where((s) => s.rssi >= proximityThresholdMedium)
+          .where((s) => rssiPassesFilter(s.rssi))
           .toList();
       if (mapped.isNotEmpty) {
         _controller.add(mapped);
       }
     });
   }
+
+  /// Filtro RSSI: determina si un dispositivo con un RSSI dado debe
+  /// incluirse en los resultados de escaneo.
+  ///
+  /// Usa [proximityThresholdFar] (-95 dBm) como umbral. Dispositivos
+  /// con RSSI >= -95 pasan el filtro (señal suficientemente fuerte).
+  ///
+  /// QUÉ cambió: antes usaba [proximityThresholdMedium] (-85 dBm),
+  /// que era demasiado restrictivo y filtraba dispositivos a más
+  /// de 5-8m. Con -95 dBm detectamos dispositivos hasta ~10-15m.
+  ///
+  /// Es público y estático para permitir testing unitario sin
+  /// depender de la plataforma FlutterBluePlus.
+  @visibleForTesting
+  static bool rssiPassesFilter(int rssi) => rssi >= proximityThresholdFar;
 
   /// Convierte un [ScanResult] de flutter_blue_plus en un [BleDevice] de dominio.
   ///
