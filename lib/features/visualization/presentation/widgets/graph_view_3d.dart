@@ -45,6 +45,14 @@ class _GraphView3DState extends State<GraphView3D> {
   /// que la página terminara de cargar.
   String? _pendingData;
 
+  /// T2.5: Estados visuales del widget.
+  /// _isLoading: true mientras el WebView inicializa (R6).
+  /// _hasError: true si la carga del asset HTML falló (R8).
+  /// _errorMessage: mensaje descriptivo del error para debug.
+  bool _isLoading = true;
+  bool _hasError = false;
+  String? _errorMessage;
+
   @override
   void initState() {
     super.initState();
@@ -62,7 +70,11 @@ class _GraphView3DState extends State<GraphView3D> {
     controller.setNavigationDelegate(
       NavigationDelegate(
         onPageFinished: (_) {
-          _pageLoaded = true;
+          if (!mounted) return;
+          setState(() {
+            _pageLoaded = true;
+            _isLoading = false; // T2.5: salir del estado loading (R6)
+          });
           if (_pendingData != null) {
             _controller.runJavaScript(
                 'window.loadGraphData($_pendingData)');
@@ -100,9 +112,22 @@ class _GraphView3DState extends State<GraphView3D> {
   /// Carga el HTML del grafo 3D desde los assets e inyecta los datos.
   /// Si la página ya cargó, inyecta directamente; si no, almacena en
   /// [_pendingData] para que [onPageFinished] la inyecte.
+  ///
+  /// T2.5: Envolver en try/catch para capturar fallos de carga del asset.
+  /// Si el asset no existe o hay error de plataforma, se activa
+  /// [_hasError] y se muestra el estado de error (R8).
   Future<void> _loadContent() async {
-    await _controller.loadFlutterAsset('assets/three_graph/graph_3d.html');
-    _injectData();
+    try {
+      await _controller.loadFlutterAsset('assets/three_graph/graph_3d.html');
+      _injectData();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _hasError = true;
+        _isLoading = false;
+        _errorMessage = e.toString();
+      });
+    }
   }
 
   /// Serializa el [LayoutResult] a JSON y lo inyecta en el WebView
@@ -120,9 +145,125 @@ class _GraphView3DState extends State<GraphView3D> {
     }
   }
 
+  /// Construye el widget según el estado actual:
+  ///
+  /// 1. **_isLoading = true**: muestra CircularProgressIndicator + "Cargando…" (R6)
+  /// 2. **_hasError = true**: muestra mensaje de error + texto "Error al cargar…" (R8)
+  /// 3. **layout.nodes.isEmpty y _pageLoaded**: muestra "No hay nodos…" (R7)
+  /// 4. **default**: WebViewWidget con Three.js
   @override
   Widget build(BuildContext context) {
+    // T2.6: Estado de error (R8) — prioridad más alta
+    if (_hasError) {
+      return _buildErrorState();
+    }
+
+    // T2.6: Estado de carga (R6)
+    if (_isLoading) {
+      return _buildLoadingState();
+    }
+
+    // T2.6: Estado vacío (R7) — sin nodos para visualizar
+    if (widget.layout.nodes.isEmpty) {
+      return _buildEmptyState();
+    }
+
+    // T2.6: Estado normal — WebView con Three.js
     return WebViewWidget(controller: _controller);
+  }
+
+  /// Construye el estado de carga: spinner + texto "Cargando…" (R6).
+  Widget _buildLoadingState() {
+    return const Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(),
+          SizedBox(height: 16),
+          Text(
+            'Cargando visualización 3D…',
+            style: TextStyle(fontSize: 14, color: Colors.grey),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Construye el estado vacío: texto informativo (R7).
+  Widget _buildEmptyState() {
+    return const Center(
+      child: Text(
+        'No hay nodos para visualizar en 3D',
+        style: TextStyle(fontSize: 14, color: Colors.grey),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+
+  /// Construye el estado de error: mensaje descriptivo (R8).
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, color: Colors.red, size: 48),
+            const SizedBox(height: 16),
+            const Text(
+              'Error al cargar visualización 3D',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.red,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _errorMessage!,
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// T2.7: Libera recursos del WebView al destruir el widget (R10).
+  ///
+  /// QUÉ: remueve los canales JavaScript registrados para evitar
+  /// callbacks a un widget ya desmontado, y limpia el caché
+  /// del WebView para liberar memoria.
+  ///
+  /// POR QUÉ: sin dispose explícito, los JavaScriptChannel siguen
+  /// activos y pueden intentar llamar a setState() en un widget
+  /// ya destruido, causando memory leaks y excepciones.
+  @override
+  void dispose() {
+    // Remover canales JS para evitar callbacks a widget desmontado
+    try {
+      _controller.removeJavaScriptChannel('onNodeTapped');
+    } catch (_) {
+      // Ignorar si el canal ya no existe
+    }
+    try {
+      _controller.removeJavaScriptChannel('onConsoleLog');
+    } catch (_) {
+      // Ignorar si el canal ya no existe
+    }
+
+    // Limpiar caché del WebView para liberar memoria
+    try {
+      _controller.clearCache();
+    } catch (_) {
+      // Ignorar errores de plataforma en tests
+    }
+
+    super.dispose();
   }
 }
 
