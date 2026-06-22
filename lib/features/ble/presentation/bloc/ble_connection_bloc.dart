@@ -1,12 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:drift/drift.dart' hide Column;
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
-import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
-import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_gatt_datasource.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_connection_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -155,22 +153,19 @@ class RemoteIdentityUnavailable extends BleConnectionState {
 /// escaneo/advertising, BleConnectionBloc maneja conexiones punto a punto.
 /// Esto evita el bloat de BleBloc y permite testear cada máquina aislada.
 ///
-/// Depende de [NodeRepository] para lookup de nodeId por bleAddress
-/// y de [AppDatabase] para insertar filas en la tabla connections (R5.2).
+/// Depende de [BleConnectionRepository] para operaciones GATT y persistencia,
+/// y de [NodeRepository] para lookup de nodeId por bleAddress.
 class BleConnectionBloc
     extends Bloc<BleConnectionEvent, BleConnectionState> {
-  final BleGattDataSource _gatt;
+  final BleConnectionRepository _connectionRepo;
   final NodeRepository _nodeRepository;
-  final AppDatabase _db;
   StreamSubscription<bool>? _stateSubscription;
 
   BleConnectionBloc({
-    required BleGattDataSource gatt,
+    required BleConnectionRepository connectionRepository,
     required NodeRepository nodeRepository,
-    required AppDatabase db,
-  })  : _gatt = gatt,
+  })  : _connectionRepo = connectionRepository,
         _nodeRepository = nodeRepository,
-        _db = db,
         super(const BleConnectionInitial()) {
     on<ConnectToDevice>(_onConnect);
     on<DisconnectDevice>(_onDisconnect);
@@ -189,8 +184,6 @@ class BleConnectionBloc
     emit(BleConnecting(remoteId: event.remoteId));
 
     // R5.8: Verificar permiso BLUETOOTH_CONNECT en runtime (Android 12+).
-    // Si el permiso no está concedido, emitir error sin reintento.
-    // En entornos sin platform channel (tests, web) se asume concedido.
     try {
       final permission = await Permission.bluetoothConnect.request();
       if (!permission.isGranted) {
@@ -205,20 +198,16 @@ class BleConnectionBloc
     }
 
     try {
-      await _gatt.connect(event.remoteId);
+      await _connectionRepo.connect(event.remoteId);
 
       // Cancelar suscripción previa si existe
       await _stateSubscription?.cancel();
 
       // Suscribirse al stream de estado de conexión
-      _stateSubscription = _gatt
+      _stateSubscription = _connectionRepo
           .connectionState(event.remoteId)
           .listen((connected) {
         if (!isClosed) {
-          // T-PR1-002: Enviar AMBOS valores, true y false.
-          // Antes solo enviaba connected==true — si el periférico
-          // se desconectaba, _ConnectionStateChanged nunca se disparaba
-          // y la UI quedaba mostrando "Conectado" fantasma.
           add(_ConnectionStateChanged(
             remoteId: event.remoteId,
             connected: connected,
@@ -231,7 +220,6 @@ class BleConnectionBloc
       // en _onConnectionStateChanged cuando el stream emita true.
       emit(BleConnected(remoteId: event.remoteId));
     } catch (e) {
-      // Clasificar el error como retryable o no
       final message = e.toString();
       final retryable = _isRetryableError(e);
 
@@ -241,25 +229,10 @@ class BleConnectionBloc
 
   /// Handler interno: ejecuta la lógica post-conexión cuando el stream
   /// de connectionState emite `true` (conexión establecida).
-  ///
-  /// QUÉ hace:
-  /// 1. Inserta una fila en la tabla connections (R5.2)
-  /// 2. Emite ConnectionInserted
-  /// 3. Intenta discoverServices() + readCharacteristic() (AD12)
-  /// 4. Si GATT read tiene éxito → emite RemoteIdentityLoaded
-  /// 5. Si falla → emite RemoteIdentityUnavailable (R5.11)
-  ///
-  /// POR QUÉ separado de _onConnect: la conexión puede establecerse
-  /// después de que _onConnect ya haya retornado. El stream de
-  /// connectionState informa el momento exacto de la conexión.
   Future<void> _onConnectionStateChanged(
     _ConnectionStateChanged event,
     Emitter<BleConnectionState> emit,
   ) async {
-    // T-PR1-002: Manejar connected==false → emitir BleConnectionInitial.
-    // Antes este handler solo hacía `if (!event.connected) return;` lo
-    // que dejaba el estado en BleConnected incluso después de una
-    // desconexión real del periférico.
     if (!event.connected) {
       emit(const BleConnectionInitial());
       return;
@@ -272,14 +245,7 @@ class BleConnectionBloc
       final remoteNode =
           await _nodeRepository.getNodeByBleAddress(remoteId);
       if (remoteNode != null && remoteNode.id != null) {
-        await _db.into(_db.connections).insert(
-              ConnectionsCompanion.insert(
-                fromNodeId: event.myNodeId,
-                toNodeId: remoteNode.id!,
-                createdAt: DateTime.now(),
-              ),
-              mode: InsertMode.insertOrIgnore,
-            );
+        await _connectionRepo.saveConnection(event.myNodeId, remoteNode.id!);
         emit(ConnectionInserted(remoteId: remoteId));
       }
     } catch (_) {
@@ -289,14 +255,13 @@ class BleConnectionBloc
 
     // ── 2. Intentar GATT identity read ──
     try {
-      await _gatt.discoverServices(remoteId);
-      final bytes = await _gatt.readCharacteristic(
+      await _connectionRepo.discoverServices(remoteId);
+      final bytes = await _connectionRepo.readCharacteristic(
         remoteId,
         identityCharacteristicUUID,
       );
 
       if (bytes != null && bytes.isNotEmpty) {
-        // Decodificar JSON {uuid, name, color} de la característica
         final jsonStr = utf8.decode(bytes);
         final data = jsonDecode(jsonStr) as Map<String, dynamic>;
         final name = data['name'] as String? ?? 'Desconocido';
@@ -318,9 +283,6 @@ class BleConnectionBloc
   }
 
   /// Maneja la solicitud de desconexión.
-  ///
-  /// Llama a disconnect() en el datasource y resetea el estado a Initial.
-  /// Si ya está en Initial, no hace nada.
   Future<void> _onDisconnect(
     DisconnectDevice event,
     Emitter<BleConnectionState> emit,
@@ -331,7 +293,7 @@ class BleConnectionBloc
     _stateSubscription = null;
 
     try {
-      await _gatt.disconnect(event.remoteId);
+      await _connectionRepo.disconnect(event.remoteId);
     } catch (_) {
       // Ignorar errores de desconexión — el estado ya se resetea
     }
@@ -340,17 +302,12 @@ class BleConnectionBloc
   }
 
   /// Determina si un error de conexión es retryable.
-  ///
-  /// Timeout y errores de red son retryable. Errores de estado
-  /// (BT apagado) no lo son.
   bool _isRetryableError(Object error) {
     final message = error.toString().toLowerCase();
-    // Errores de BT apagado NO son retryable
     if (message.contains('bluetooth') && message.contains('disabled')) {
       return false;
     }
     if (error is StateError) return false;
-    // Timeout, device not found, etc → retryable
     return true;
   }
 

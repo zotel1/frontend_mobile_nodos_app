@@ -1,20 +1,22 @@
 import 'package:drift/drift.dart' hide Column, isNull, isNotNull;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart' hide ScanSession;
+import 'package:frontend_mobile_nodos_app/features/history/data/datasources/history_drift_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/history/data/repositories/history_repository_impl.dart';
 
-/// Tests para HistoryRepositoryImpl — implementación concreta del
-/// repositorio de historial usando Drift/AppDatabase.
+/// Tests para HistoryRepositoryImpl usando HistoryDriftDataSource real.
 ///
-/// Verifica que las queries SQL sobre scan_sessions, scan_session_nodes
-/// y nodes funcionan correctamente con una BD en memoria.
+/// Verifica que el repositorio transforma correctamente los resultados
+/// crudos del datasource en entidades de dominio.
 void main() {
   late AppDatabase db;
+  late HistoryDriftDataSource dataSource;
   late HistoryRepositoryImpl repo;
 
   setUp(() async {
     db = AppDatabase.inMemory();
-    repo = HistoryRepositoryImpl(db);
+    dataSource = HistoryDriftDataSource(db);
+    repo = HistoryRepositoryImpl(dataSource);
   });
 
   tearDown(() async {

@@ -5,7 +5,7 @@
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 import 'dart:async' as _i3;
 
-import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_gatt_datasource.dart'
+import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_connection_repository.dart'
     as _i2;
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart'
     as _i5;
@@ -28,10 +28,11 @@ import 'package:mockito/mockito.dart' as _i1;
 // ignore_for_file: subtype_of_sealed_class
 // ignore_for_file: invalid_use_of_internal_member
 
-/// A class which mocks [BleGattDataSource].
+/// A class which mocks [BleConnectionRepository].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockBleGattDataSource extends _i1.Mock implements _i2.BleGattDataSource {
+class MockBleConnectionRepository extends _i1.Mock
+    implements _i2.BleConnectionRepository {
   @override
   _i3.Future<void> connect(String? remoteId) =>
       (super.noSuchMethod(
@@ -51,15 +52,6 @@ class MockBleGattDataSource extends _i1.Mock implements _i2.BleGattDataSource {
           as _i3.Future<void>);
 
   @override
-  _i3.Future<bool> isConnected(String? remoteId) =>
-      (super.noSuchMethod(
-            Invocation.method(#isConnected, [remoteId]),
-            returnValue: _i3.Future<bool>.value(false),
-            returnValueForMissingStub: _i3.Future<bool>.value(false),
-          )
-          as _i3.Future<bool>);
-
-  @override
   _i3.Stream<bool> connectionState(String? remoteId) =>
       (super.noSuchMethod(
             Invocation.method(#connectionState, [remoteId]),
@@ -69,18 +61,13 @@ class MockBleGattDataSource extends _i1.Mock implements _i2.BleGattDataSource {
           as _i3.Stream<bool>);
 
   @override
-  _i3.Future<List<_i2.BleServiceInfo>> discoverServices(String? remoteId) =>
+  _i3.Future<void> discoverServices(String? remoteId) =>
       (super.noSuchMethod(
             Invocation.method(#discoverServices, [remoteId]),
-            returnValue: _i3.Future<List<_i2.BleServiceInfo>>.value(
-              <_i2.BleServiceInfo>[],
-            ),
-            returnValueForMissingStub:
-                _i3.Future<List<_i2.BleServiceInfo>>.value(
-                  <_i2.BleServiceInfo>[],
-                ),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
           )
-          as _i3.Future<List<_i2.BleServiceInfo>>);
+          as _i3.Future<void>);
 
   @override
   _i3.Future<List<int>?> readCharacteristic(
@@ -96,6 +83,15 @@ class MockBleGattDataSource extends _i1.Mock implements _i2.BleGattDataSource {
             returnValueForMissingStub: _i3.Future<List<int>?>.value(),
           )
           as _i3.Future<List<int>?>);
+
+  @override
+  _i3.Future<void> saveConnection(int? fromNodeId, int? toNodeId) =>
+      (super.noSuchMethod(
+            Invocation.method(#saveConnection, [fromNodeId, toNodeId]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
 }
 
 /// A class which mocks [NodeRepository].
