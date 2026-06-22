@@ -224,7 +224,18 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
     // QUÉ problema resuelve: sin esta suscripción, los nodos
     // persistidos nunca se reflejan en la UI porque el BLoC
     // no escucha los cambios en la base de datos.
-    if (_nodesSubscription == null) {
+    //
+    // T-PR1-010: Verificar que no estamos ya en NodeListLoaded.
+    // Si ya hay nodos cargados, el stream Drift ya está activo
+    // y emitirá los cambios automáticamente. Re-suscribirse aquí
+    // causaría NodeListLoading → flicker (spinner momentáneo)
+    // durante escaneo BLE continuo.
+    // QUÉ problema resuelve: antes _subscribeToNodes se llamaba
+    // siempre que _nodesSubscription era null, emitiendo
+    // NodeListLoading incluso cuando la UI ya mostraba nodos.
+    // Esto causaba un flicker visible (CircularProgressIndicator
+    // por un frame) cada vez que llegaban nuevos dispositivos BLE.
+    if (_nodesSubscription == null && state is! NodeListLoaded) {
       await _subscribeToNodes(emit);
     }
   }
