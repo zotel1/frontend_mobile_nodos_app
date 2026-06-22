@@ -106,6 +106,12 @@ class BleConnectionBloc
         super(const BleConnectionInitial()) {
     on<ConnectToDevice>(_onConnect);
     on<DisconnectDevice>(_onDisconnect);
+    // T-PR1-002: Handler para _ConnectionStateChanged — soluciona CRITICAL C1.
+    // QUÉ: escucha cambios en el stream connectionState del periférico.
+    // Antes solo manejaba connected==true. Cuando connected==false, el evento
+    // no tenía handler → StateError "Missing handler for _ConnectionStateChanged"
+    // y el BLoC crasheaba. Ahora: true→emite BleConnected, false→emite BleConnectionInitial.
+    on<_ConnectionStateChanged>(_onConnectionStateChanged);
   }
 
   /// Maneja la solicitud de conexión a un dispositivo.
@@ -130,12 +136,14 @@ class BleConnectionBloc
           .connectionState(event.remoteId)
           .listen((connected) {
         if (!isClosed) {
-          if (connected) {
-            add(_ConnectionStateChanged(
-              remoteId: event.remoteId,
-              connected: true,
-            ));
-          }
+          // T-PR1-002: Ahora manejamos ambos casos, true y false.
+          // Antes solo manejaba connected==true — si el periférico se
+          // desconectaba, el evento _ConnectionStateChanged(connected: false)
+          // se agregaba al stream pero no tenía handler registrado → StateError.
+          add(_ConnectionStateChanged(
+            remoteId: event.remoteId,
+            connected: connected,
+          ));
         }
       });
 
@@ -171,6 +179,33 @@ class BleConnectionBloc
     }
 
     emit(const BleConnectionInitial());
+  }
+
+  /// Maneja el evento interno [_ConnectionStateChanged] disparado por el
+  /// stream connectionState del periférico.
+  ///
+  /// QUÉ: mapea cambios de estado de conexión GATT a estados del BLoC.
+  /// - connected=true  → emite [BleConnected] con el [remoteId].
+  /// - connected=false → emite [BleConnectionInitial] (desconectado).
+  ///
+  /// POR QUÉ: T-PR1-002 — antes este handler NO existía. El constructor
+  /// solo registraba `on<ConnectToDevice>` y `on<DisconnectDevice>`. Cuando
+  /// el stream del periférico emitía false (desconexión inesperada), el
+  /// evento _ConnectionStateChanged se agregaba pero BLoC lanzaba
+  /// StateError: "Missing handler for _ConnectionStateChanged".
+  ///
+  /// QUÉ problema resuelve: CRITICAL C1 — el BLoC crasheaba en runtime
+  /// cuando un periférico se desconectaba. La UI quedaba mostrando
+  /// "Conectado" fantasma porque el estado nunca volvía a Initial.
+  void _onConnectionStateChanged(
+    _ConnectionStateChanged event,
+    Emitter<BleConnectionState> emit,
+  ) {
+    if (event.connected) {
+      emit(BleConnected(remoteId: event.remoteId));
+    } else {
+      emit(const BleConnectionInitial());
+    }
   }
 
   /// Determina si un error de conexión es retryable.
