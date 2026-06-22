@@ -35,14 +35,14 @@ class NodeDriftDataSource implements NodeLocalDataSource {
     if (existing != null) {
       // Freeze on first detection: preservar suggestedName existente.
       // deviceType se actualiza en cada escaneo (puede cambiar).
-      final companion = _toCompanion(node).copyWith(
+      final companion = _toCompanion(node, isInsert: false).copyWith(
         suggestedName: Value(existing.suggestedName ?? node.suggestedName),
       );
       await (_db.update(_db.nodes)
             ..where((t) => t.id.equals(existing.id)))
           .write(companion);
     } else {
-      await _db.into(_db.nodes).insert(_toInsertCompanion(node));
+      await _db.into(_db.nodes).insert(_toCompanion(node, isInsert: true));
     }
   }
 
@@ -108,13 +108,45 @@ class NodeDriftDataSource implements NodeLocalDataSource {
     );
   }
 
-  NodesCompanion _toCompanion(Node node) {
+  /// Mapper unificado: convierte [Node] → [NodesCompanion].
+  ///
+  /// QUÉ: un solo método con parámetro [isInsert] que produce el
+  /// Companion correcto para INSERT o UPDATE.
+  ///
+  /// POR QUÉ: antes existían dos métodos separados (_toCompanion y
+  /// _toInsertCompanion) con lógica de mapeo casi idéntica. Esto
+  /// duplicaba ~15 líneas de código y requería mantener dos lugares
+  /// ante cambios en el schema. El parámetro [isInsert] condensa
+  /// toda la lógica en un solo punto.
+  ///
+  /// - [isInsert] = true: usa [NodesCompanion.insert] (sin id,
+  ///   auto-increment).
+  /// - [isInsert] = false: usa [NodesCompanion] normal (para UPDATE
+  ///   vía `.write()`).
+  NodesCompanion _toCompanion(Node node, {required bool isInsert}) {
     final lastRssi =
         node.rssiHistory.isNotEmpty ? node.rssiHistory.last : null;
     final proximityZone =
         lastRssi != null ? rssiToProximity(lastRssi).name : null;
     final historyJson =
         node.rssiHistory.isNotEmpty ? jsonEncode(node.rssiHistory) : null;
+
+    if (isInsert) {
+      return NodesCompanion.insert(
+        bleAddress: node.bleAddress,
+        firstSeen: node.firstSeen,
+        lastSeen: node.lastSeen,
+        name: Value(node.name),
+        color: Value(node.color),
+        lastRssi: Value(lastRssi),
+        proximityZone: Value(proximityZone),
+        rssiHistory: Value(historyJson),
+        suggestedName: Value(node.suggestedName),
+        deviceType: Value(node.deviceType),
+        connectable: Value(node.connectable),
+        estimatedDistance: Value(node.estimatedDistance),
+      );
+    }
 
     return NodesCompanion(
       bleAddress: Value(node.bleAddress),
@@ -122,30 +154,6 @@ class NodeDriftDataSource implements NodeLocalDataSource {
       color: Value(node.color),
       firstSeen: Value(node.firstSeen),
       lastSeen: Value(node.lastSeen),
-      lastRssi: Value(lastRssi),
-      proximityZone: Value(proximityZone),
-      rssiHistory: Value(historyJson),
-      suggestedName: Value(node.suggestedName),
-      deviceType: Value(node.deviceType),
-      connectable: Value(node.connectable),
-      estimatedDistance: Value(node.estimatedDistance),
-    );
-  }
-
-  NodesCompanion _toInsertCompanion(Node node) {
-    final lastRssi =
-        node.rssiHistory.isNotEmpty ? node.rssiHistory.last : null;
-    final proximityZone =
-        lastRssi != null ? rssiToProximity(lastRssi).name : null;
-    final historyJson =
-        node.rssiHistory.isNotEmpty ? jsonEncode(node.rssiHistory) : null;
-
-    return NodesCompanion.insert(
-      bleAddress: node.bleAddress,
-      firstSeen: node.firstSeen,
-      lastSeen: node.lastSeen,
-      name: Value(node.name),
-      color: Value(node.color),
       lastRssi: Value(lastRssi),
       proximityZone: Value(proximityZone),
       rssiHistory: Value(historyJson),
