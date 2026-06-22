@@ -388,7 +388,7 @@ void main() {
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // PR3: Onboarding redirect guard
+  // Onboarding redirect guard
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   group('Onboarding redirect', () {
@@ -411,8 +411,9 @@ void main() {
     testWidgets(
         'redirige a Onboarding cuando onboarding_complete es false',
         (tester) async {
-      // Forzar false en la instancia mock ya inicializada.
-      final prefs = await SharedPreferences.getInstance();
+      // Forzar false en la instancia registrada en GetIt
+      // (misma que usa el redirect vía sl<SharedPreferences>()).
+      final prefs = GetIt.instance<SharedPreferences>();
       await prefs.setBool('onboarding_complete', false);
 
       await tester.pumpWidget(buildApp());
@@ -421,13 +422,16 @@ void main() {
 
       // Debe mostrar la página de onboarding (paso 1: botón Continuar).
       expect(find.text('Continuar'), findsOneWidget);
+
+      // Limpiar: restaurar para no contaminar otros tests.
+      await prefs.setBool('onboarding_complete', true);
     });
 
     testWidgets(
         'redirige a Onboarding cuando no existe la key onboarding_complete',
         (tester) async {
-      // Eliminar la key de la instancia mock.
-      final prefs = await SharedPreferences.getInstance();
+      // Eliminar la key de la instancia en GetIt.
+      final prefs = GetIt.instance<SharedPreferences>();
       await prefs.remove('onboarding_complete');
 
       await tester.pumpWidget(buildApp());
@@ -436,6 +440,59 @@ void main() {
 
       // Sin la key, debe mostrar el onboarding.
       expect(find.text('Continuar'), findsOneWidget);
+
+      // Limpiar: restaurar para no contaminar otros tests.
+      await prefs.setBool('onboarding_complete', true);
+    });
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // PR3 T3.2 (R12): Redirect usa SharedPreferences vía GetIt DI
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  group('PR3: Redirect usa SharedPreferences via GetIt', () {
+    // QUÉ: Verifica que el redirect de GoRouter obtiene
+    //   SharedPreferences de GetIt DI y NO de getInstance().
+    // POR QUÉ: R12 — SharedPreferences debe obtenerse
+    //   exclusivamente vía GetIt. Este test demuestra que
+    //   el redirect funciona cuando SharedPreferences está
+    //   registrado en GetIt con valores controlados.
+    testWidgets(
+        'T3.2: redirect usa sl<SharedPreferences>() para verificar onboarding_complete',
+        (tester) async {
+      // setUp ya registró SharedPreferences en GetIt con
+      // onboarding_complete: true. Verificamos que el redirect
+      // lee de GetIt y redirige correctamente a Home.
+      await tester.pumpWidget(buildApp());
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      // Con onboarding_complete: true en GetIt → redirect a Home.
+      expect(find.byType(BottomNavigationBar), findsOneWidget);
+      // Onboarding no debe estar visible.
+      expect(find.text('Continuar'), findsNothing);
+    });
+
+    // Triangulación: al cambiar el valor en GetIt, el redirect
+    // responde al nuevo valor (prueba que lee de GetIt).
+    testWidgets(
+        'T3.2b: redirect refleja cambio de onboarding_complete en GetIt',
+        (tester) async {
+      // Cambiar el valor en la instancia de GetIt a false.
+      final prefs = GetIt.instance<SharedPreferences>();
+      await prefs.setBool('onboarding_complete', false);
+
+      await tester.pumpWidget(buildApp());
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      // Con onboarding_complete: false → redirect a Onboarding.
+      expect(find.text('Continuar'), findsOneWidget);
+
+      // Limpiar: restaurar el valor para no contaminar otros tests.
+      await prefs.setBool('onboarding_complete', true);
     });
   });
 }

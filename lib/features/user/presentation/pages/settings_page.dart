@@ -22,12 +22,15 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    // Load user profile on first build.
+    // T3.3 (R11, R13): Siempre refrescar perfil al navegar a Settings.
+    // QUÉ: dispara LoadProfile sin guard condicional para que el perfil
+    //   siempre esté actualizado al entrar a Configuración.
+    // POR QUÉ: el guard `if (state is! UserLoaded)` causaba B4 — después
+    //   de crear el perfil en onboarding, el estado ya era UserLoaded y
+    //   no se refrescaba al navegar a Settings.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userBloc = context.read<UserBloc>();
-      if (userBloc.state is! UserLoaded) {
-        userBloc.add(const LoadProfile());
-      }
+      userBloc.add(const LoadProfile());
     });
   }
 

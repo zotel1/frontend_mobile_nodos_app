@@ -179,23 +179,16 @@ class _HomePageState extends State<HomePage> {
   /// QUÉ: LoadNodes inicia la suscripción al stream Drift de nodos.
   /// StartScan inicia el escaneo BLE automáticamente sin FAB.
   /// Guarda referencia a BleBloc para dispose() donde context no es seguro.
-  /// T3.8: Carga la preferencia is3D desde SharedPreferences (R5.21).
-  /// addPostFrameCallback asegura que el context ya tiene los BLoCs
-  /// disponibles desde el árbol de providers.
-  /// T3.8: Carga la preferencia is3D desde SharedPreferences (R5.21).
-  /// addPostFrameCallback asegura que el context ya tiene los BLoCs
-  /// disponibles desde el árbol de providers.
-  /// NOTA: usa SharedPreferences.getInstance() (async) porque la inicialización
-  /// de mock en tests requiere compatibilidad con setMockInitialValues.
+  /// T3.8: Carga la preferencia is3D desde SharedPreferences vía GetIt DI.
+  /// NOTA: usa sl<SharedPreferences>() — sincrónico porque la instancia
+  /// ya está registrada como lazySingleton en injection_container.dart.
   @override
   void initState() {
     super.initState();
-    // T3.8: Cargar preferencia is3D desde SharedPreferences (R5.22)
-    SharedPreferences.getInstance().then((prefs) {
-      if (mounted) {
-        _is3D.value = prefs.getBool('is3D') ?? false;
-      }
-    });
+    // T3.6 (R12): Cargar preferencia is3D desde SharedPreferences vía GetIt DI.
+    // sl<SharedPreferences>() es sincrónico — no necesita .then() ni await.
+    final prefs = sl<SharedPreferences>();
+    _is3D.value = prefs.getBool('is3D') ?? false;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final bleBloc = context.read<BleBloc>();

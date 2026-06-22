@@ -156,7 +156,10 @@ class NodosApp extends StatelessWidget {
 final _router = GoRouter(
   initialLocation: '/onboarding',
   redirect: (context, state) async {
-    final prefs = await SharedPreferences.getInstance();
+    // T3.4 (R12): Obtener SharedPreferences vía GetIt DI en lugar
+    // de getInstance(). SharedPreferences ya está registrado como
+    // lazySingleton en injection_container.dart:64-65.
+    final prefs = sl<SharedPreferences>();
     final onboardingComplete = prefs.getBool('onboarding_complete') ?? false;
     final isOnboarding = state.matchedLocation == '/onboarding';
 

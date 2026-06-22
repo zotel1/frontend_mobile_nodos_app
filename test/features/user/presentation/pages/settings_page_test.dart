@@ -236,5 +236,54 @@ void main() {
       verify(mockUserBloc.add(const UpdateThemeMode(ThemeMode.system)))
           .called(1);
     });
+
+    // ─── PR3 T3.1 (R13): LoadProfile siempre al navegar ────────
+    // QUÉ: verifica que SettingsPage dispara LoadProfile() al
+    //   navegar, incluso cuando el estado actual YA es UserLoaded.
+    // POR QUÉ: R13 — el perfil debe refrescarse cada vez que se
+    //   navega a SettingsPage, sin importar el estado actual del
+    //   UserBloc. Esto corrige B4 (settings stale post-creación).
+    testWidgets(
+        'T3.1: dispacha LoadProfile al navegar incluso con estado UserLoaded',
+        (tester) async {
+      final mockUserBloc = MockUserBloc();
+      when(mockUserBloc.state).thenReturn(UserLoaded(_testUser));
+      when(mockUserBloc.stream)
+          .thenAnswer((_) => Stream.value(UserLoaded(_testUser)));
+
+      await tester.pumpWidget(MaterialApp(
+        home: BlocProvider<UserBloc>.value(
+          value: mockUserBloc,
+          child: const SettingsPage(),
+        ),
+      ));
+      // pump extra para que addPostFrameCallback se ejecute
+      await tester.pump();
+
+      // R13: Siempre debe disparar LoadProfile al navegar,
+      // sin importar el estado actual del UserBloc.
+      verify(mockUserBloc.add(const LoadProfile())).called(1);
+    });
+
+    // T3.1 triangulación: también dispara LoadProfile con UserInitial
+    testWidgets(
+        'T3.1b: dispacha LoadProfile al navegar con estado UserInitial',
+        (tester) async {
+      final mockUserBloc = MockUserBloc();
+      when(mockUserBloc.state).thenReturn(const UserInitial());
+      when(mockUserBloc.stream)
+          .thenAnswer((_) => Stream.value(const UserInitial()));
+
+      await tester.pumpWidget(MaterialApp(
+        home: BlocProvider<UserBloc>.value(
+          value: mockUserBloc,
+          child: const SettingsPage(),
+        ),
+      ));
+      await tester.pump();
+
+      // Debe disparar LoadProfile también con UserInitial.
+      verify(mockUserBloc.add(const LoadProfile())).called(1);
+    });
   });
 }
