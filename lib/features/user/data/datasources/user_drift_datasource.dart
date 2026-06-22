@@ -11,7 +11,13 @@ class UserDriftDataSource implements UserLocalDataSource {
 
   @override
   Future<domain.User?> getUser() async {
-    final row = await _db.select(_db.users).getSingleOrNull();
+    // PR4: .limit(1) hace explícito que solo esperamos una fila.
+    // QUÉ: agrega LIMIT 1 a la query SQL generada por Drift.
+    // POR QUÉ: getSingleOrNull ya lanza si hay más de una fila,
+    // pero sin LIMIT el plan de ejecución podría escanear toda la
+    // tabla. Con CHECK(id=1) solo hay una fila, pero .limit(1)
+    // es documentación ejecutable del contrato.
+    final row = await (_db.select(_db.users)..limit(1)).getSingleOrNull();
     return row != null ? _toDomain(row) : null;
   }
 
