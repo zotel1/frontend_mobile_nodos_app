@@ -210,6 +210,16 @@ class HistoryBloc extends Bloc<HistoryEvent, HistoryState> {
     final currentState = state;
     if (currentState is! HistoryLoaded) return;
 
+    // T-PR1-012: Guardar los datos del estado actual ANTES de emitir loading,
+    // porque después de emitir loading, currentState ya no es HistoryLoaded
+    // y no podemos llamar copyWith() sobre él.
+    final previousSessions = currentState.sessions;
+    final previousStats = currentState.stats;
+    final previousFilters = currentState.filters;
+
+    // Emitir loading para que la UI muestre spinner mientras carga el detalle.
+    emit(const HistoryLoading());
+
     final result = await getSessionDetail(
       GetSessionDetailParams(sessionId: event.sessionId),
     );
@@ -219,7 +229,10 @@ class HistoryBloc extends Bloc<HistoryEvent, HistoryState> {
       (nodes) => nodes,
     );
 
-    emit(currentState.copyWith(
+    emit(HistoryLoaded(
+      sessions: previousSessions,
+      stats: previousStats,
+      filters: previousFilters,
       detailNodes: detailNodes,
       selectedSessionId: event.sessionId,
     ));
