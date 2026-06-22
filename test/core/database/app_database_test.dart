@@ -439,4 +439,182 @@ void main() {
       );
     });
   });
+
+  // ──────────────────────── PR4: Security Hardening ────────────────────────
+
+  group('Migration v4→v5: índices en connections', () {
+    test('T4.1: crea índices idx_connections_from_node_id y idx_connections_to_node_id',
+        () async {
+      // R15: connections table MUST have non-unique indices on
+      // (from_node_id) and (to_node_id).
+      final indexes = await db.customSelect(
+        "SELECT name FROM sqlite_master WHERE type='index'"
+        " AND name LIKE 'idx_connections_%'",
+      ).get();
+
+      final names = indexes.map((r) => r.read<String>('name')).toSet();
+      expect(names,
+          containsAll(['idx_connections_from_node_id', 'idx_connections_to_node_id']),
+          reason: 'La migración v5 debe crear ambos índices en connections');
+      expect(indexes, hasLength(2),
+          reason: 'Debe haber exactamente 2 índices con prefijo idx_connections_');
+    });
+  });
+
+  group('CASCADE delete en scan_session_nodes', () {
+    test('T4.2: ON DELETE CASCADE — borrar ScanSession elimina scan_session_nodes asociados',
+        () async {
+      // R16: scan_session_nodes FK to scan_sessions MUST include ON DELETE CASCADE.
+      final now = _truncateToMs(DateTime.now());
+
+      // Crear sesión
+      final sessionId = await db.into(db.scanSessions).insert(
+            ScanSessionsCompanion(
+              startedAt: Value(now),
+              nodesDetected: const Value(3),
+            ),
+          );
+
+      // Crear 3 nodos
+      final nodeId1 = await db.into(db.nodes).insert(
+            NodesCompanion(
+              bleAddress: const Value('CA:SC:AD:EE:01:01'),
+              firstSeen: Value(now),
+              lastSeen: Value(now),
+              rssiHistory: const Value('[-55]'),
+            ),
+          );
+      final nodeId2 = await db.into(db.nodes).insert(
+            NodesCompanion(
+              bleAddress: const Value('CA:SC:AD:EE:02:02'),
+              firstSeen: Value(now),
+              lastSeen: Value(now),
+              rssiHistory: const Value('[-65]'),
+            ),
+          );
+      final nodeId3 = await db.into(db.nodes).insert(
+            NodesCompanion(
+              bleAddress: const Value('CA:SC:AD:EE:03:03'),
+              firstSeen: Value(now),
+              lastSeen: Value(now),
+              rssiHistory: const Value('[-75]'),
+            ),
+          );
+
+      // Insertar 3 filas en scan_session_nodes
+      await db.into(db.scanSessionNodes).insert(
+            ScanSessionNodesCompanion(
+              sessionId: Value(sessionId),
+              nodeId: Value(nodeId1),
+              rssi: const Value(-55),
+            ),
+          );
+      await db.into(db.scanSessionNodes).insert(
+            ScanSessionNodesCompanion(
+              sessionId: Value(sessionId),
+              nodeId: Value(nodeId2),
+              rssi: const Value(-65),
+            ),
+          );
+      await db.into(db.scanSessionNodes).insert(
+            ScanSessionNodesCompanion(
+              sessionId: Value(sessionId),
+              nodeId: Value(nodeId3),
+              rssi: const Value(-75),
+            ),
+          );
+
+      // Verificar que existen 3 filas
+      var rows = await db.select(db.scanSessionNodes).get();
+      expect(rows, hasLength(3),
+          reason: 'Debe haber 3 filas antes de borrar la sesión');
+
+      // Borrar la sesión → CASCADE debe eliminar las filas asociadas
+      await (db.delete(db.scanSessions)
+            ..where((s) => s.id.equals(sessionId)))
+          .go();
+
+      // Verificar que las filas asociadas fueron eliminadas automáticamente
+      rows = await db.select(db.scanSessionNodes).get();
+      expect(rows, isEmpty,
+          reason: 'ON DELETE CASCADE debe eliminar automáticamente'
+              ' las filas en scan_session_nodes al borrar la sesión padre');
+    });
+  });
+
+  group('Transaction atomicity', () {
+    test('T4.3: addNodesToSession en transaction — fallo en insert → rollback, 0 filas',
+        () async {
+      // R17: Multi-table writes MUST be wrapped in a transaction for atomicity.
+      final now = _truncateToMs(DateTime.now());
+
+      // Crear sesión
+      final sessionId = await db.into(db.scanSessions).insert(
+            ScanSessionsCompanion(
+              startedAt: Value(now),
+              nodesDetected: const Value(0),
+            ),
+          );
+
+      // Crear nodos válidos
+      final nodeId1 = await db.into(db.nodes).insert(
+            NodesCompanion(
+              bleAddress: const Value('TX:AC:TI:ON:01:01'),
+              firstSeen: Value(now),
+              lastSeen: Value(now),
+              rssiHistory: const Value('[-55]'),
+            ),
+          );
+      final nodeId2 = await db.into(db.nodes).insert(
+            NodesCompanion(
+              bleAddress: const Value('TX:AC:TI:ON:02:02'),
+              firstSeen: Value(now),
+              lastSeen: Value(now),
+              rssiHistory: const Value('[-65]'),
+            ),
+          );
+
+      // Ejecutar inserts dentro de una transaction.
+      // El 3er insert es duplicado (mismo sessionId+nodeId que el 1ro)
+      // SIN usar insertOrIgnore → debe lanzar UNIQUE constraint violation.
+      try {
+        await db.transaction(() async {
+          // Insert 1: válido (sessionId, nodeId1)
+          await db.into(db.scanSessionNodes).insert(
+                ScanSessionNodesCompanion.insert(
+                  sessionId: sessionId,
+                  nodeId: nodeId1,
+                  rssi: -55,
+                ),
+              );
+          // Insert 2: válido (sessionId, nodeId2)
+          await db.into(db.scanSessionNodes).insert(
+                ScanSessionNodesCompanion.insert(
+                  sessionId: sessionId,
+                  nodeId: nodeId2,
+                  rssi: -65,
+                ),
+              );
+          // Insert 3: DUPLICADO del insert 1 → debe lanzar excepción
+          // (sin insertOrIgnore para que falle realmente)
+          await db.into(db.scanSessionNodes).insert(
+                ScanSessionNodesCompanion.insert(
+                  sessionId: sessionId,
+                  nodeId: nodeId1,
+                  rssi: -70,
+                ),
+              );
+        });
+        fail('Debería haber lanzado excepción por UNIQUE constraint');
+      } catch (_) {
+        // Esperado: la transaction hizo rollback automático
+      }
+
+      // Verificar rollback: ninguna fila fue insertada
+      final rows = await db.select(db.scanSessionNodes).get();
+      expect(rows, isEmpty,
+          reason: 'La transacción debe hacer rollback completo:'
+              ' 0 filas insertadas tras el fallo');
+    });
+  });
 }
