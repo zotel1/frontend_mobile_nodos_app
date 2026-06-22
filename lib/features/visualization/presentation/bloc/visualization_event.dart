@@ -62,3 +62,28 @@ class NodeDeselected extends VisualizationEvent {
   @override
   List<Object?> get props => [];
 }
+
+/// Reintenta la construcción del grafo después de un error.
+///
+/// QUÉ: el usuario presionó "Reintentar" en la UI de error del grafo.
+/// Redispra [BuildGraphRequested] con los mismos parámetros que
+/// causaron el error original.
+///
+/// POR QUÉ: T-PR1-012 — antes no existía este evento. Cuando el grafo
+/// fallaba (GraphError), la UI mostraba el error pero no ofrecía forma
+/// de reintentar. El usuario quedaba atrapado viendo un mensaje de error.
+///
+/// [lastSessionId] y [lastNodes] son los parámetros originales del
+/// [BuildGraphRequested] que falló.
+class RetryGraphBuild extends VisualizationEvent {
+  final int lastSessionId;
+  final List<Node> lastNodes;
+
+  const RetryGraphBuild({
+    required this.lastSessionId,
+    required this.lastNodes,
+  });
+
+  @override
+  List<Object?> get props => [lastSessionId, lastNodes];
+}

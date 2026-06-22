@@ -209,7 +209,9 @@ void main() {
     );
 
     blocTest<UserBloc, UserState>(
-      'LoadProfile reads saved dark theme from SharedPreferences',
+      // T-PR1-004: themeMode ahora se preserva del estado actual, no de SharedPreferences.
+      // En primera carga (UserInitial), el default es ThemeMode.system.
+      'LoadProfile usa ThemeMode.system cuando no hay estado previo cargado',
       setUp: () async {
         SharedPreferences.setMockInitialValues({'theme_mode': 'dark'});
         prefs = await SharedPreferences.getInstance();
@@ -221,25 +223,25 @@ void main() {
       expect: () => [
         isA<UserLoading>(),
         isA<UserLoaded>()
-            .having((s) => s.themeMode, 'themeMode', ThemeMode.dark)
+            .having((s) => s.themeMode, 'themeMode', ThemeMode.system)
             .having((s) => s.user, 'user', testUser),
       ],
     );
 
     blocTest<UserBloc, UserState>(
-      'LoadProfile reads saved light theme from SharedPreferences',
-      setUp: () async {
-        SharedPreferences.setMockInitialValues({'theme_mode': 'light'});
-        prefs = await SharedPreferences.getInstance();
+      // T-PR1-004: Si el estado anterior es UserLoaded con dark, se preserva dark.
+      'LoadProfile preserva themeMode del estado anterior',
+      setUp: () {
         when(mockGetUserProfile.call(any))
             .thenAnswer((_) async => Right(testUser));
       },
       build: buildBloc,
+      seed: () => UserLoaded(testUser, themeMode: ThemeMode.dark),
       act: (bloc) => bloc.add(LoadProfile()),
       expect: () => [
         isA<UserLoading>(),
         isA<UserLoaded>()
-            .having((s) => s.themeMode, 'themeMode', ThemeMode.light)
+            .having((s) => s.themeMode, 'themeMode', ThemeMode.dark)
             .having((s) => s.user, 'user', testUser),
       ],
     );

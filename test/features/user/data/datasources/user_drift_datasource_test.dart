@@ -94,16 +94,20 @@ void main() {
       expect(retrieved!.color, '#FF0000');
     });
 
-    test('updateName does nothing when no user exists', () async {
-      // Should not throw
-      await dataSource.updateName('ShouldNotMatter');
-      expect(await dataSource.getUser(), isNull);
+    // T-PR2-004: Ahora lanza StateError en lugar de silent no-op.
+    test('updateName lanza StateError cuando no hay usuario', () async {
+      expect(
+        () => dataSource.updateName('ShouldNotMatter'),
+        throwsA(isA<StateError>()),
+      );
     });
 
-    test('updateColor does nothing when no user exists', () async {
-      // Should not throw
-      await dataSource.updateColor('#000000');
-      expect(await dataSource.getUser(), isNull);
+    // T-PR2-004: Ahora lanza StateError en lugar de silent no-op.
+    test('updateColor lanza StateError cuando no hay usuario', () async {
+      expect(
+        () => dataSource.updateColor('#000000'),
+        throwsA(isA<StateError>()),
+      );
     });
   });
 }

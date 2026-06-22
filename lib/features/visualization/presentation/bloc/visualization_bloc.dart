@@ -90,6 +90,8 @@ class VisualizationBloc
     on<BuildGraphRequested>(_onBuildGraphRequested);
     on<NodeSelected>(_onNodeSelected);
     on<NodeDeselected>(_onNodeDeselected);
+    // T-PR1-012: Handler para reintentar construcción del grafo tras error.
+    on<RetryGraphBuild>(_onRetryGraphBuild);
   }
 
   /// Aplica debounce a BuildGraphRequested usando un contador de secuencia.
@@ -255,6 +257,32 @@ class VisualizationBloc
       emit(GraphReady(currentState.layout,
           barycenter: currentState.barycenter));
     }
+  }
+
+  /// Reintenta la construcción del grafo después de un error.
+  ///
+  /// QUÉ: convierte [RetryGraphBuild] en un nuevo [BuildGraphRequested]
+  /// con los mismos parámetros originales y lo procesa con el pipeline
+  /// normal de construcción (debounce + build + layout).
+  ///
+  /// POR QUÉ: T-PR1-012 — antes no existía este mecanismo. Cuando
+  /// el grafo fallaba (GraphError), no había forma de reintentar
+  /// desde la UI. El usuario quedaba atrapado en el mensaje de error.
+  ///
+  /// Solo procesa si el estado actual es [GraphError] — no tiene
+  /// sentido reintentar desde otros estados.
+  void _onRetryGraphBuild(
+    RetryGraphBuild event,
+    Emitter<VisualizationState> emit,
+  ) {
+    if (state is! GraphError) return;
+
+    // Redispatch como un BuildGraphRequested normal, que pasará
+    // por el pipeline completo: debounce → build → layout.
+    add(BuildGraphRequested(
+      scanSessionId: event.lastSessionId,
+      nodes: event.lastNodes,
+    ));
   }
 
   /// PR2: Calcula el barycenter (centro geométrico) del cluster de nodos.
