@@ -130,6 +130,55 @@ class _StubWebViewPlatform extends WebViewPlatform
   }
 }
 
+// ─── Stub que lanza excepción para tests de estado error (T2.3) ──
+// QUÉ: simula fallo en carga del WebView lanzando excepción en
+// loadFlutterAsset.
+// POR QUÉ: necesario para probar R8 — el widget debe mostrar
+// "Error al cargar…" cuando el WebView falla.
+
+class _FailingStubWebViewController extends _StubWebViewController {
+  _FailingStubWebViewController(super.params);
+
+  @override
+  Future<void> loadFlutterAsset(String key) async {
+    throw Exception('Simulated asset load failure');
+  }
+}
+
+class _FailingStubWebViewPlatform extends WebViewPlatform
+    with MockPlatformInterfaceMixin {
+  _FailingStubWebViewController? _controller;
+
+  @override
+  PlatformWebViewController createPlatformWebViewController(
+    PlatformWebViewControllerCreationParams params,
+  ) {
+    _controller = _FailingStubWebViewController(params);
+    return _controller!;
+  }
+
+  @override
+  PlatformWebViewWidget createPlatformWebViewWidget(
+    PlatformWebViewWidgetCreationParams params,
+  ) {
+    return _StubWebViewWidget(params);
+  }
+
+  @override
+  PlatformNavigationDelegate createPlatformNavigationDelegate(
+    PlatformNavigationDelegateCreationParams params,
+  ) {
+    return _StubNavigationDelegate(params);
+  }
+
+  @override
+  PlatformWebViewCookieManager createPlatformCookieManager(
+    PlatformWebViewCookieManagerCreationParams params,
+  ) {
+    throw UnimplementedError();
+  }
+}
+
 void main() {
   late _StubWebViewPlatform stubPlatform;
 
@@ -338,11 +387,18 @@ void main() {
         ),
       );
 
-      // Verifica que el WebViewWidget existe en el árbol (vía stub)
+      // PR2: Primero muestra estado de carga (R6)
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      // Simular que la página terminó de cargar para salir del estado loading
+      final controller = stubPlatform.controller;
+      controller.simulatePageFinished('about:blank');
+      await tester.pump();
+
+      // Ahora el WebViewWidget debe ser visible
       expect(find.byKey(const Key('stub_webview')), findsOneWidget);
 
       // Verifica que se solicitó cargar el asset correcto
-      final controller = stubPlatform.controller;
       expect(controller.loadedAssets, contains('assets/three_graph/graph_3d.html'));
     });
 
@@ -568,6 +624,115 @@ void main() {
           reason: 'Después de onPageFinished debe inyectar los datos');
       expect(afterCalls.first, contains('"nodes"'),
           reason: 'El JSON inyectado debe contener nodos');
+    });
+  });
+
+  // ═══════════ PR2: Estados loading / empty / error ═══════════════
+
+  group('PR2: estados de carga, vacío y error (R6, R7, R8)', () {
+    // ─── T2.1: Estado loading (R6) ──────────────────────────────────
+    // QUÉ: al crear el widget, _isLoading = true → debe mostrar
+    // CircularProgressIndicator con texto "Cargando…".
+    // POR QUÉ: R6 — el usuario debe ver feedback visual mientras
+    // el WebView inicializa (pantalla en blanco anterior causaba B2).
+
+    testWidgets('T2.1: muestra CircularProgressIndicator al iniciar carga',
+        (WidgetTester tester) async {
+      final layout = LayoutResult(
+        nodes: [
+          const GraphNode(
+            id: 1,
+            x: 0,
+            y: 0,
+            proximity: ProximityLevel.medium,
+          ),
+        ],
+        edges: [],
+        iterations: 1,
+        converged: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: GraphView3D(layout: layout),
+        ),
+      );
+
+      // _isLoading = true en initState → debe mostrar indicador de carga
+      expect(find.byType(CircularProgressIndicator), findsOneWidget,
+          reason: 'Debe mostrar CircularProgressIndicator mientras carga');
+      expect(find.textContaining('Cargando'), findsOneWidget,
+          reason: 'Debe mostrar texto "Cargando…" mientras el WebView inicializa');
+    });
+
+    // ─── T2.2: Estado vacío (R7) ───────────────────────────────────
+    // QUÉ: cuando layout.nodes.isEmpty y la página ya cargó, debe
+    // mostrar texto "No hay nodos…".
+    // POR QUÉ: R7 — el usuario debe saber que no hay nodos
+    // disponibles para visualizar en 3D.
+
+    testWidgets('T2.2: muestra texto vacío cuando nodeCount == 0',
+        (WidgetTester tester) async {
+      final emptyLayout = LayoutResult(
+        nodes: [],
+        edges: [],
+        iterations: 0,
+        converged: false,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: GraphView3D(layout: emptyLayout),
+        ),
+      );
+
+      // Simula que el WebView terminó de cargar para salir del estado loading
+      stubPlatform.controller.simulatePageFinished('about:blank');
+      await tester.pump();
+
+      // layout.nodes.isEmpty → debe mostrar texto de vacío
+      expect(find.textContaining('No hay nodos'), findsOneWidget,
+          reason: 'Debe mostrar mensaje de estado vacío cuando no hay nodos');
+    });
+
+    // ─── T2.3: Estado error (R8) ───────────────────────────────────
+    // QUÉ: cuando el WebView falla al cargar el asset, debe mostrar
+    // texto "Error al cargar…".
+    // POR QUÉ: R8 — el usuario debe saber que ocurrió un error sin
+    // ver pantalla en blanco ni perder la vista 2D.
+
+    testWidgets('T2.3: muestra error cuando falla la carga del WebView',
+        (WidgetTester tester) async {
+      // Usa un stub que lanza excepción en loadFlutterAsset
+      final errorPlatform = _FailingStubWebViewPlatform();
+      WebViewPlatform.instance = errorPlatform;
+
+      final layout = LayoutResult(
+        nodes: [
+          const GraphNode(
+            id: 1,
+            x: 0,
+            y: 0,
+            proximity: ProximityLevel.medium,
+          ),
+        ],
+        edges: [],
+        iterations: 1,
+        converged: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: GraphView3D(layout: layout),
+        ),
+      );
+      // Permitir que _loadContent falle y setState se procese
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // _hasError = true → debe mostrar texto de error (R8)
+      expect(find.textContaining('Error al cargar'), findsOneWidget,
+          reason: 'Debe mostrar mensaje de error cuando falla la carga del WebView');
     });
   });
 }
