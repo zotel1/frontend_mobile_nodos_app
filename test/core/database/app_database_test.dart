@@ -135,10 +135,11 @@ void main() {
       expect(allUsers, isEmpty);
     });
 
-    test('reads all users', () async {
+    test('reads all users (CHECK(id=1) limita a 1 fila)', () async {
       final now = _truncateToMs(DateTime.now());
       await db.into(db.users).insert(
             UsersCompanion(
+              id: const Value(1),
               uuid: const Value('a-1'),
               name: const Value('Alice'),
               color: const Value('#aaa'),
@@ -146,18 +147,23 @@ void main() {
               createdAt: Value(now),
             ),
           );
-      await db.into(db.users).insert(
-            UsersCompanion(
-              uuid: const Value('b-2'),
-              name: const Value('Bob'),
-              color: const Value('#bbb'),
-              deviceType: const Value('ios'),
-              createdAt: Value(now),
+
+      // CHECK(id=1): un segundo usuario con id≠1 debe fallar.
+      await expectLater(
+        () => db.into(db.users).insert(
+              UsersCompanion(
+                uuid: const Value('b-2'),
+                name: const Value('Bob'),
+                color: const Value('#bbb'),
+                deviceType: const Value('ios'),
+                createdAt: Value(now),
+              ),
             ),
-          );
+        throwsA(isA<Exception>()),
+      );
 
       final users = await db.select(db.users).get();
-      expect(users, hasLength(2));
+      expect(users, hasLength(1));
     });
   });
 
@@ -539,6 +545,161 @@ void main() {
       expect(rows, isEmpty,
           reason: 'ON DELETE CASCADE debe eliminar automáticamente'
               ' las filas en scan_session_nodes al borrar la sesión padre');
+    });
+  });
+
+  // ──────────────────────── PR3: Data Layer Performance ────────────────────────
+
+  group('Índices de performance (T-PR3-001)', () {
+    // QUÉ: verifica que los índices definidos en el schema existen físicamente
+    // en la base de datos.
+    // POR QUÉ: los índices son necesarios para acelerar las queries frecuentes:
+    //   - nodes.ble_address: upsert lookup en cada detección BLE
+    //   - scan_session_nodes.node_id: JOIN en queries de grafo social
+    //   - scan_sessions.started_at: ordenamiento en historial de sesiones
+
+    test('creates index on nodes.ble_address', () async {
+      final indexes = await db.customSelect(
+        "SELECT name FROM sqlite_master WHERE type='index'"
+        " AND name='idx_nodes_ble_address'",
+      ).get();
+      expect(indexes, hasLength(1),
+          reason: 'Debe existir un índice en nodes(ble_address)');
+    });
+
+    test('creates index on scan_session_nodes.node_id', () async {
+      final indexes = await db.customSelect(
+        "SELECT name FROM sqlite_master WHERE type='index'"
+        " AND name='idx_scan_session_nodes_node_id'",
+      ).get();
+      expect(indexes, hasLength(1),
+          reason: 'Debe existir un índice en scan_session_nodes(node_id)');
+    });
+
+    test('creates index on scan_sessions.started_at', () async {
+      final indexes = await db.customSelect(
+        "SELECT name FROM sqlite_master WHERE type='index'"
+        " AND name='idx_scan_sessions_started_at'",
+      ).get();
+      expect(indexes, hasLength(1),
+          reason: 'Debe existir un índice en scan_sessions(started_at)');
+    });
+
+    test('EXPLAIN QUERY PLAN para upsertNode usa índice ble_address', () async {
+      // Inserta un nodo primero para que el EXPLAIN tenga datos reales.
+      final now = _truncateToMs(DateTime.now());
+      await db.into(db.nodes).insert(
+            NodesCompanion(
+              bleAddress: const Value('EX:PL:AI:N0:DE:01'),
+              firstSeen: Value(now),
+              lastSeen: Value(now),
+              rssiHistory: const Value('[-55]'),
+            ),
+          );
+
+      // QUÉ: verifica que el query planner de SQLite usa el índice
+      // idx_nodes_ble_address cuando se hace un SELECT por bleAddress.
+      // POR QUÉ: el upsertNode busca por bleAddress en cada detección BLE
+      // y debe usar el índice para evitar un full table scan.
+      final plan = await db.customSelect(
+        "EXPLAIN QUERY PLAN SELECT * FROM nodes WHERE ble_address = ?",
+        variables: [Variable.withString('EX:PL:AI:N0:DE:01')],
+      ).get();
+
+      final detail = plan.map((r) => r.read<String>('detail')).join(' ');
+      expect(detail, contains('USING INDEX'),
+          reason: 'El EXPLAIN QUERY PLAN debe mostrar USING INDEX para'
+              ' la búsqueda por ble_address');
+    });
+  });
+
+  group('CHECK(id=1) en Users', () {
+    // QUÉ: verifica que la tabla Users tiene un CHECK constraint que
+    // limita la columna id a valor 1.
+    // POR QUÉ: la app es single-user por diseño (MVP). Forzar CHECK(id=1)
+    // previene la creación accidental de múltiples filas de usuario y
+    // simplifica las queries del repositorio.
+
+    test('solo permite INSERT con id=1', () async {
+      final now = _truncateToMs(DateTime.now());
+      // Insert con id=1 debe funcionar.
+      await db.into(db.users).insert(
+            UsersCompanion(
+              id: const Value(1),
+              uuid: const Value('check-user-1'),
+              name: const Value('Uno'),
+              color: const Value('#000'),
+              deviceType: const Value('android'),
+              createdAt: Value(now),
+            ),
+          );
+
+      // Insert con id distinto de 1 debe fallar.
+      expect(
+        () => db.into(db.users).insert(
+              UsersCompanion(
+                id: const Value(2),
+                uuid: const Value('check-user-2'),
+                name: const Value('Dos'),
+                color: const Value('#fff'),
+                deviceType: const Value('ios'),
+                createdAt: Value(now),
+              ),
+            ),
+        throwsA(isA<Exception>()),
+      );
+    });
+  });
+
+  group('CASCADE delete en scan_session_nodes.node_id FK', () {
+    test('T-PR3-002: ON DELETE CASCADE en node_id — borrar Node elimina'
+        ' scan_session_nodes asociados', () async {
+      // QUÉ: verifica que eliminar un nodo borra automáticamente sus
+      // filas en scan_session_nodes (CASCADE).
+      // POR QUÉ: actualmente solo session_id tiene CASCADE. Si un nodo
+      // se borra, scan_session_nodes quedaría con referencias huérfanas.
+      final now = _truncateToMs(DateTime.now());
+
+      // Crear sesión
+      final sessionId = await db.into(db.scanSessions).insert(
+            ScanSessionsCompanion(
+              startedAt: Value(now),
+              nodesDetected: const Value(1),
+            ),
+          );
+
+      // Crear nodo
+      final nodeId = await db.into(db.nodes).insert(
+            NodesCompanion(
+              bleAddress: const Value('CA:SC:NO:DE:F0:01'),
+              firstSeen: Value(now),
+              lastSeen: Value(now),
+              rssiHistory: const Value('[-55]'),
+            ),
+          );
+
+      // Insertar en scan_session_nodes
+      await db.into(db.scanSessionNodes).insert(
+            ScanSessionNodesCompanion(
+              sessionId: Value(sessionId),
+              nodeId: Value(nodeId),
+              rssi: const Value(-55),
+            ),
+          );
+
+      // Verificar que existe
+      var rows = await db.select(db.scanSessionNodes).get();
+      expect(rows, hasLength(1));
+
+      // Borrar el nodo → CASCADE debe eliminar la fila asociada
+      await (db.delete(db.nodes)..where((n) => n.id.equals(nodeId))).go();
+
+      // Verificar que scan_session_nodes quedó vacío
+      rows = await db.select(db.scanSessionNodes).get();
+      expect(rows, isEmpty,
+          reason: 'ON DELETE CASCADE en node_id debe eliminar'
+              ' automáticamente las filas en scan_session_nodes'
+              ' al borrar el nodo padre');
     });
   });
 

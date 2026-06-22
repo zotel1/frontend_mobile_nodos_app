@@ -230,5 +230,93 @@ void main() {
       final result = await dataSource.getNodeByBleAddress('FF:EE:DD:CC:BB:AA');
       expect(result, isNull);
     });
+
+    // ─── PR3: Mapper unificado _toCompanion(node, isInsert) ──────
+    // QUÉ: verifica que el mapper unificado produce los Companions
+    // correctos según el parámetro isInsert.
+    // POR QUÉ: antes existían dos métodos separados (_toCompanion y
+    // _toInsertCompanion) con lógica duplicada. El mapper unificado
+    // reduce el código duplicado y centraliza la lógica de mapeo.
+
+    test('mapper unificado con isInsert=false produce NodesCompanion normal', () async {
+      // QUÉ: upsertNode usa el mapper con isInsert=false para el UPDATE.
+      // El Companion resultante debe usar Values (no insert companion).
+      final node = createNode(
+        bleAddress: 'MA:PP:ER:IN:S0:01',
+        name: 'MapperTest',
+        color: '#ABC',
+        rssiHistory: [-50],
+      );
+
+      await dataSource.upsertNode(node);
+
+      // Update → verifica que el UPDATE funciona (usa mapper con isInsert=false)
+      final updated = createNode(
+        id: 1,
+        bleAddress: 'MA:PP:ER:IN:S0:01',
+        name: 'MapperUpdated',
+        color: '#DEF',
+        rssiHistory: [-50, -45],
+      );
+      await dataSource.upsertNode(updated);
+
+      final retrieved = await dataSource.getNodeById(1);
+      expect(retrieved!.name, 'MapperUpdated');
+      expect(retrieved.color, '#DEF');
+      expect(retrieved.rssiHistory, [-50, -45]);
+    });
+
+    test('mapper unificado con isInsert=true produce insert companion correcto', () async {
+      // QUÉ: el primer upsertNode usa el mapper con isInsert=true.
+      // El Companion debe ser un insertCompanion (sin id explícito,
+      // auto-increment), que produzca una fila nueva.
+      final node = createNode(
+        bleAddress: 'MA:PP:ER:IN:S0:02',
+        name: 'Fresh',
+        rssiHistory: [-60],
+      );
+
+      await dataSource.upsertNode(node);
+
+      final retrieved = await dataSource.getNodeById(1);
+      expect(retrieved, isNotNull);
+      expect(retrieved!.bleAddress, 'MA:PP:ER:IN:S0:02');
+      expect(retrieved.name, 'Fresh');
+      expect(retrieved.rssiHistory, [-60]);
+      // connectable debe tener default false cuando no se especifica
+      expect(retrieved.connectable, false);
+    });
+
+    test('mapper unificado preserva suggestedName en update (freeze on first detection)',
+        () async {
+      // QUÉ: verifica que el upsert (update path) preserva el
+      // suggestedName de la primera detección.
+      // POR QUÉ: el suggestedName se congela en la primera detección
+      // para evitar que actualizaciones posteriores lo sobrescriban.
+      final first = Node(
+        bleAddress: 'FR:EE:ZE:NA:ME:01',
+        name: 'Desconocido',
+        firstSeen: now,
+        lastSeen: now,
+        rssiHistory: const [-70],
+        suggestedName: 'Device-A',
+      );
+
+      await dataSource.upsertNode(first);
+
+      // Segunda detección sin suggestedName
+      final second = createNode(
+        bleAddress: 'FR:EE:ZE:NA:ME:01',
+        name: 'Desconocido',
+        rssiHistory: [-70, -65],
+      );
+
+      await dataSource.upsertNode(second);
+
+      final retrieved = await dataSource.getNodeById(1);
+      // El suggestedName debería preservarse del primer insert
+      expect(retrieved!.suggestedName, 'Device-A',
+          reason: 'suggestedName debe congelarse en la primera detección');
+    });
   });
 }

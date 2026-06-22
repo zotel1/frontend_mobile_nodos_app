@@ -68,6 +68,12 @@ class MockBleScannerDataSource extends _i1.Mock
             returnValueForMissingStub: _i3.Future<void>.value(),
           )
           as _i3.Future<void>);
+
+  @override
+  void dispose() => super.noSuchMethod(
+    Invocation.method(#dispose, []),
+    returnValueForMissingStub: null,
+  );
 }
 
 /// A class which mocks [BleAdvertiserDataSource].
