@@ -460,4 +460,48 @@ void main() {
       expect(device.deviceType, isNull);
     });
   });
+
+  // ─── T1.4: Test del filtro RSSI relajado ──────────────────────
+  // QUÉ: Verifica que el umbral de filtro RSSI ahora acepta
+  // dispositivos con RSSI >= -95 (antes rechazaba por debajo de -85).
+  // POR QUÉ: en producción _bindToPlatform() usa rssiPassesFilter()
+  // para decidir si un dispositivo se incluye en los resultados.
+  group('T1.4 — RSSI filter threshold (R2)', () {
+    test('RSSI -92 pasa el filtro con el nuevo umbral -95', () {
+      // El método estático rssiPassesFilter usa proximityThresholdFar (-95).
+      // RSSI -92 >= -95 → true (pasa el filtro).
+      expect(
+        FlutterBluePlusDataSource.rssiPassesFilter(-92),
+        isTrue,
+        reason: 'RSSI -92 debe pasar con umbral -95 (relajado de -85)',
+      );
+    });
+
+    test('RSSI -95 (exacto en el umbral) pasa el filtro', () {
+      // El umbral es >= (inclusive). RSSI -95 debe pasar.
+      expect(
+        FlutterBluePlusDataSource.rssiPassesFilter(-95),
+        isTrue,
+        reason: 'RSSI igual al umbral (-95) debe pasar (>=)',
+      );
+    });
+
+    test('RSSI -96 no pasa el filtro (debajo del umbral)', () {
+      // RSSI -96 < -95 → false (rechazado).
+      expect(
+        FlutterBluePlusDataSource.rssiPassesFilter(-96),
+        isFalse,
+        reason: 'RSSI -96 no debe pasar con umbral -95',
+      );
+    });
+
+    test('RSSI -40 (señal fuerte) pasa el filtro', () {
+      // Dispositivo cercano con señal fuerte debe pasar siempre.
+      expect(
+        FlutterBluePlusDataSource.rssiPassesFilter(-40),
+        isTrue,
+        reason: 'RSSI fuerte (-40) debe pasar cualquier filtro razonable',
+      );
+    });
+  });
 }

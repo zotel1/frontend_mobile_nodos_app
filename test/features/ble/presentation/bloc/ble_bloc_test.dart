@@ -17,13 +17,16 @@ import 'ble_bloc_test.mocks.dart';
 void main() {
   late MockBleRepository mockRepository;
 
+  /// Dispositivo de prueba con timestamp reciente (dentro del umbral de
+  /// evicción de 30s). Necesario porque accumulateDevices evicciona
+  /// dispositivos con timestamp >30s de antigüedad respecto a DateTime.now().
   final testBleDevice = BleDevice(
     deviceId: 'AA:BB:CC:DD:EE:FF',
     deviceUuid: '4fafc201-1fb5-459e-8fcc-c5c9c331914b',
     rssi: -45,
     distance: 0.56,
     proximity: ProximityLevel.close,
-    timestamp: DateTime(2026, 1, 1),
+    timestamp: DateTime.now().subtract(const Duration(seconds: 5)),
   );
 
   setUp(() {
@@ -244,5 +247,180 @@ void main() {
       expect: () => [],
       tearDown: () async {},
     );
+  });
+
+  // ─── PR1: Acumulación, evicción, capping del BleBloc ──────
+
+  group('PR1 — Acumulación de dispositivos (R1)', () {
+    final now = DateTime(2026, 6, 21, 12, 0, 0);
+    final deviceA = BleDevice(
+      deviceId: 'AA:BB:CC:DD:EE:FF',
+      rssi: -45,
+      distance: 0.56,
+      proximity: ProximityLevel.close,
+      timestamp: now,
+    );
+    final deviceB = BleDevice(
+      deviceId: '11:22:33:44:55:66',
+      rssi: -60,
+      distance: 3.0,
+      proximity: ProximityLevel.medium,
+      timestamp: now.add(const Duration(seconds: 5)),
+    );
+
+    group('accumulateDevices (función pura)', () {
+      // Helper: llama a accumulateDevices con now=el timestamp más reciente + 1s
+      // para simular que DateTime.now() está apenas después del último evento.
+      List<BleDevice> acc(
+        Map<String, BleDevice> current,
+        List<BleDevice> incoming, {
+        DateTime? referenceNow,
+      }) {
+        final latest = incoming.isNotEmpty
+            ? incoming.map((d) => d.timestamp).reduce(
+                  (a, b) => a.isAfter(b) ? a : b,
+                )
+            : now;
+        return BleBloc.accumulateDevices(
+          current,
+          incoming,
+          now: referenceNow ?? latest.add(const Duration(seconds: 1)),
+        );
+      }
+
+      // T1.1: Dos batches consecutivos con dispositivos A y B
+      // → la lista acumulada contiene ambos.
+      test('T1.1: fusión de dos batches → ambos dispositivos en resultado',
+          () {
+        // Primer batch: solo deviceA
+        final afterFirst = acc({}, [deviceA]);
+        expect(afterFirst.length, 1);
+        expect(afterFirst.first.deviceId, 'AA:BB:CC:DD:EE:FF');
+
+        // Convertir a mapa para simular estado acumulado
+        final accumulated = {
+          for (final d in afterFirst) d.deviceId: d,
+        };
+
+        // Segundo batch: solo deviceB
+        final afterSecond = acc(accumulated, [deviceB]);
+        expect(afterSecond.length, 2);
+        expect(
+          afterSecond.map((d) => d.deviceId),
+          containsAll(['AA:BB:CC:DD:EE:FF', '11:22:33:44:55:66']),
+        );
+      });
+
+      // T1.2: Dispositivo con timestamp >30s atrás → evicted.
+      test('T1.2: dispositivo stale >30s → removido del resultado', () {
+        final staleDevice = BleDevice(
+          deviceId: 'FF:EE:DD:CC:BB:AA',
+          rssi: -70,
+          distance: 10.0,
+          proximity: ProximityLevel.far,
+          timestamp: now.subtract(const Duration(seconds: 31)),
+        );
+
+        final result = BleBloc.accumulateDevices(
+          {},
+          [staleDevice],
+          now: now, // now mismo → 31s de diferencia → evicted
+        );
+        // El dispositivo stale debe ser evicted inmediatamente
+        expect(result, isEmpty);
+      });
+
+      // T1.2 b: Dispositivo reciente NO es evicted (triangulación).
+      test('T1.2: dispositivo reciente no es evicted', () {
+        final recentDevice = BleDevice(
+          deviceId: 'AA:BB:CC:DD:EE:FF',
+          rssi: -45,
+          distance: 0.56,
+          proximity: ProximityLevel.close,
+          timestamp: now,
+        );
+
+        final result = BleBloc.accumulateDevices(
+          {},
+          [recentDevice],
+          now: now.add(const Duration(seconds: 1)),
+        );
+        expect(result.length, 1);
+        expect(result.first.deviceId, 'AA:BB:CC:DD:EE:FF');
+      });
+
+      // T1.2 c: Múltiples dispositivos, solo el stale es evicted.
+      test('T1.2: mezcla de fresh y stale → solo fresh sobrevive', () {
+        final staleDevice = BleDevice(
+          deviceId: 'STALE:01',
+          rssi: -70,
+          distance: 10.0,
+          proximity: ProximityLevel.far,
+          timestamp: now.subtract(const Duration(seconds: 31)),
+        );
+
+        final result = BleBloc.accumulateDevices(
+          {deviceA.deviceId: deviceA},
+          [staleDevice],
+          now: now, // 31s after stale, 0s after deviceA → only deviceA survives
+        );
+        expect(result.length, 1);
+        expect(result.first.deviceId, 'AA:BB:CC:DD:EE:FF');
+      });
+
+      // T1.3: 51 dispositivos → máximo 50 en resultado, oldest evicted.
+      test('T1.3: 51 dispositivos → resultado máximo 50, oldest evicted',
+          () {
+        final devices = List.generate(51, (i) => BleDevice(
+              deviceId: 'DEV:${i.toString().padLeft(3, '0')}',
+              rssi: -50 - i,
+              distance: 1.0 + i,
+              proximity: ProximityLevel.medium,
+              timestamp: now.add(Duration(seconds: i)),
+            ));
+
+        final result = BleBloc.accumulateDevices(
+          {},
+          devices,
+          now: now.add(const Duration(seconds: 52)),
+        );
+
+        // Máximo 50 dispositivos
+        expect(result.length, lessThanOrEqualTo(50));
+        // El más antiguo (DEV:000) debe ser evicted
+        expect(
+          result.map((d) => d.deviceId),
+          isNot(contains('DEV:000')),
+        );
+        // El más reciente (DEV:050) debe estar presente
+        expect(
+          result.map((d) => d.deviceId),
+          contains('DEV:050'),
+        );
+      });
+
+      // T1.3 b: Exactamente 50 dispositivos → sin evicción (triangulación).
+      test('T1.3: exactamente 50 dispositivos → todos sobreviven', () {
+        final devices = List.generate(50, (i) => BleDevice(
+              deviceId: 'DEV:${i.toString().padLeft(3, '0')}',
+              rssi: -50 - i,
+              distance: 1.0 + i,
+              proximity: ProximityLevel.medium,
+              timestamp: now.add(Duration(seconds: i)),
+            ));
+
+        // now está a 25s del dispositivo más antiguo → dentro del umbral
+        final result = BleBloc.accumulateDevices(
+          {},
+          devices,
+          now: now.add(const Duration(seconds: 25)),
+        );
+        expect(result.length, 50);
+      });
+    });
+    // La lógica de acumulación, evicción y capping está validada
+    // exhaustivamente en los tests de accumulateDevices (función pura).
+    // La integración con streams de BLoC se prueba indirectamente vía los
+    // tests existentes de BleBloc (que usan StartScan + scanResults mock).
   });
 }

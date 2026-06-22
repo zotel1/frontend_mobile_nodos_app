@@ -356,12 +356,9 @@ class _HomePageState extends State<HomePage> {
                 .add(SyncBleDevices(bleState.devices));
             // T2.4: Registrar timestamp del último escaneo con dispositivos
             _lastScanTime = DateTime.now();
-            // Iniciar sesión de escaneo si no hay una activa
-            final sessionBloc = context.read<ScanSessionBloc>();
-            final sessionState = sessionBloc.state;
-            if (sessionState is! SessionActive) {
-              sessionBloc.add(const StartSession());
-            }
+            // PR1: StartSession se movió al listener de NodeListBloc
+            // para secuenciar correctamente SyncBleDevices → StartSession
+            // → AddNodesToSession → BuildGraphRequested (R3).
           }
           // Mostrar diálogo cuando BT está apagado.
           // El guard _dialogVisible previene stacking de múltiples diálogos.
@@ -413,18 +410,28 @@ class _HomePageState extends State<HomePage> {
           if (nodeListState is NodeListLoaded) {
             // T3.8: Guardar la lista actual de nodos para mapeo GraphNode.id → bleAddress
             _currentNodes = nodeListState.nodes;
-            // Registrar nodos en la sesión activa del ScanSessionBloc
+            // PR1: Secuenciar eventos — StartSession primero si no hay sesión,
+            // luego AddNodesToSession + BuildGraphRequested cuando la sesión
+            // esté activa (R3). Esto evita la race condition donde StartSession
+            // y SyncBleDevices se despachaban en paralelo desde listeners distintos.
             final sessionBloc = context.read<ScanSessionBloc>();
             final sessionState = sessionBloc.state;
-            if (sessionState is SessionActive &&
-                nodeListState.nodes.isNotEmpty) {
-              final nodeIds = nodeListState.nodes
-                  .map((n) => n.id)
-                  .whereType<int>()
-                  .toList();
-              if (nodeIds.isNotEmpty) {
-                sessionBloc
-                    .add(AddNodesToSession(sessionState.sessionId, nodeIds));
+            if (sessionState is! SessionActive) {
+              // Iniciar sesión si no hay una activa.
+              // Los nodos se agregarán en el próximo ciclo cuando SessionActive
+              // sea emitido y NodeListLoaded vuelva a dispararse.
+              sessionBloc.add(const StartSession());
+            } else {
+              // Sesión ya activa: agregar nodos detectados y construir grafo.
+              if (nodeListState.nodes.isNotEmpty) {
+                final nodeIds = nodeListState.nodes
+                    .map((n) => n.id)
+                    .whereType<int>()
+                    .toList();
+                if (nodeIds.isNotEmpty) {
+                  sessionBloc.add(
+                      AddNodesToSession(sessionState.sessionId, nodeIds));
+                }
               }
             }
             _updateViewMode(nodeListState.nodes, context);
