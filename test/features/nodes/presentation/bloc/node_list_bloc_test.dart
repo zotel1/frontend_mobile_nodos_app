@@ -230,5 +230,55 @@ void main() {
         ),
       ],
     );
+
+    // ── T-PR1-009 RED: SyncBleDevices no debe emitir NodeListLoading ─
+    // QUÉ: cuando el estado actual ya es NodeListLoaded (nodos ya visibles),
+    // SyncBleDevices NO debe emitir NodeListLoading porque causaría un
+    // flicker: la UI mostraría un spinner por un instante, luego la lista
+    // de nodos otra vez.
+    // POR QUÉ: actualmente _onSyncBleDevices llama a _subscribeToNodes
+    // que siempre emite NodeListLoading. Durante escaneo BLE continuo,
+    // esto causa parpadeo (flicker) cada vez que llegan nuevos dispositivos.
+    // El fix: si ya hay _nodesSubscription activa (state is NodeListLoaded),
+    // no re-suscribirse ni emitir loading.
+    blocTest<NodeListBloc, NodeListState>(
+      'T-PR1-009 RED: SyncBleDevices cuando ya está NodeListLoaded NO emite NodeListLoading',
+      seed: () => NodeListLoaded(testNodes),
+      build: () {
+        // Configurar ObserveNodes para que emita (simulando suscripción activa).
+        when(mockObserveNodes.call())
+            .thenAnswer((_) => Stream.value(testNodes));
+        when(mockNodeRepository.upsertNode(any))
+            .thenAnswer((_) async {});
+        return NodeListBloc(
+          observeNodes: mockObserveNodes,
+          updateNodeMetadata: mockUpdateNodeMetadata,
+          nodeRepository: mockNodeRepository,
+        );
+      },
+      act: (bloc) => bloc.add(SyncBleDevices([
+        BleDevice(
+          deviceId: 'BB:CC:DD:EE:FF:00',
+          rssi: -60,
+          distance: 2.0,
+          proximity: ProximityLevel.medium,
+          timestamp: now,
+        ),
+      ])),
+      // En RED: el test espera que NO se emita NodeListLoading.
+      // Actualmente _subscribeToNodes SIEMPRE emite NodeListLoading.
+      // El test fallará porque ve NodeListLoading en la secuencia.
+      expect: () => [
+        // No debe haber NodeListLoading
+        // La suscripción existente emitirá los nodos actualizados
+      ],
+      // Verificar que upsertNode fue llamado para el nuevo dispositivo
+      verify: (_) {
+        verify(mockNodeRepository.upsertNode(argThat(
+          predicate((n) =>
+              n is Node && n.bleAddress == 'BB:CC:DD:EE:FF:00'),
+        ))).called(1);
+      },
+    );
   });
 }

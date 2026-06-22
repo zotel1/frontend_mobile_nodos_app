@@ -239,5 +239,34 @@ void main() {
       expect: () => [],
       tearDown: () async {},
     );
+
+    // ─── T-PR1-011 RED: StartScan limpia BleError ────────────────
+    // QUÉ: verifica que al despachar StartScan cuando el estado
+    // actual es BleError, el BLoC emite BleScanning (limpiando el
+    // error) en lugar de superponer el error.
+    // POR QUÉ: actualmente _onStartScan emite BleScanning() sin
+    // importar el estado previo. Pero si el estado previo es BleError,
+    // la UI puede mostrar el error viejo mientras scanea, confundiendo
+    // al usuario. El fix: al iniciar escaneo desde BleError, el error
+    // se limpia implícitamente al emitir BleScanning.
+    // En RED: este test ya debería pasar porque emit(BleScanning())
+    // reemplaza el estado BleError de todos modos. Pero verifica que
+    // el comportamiento es correcto y no se regresa en el futuro.
+
+    blocTest<BleBloc, BleState>(
+      'T-PR1-011: StartScan desde BleError limpia el error y emite BleScanning',
+      seed: () => const BleError('Error previo de escaneo'),
+      build: () {
+        when(mockRepository.startScan()).thenAnswer((_) async {});
+        when(mockRepository.scanResults)
+            .thenAnswer((_) => Stream<List<BleDevice>>.empty());
+        return BleBloc(repository: mockRepository);
+      },
+      act: (bloc) => bloc.add(const StartScan()),
+      expect: () => [
+        // BleError es reemplazado por BleScanning — no hay rastro del error
+        isA<BleScanning>(),
+      ],
+    );
   });
 }

@@ -144,14 +144,54 @@ void main() {
         filters: const HistoryFilters(),
       ),
       act: (bloc) => bloc.add(const SelectSession(sessionId: 1)),
+      // T-PR1-012 actualizó _onSelectSession para emitir HistoryLoading primero.
+      // El test ahora espera ambas emisiones.
       expect: () => [
-        // Verifica que las sesiones persisten y selectedSessionId se actualiza
+        isA<HistoryLoading>(),
         HistoryLoaded(
           sessions: testSessions,
           stats: testStats,
           filters: const HistoryFilters(),
           detailNodes: [],
           selectedSessionId: 1,
+        ),
+      ],
+    );
+
+    // ─── T-PR1-011 RED: SelectSession emite loading ────────────
+    // QUÉ: verifica que SelectSession emite HistoryLoading antes de
+    // HistoryLoaded, para que la UI muestre un indicador de progreso
+    // mientras se carga el detalle de la sesión.
+    // POR QUÉ: actualmente _onSelectSession no emite loading. Si el
+    // detalle tarda en cargar (muchos nodos en sesión), la UI no
+    // muestra feedback y el usuario cree que la app está trabada.
+    // En RED: el test falla porque HistoryLoading no está en la secuencia.
+
+    blocTest<HistoryBloc, HistoryState>(
+      'T-PR1-011 RED: SelectSession emite HistoryLoading antes del resultado cargado',
+      build: () {
+        // Forzar un delay en getSessionDetail para simular carga lenta
+        when(mockGetDetail.call(any)).thenAnswer((_) async {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          return const Right(<SessionNode>[]);
+        });
+        return buildBloc();
+      },
+      seed: () => HistoryLoaded(
+        sessions: testSessions,
+        stats: testStats,
+        filters: const HistoryFilters(),
+      ),
+      act: (bloc) => bloc.add(const SelectSession(sessionId: 1)),
+      // wait asegura que el Future.delayed(50ms) en el mock se resuelva
+      // y el BLoC emita HistoryLoaded después de HistoryLoading.
+      wait: const Duration(milliseconds: 200),
+      expect: () => [
+        isA<HistoryLoading>(),
+        isA<HistoryLoaded>().having(
+          (s) => s.selectedSessionId,
+          'selectedSessionId',
+          1,
         ),
       ],
     );

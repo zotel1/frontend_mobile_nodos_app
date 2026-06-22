@@ -159,5 +159,60 @@ void main() {
       act: (bloc) => bloc.add(const DisconnectDevice('any-id')),
       expect: () => [],
     );
+
+    // ─────────── T-PR1-001: _ConnectionStateChanged handler (RED) ───────────
+    // QUÉ: verifica que cuando el stream de conexión emite false (desconexión),
+    // el BLoC emite BleConnectionInitial en lugar de ignorarlo.
+    // POR QUÉ: actualmente la suscripción solo maneja connected==true.
+    // Si el periférico se desconecta (connected==false), el BLoC no reacciona
+    // y el estado queda como BleConnected fantasma, causando que la UI muestre
+    // "Conectado" cuando en realidad no hay conexión.
+
+    blocTest<BleConnectionBloc, BleConnectionState>(
+      'T-PR1-001: emite BleConnectionInitial cuando el stream emite false (desconexión)',
+      build: () {
+        when(mockDatasource.connect(any)).thenAnswer((_) async {});
+        when(mockDatasource.connectionState(any))
+            .thenAnswer((_) => stateController.stream);
+        // Emitir false DESPUÉS de que connect() retorne y la suscripción
+        // esté configurada. Usamos un delay corto para asegurar que
+        // _onConnect ya configuró la suscripción al stream.
+        Future.delayed(const Duration(milliseconds: 20), () {
+          stateController.add(false);
+        });
+        return BleConnectionBloc(gatt: mockDatasource);
+      },
+      seed: () => const BleConnected(remoteId: 'AA:BB:CC:DD:EE:FF'),
+      act: (bloc) => bloc.add(const ConnectToDevice('AA:BB:CC:DD:EE:FF')),
+      // wait asegura que blocTest espere a que el timer dispare y el
+      // BLoC procese el evento _ConnectionStateChanged(false).
+      wait: const Duration(milliseconds: 100),
+      expect: () => [
+        isA<BleConnecting>(),
+        isA<BleConnected>(),
+        isA<BleConnectionInitial>(),
+      ],
+    );
+
+    blocTest<BleConnectionBloc, BleConnectionState>(
+      'T-PR1-001: _ConnectionStateChanged no crashea con StateError',
+      build: () {
+        when(mockDatasource.connect(any)).thenAnswer((_) async {});
+        when(mockDatasource.connectionState(any))
+            .thenAnswer((_) => stateController.stream);
+        Future.delayed(const Duration(milliseconds: 20), () {
+          stateController.add(false);
+        });
+        return BleConnectionBloc(gatt: mockDatasource);
+      },
+      seed: () => const BleConnected(remoteId: 'FF:EE:DD:CC:BB:AA'),
+      act: (bloc) => bloc.add(const ConnectToDevice('FF:EE:DD:CC:BB:AA')),
+      wait: const Duration(milliseconds: 100),
+      expect: () => [
+        isA<BleConnecting>(),
+        isA<BleConnected>(),
+        isA<BleConnectionInitial>(),
+      ],
+    );
   });
 }

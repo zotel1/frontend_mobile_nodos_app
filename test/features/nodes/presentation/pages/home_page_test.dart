@@ -428,6 +428,57 @@ void main() {
       verify(mockBleBloc.add(const StartScan())).called(1);
     });
 
+    // ─── T-PR1-009 RED: _bleBloc capturado sincrónicamente en initState ──
+    // QUÉ: verifica que _bleBloc se captura ANTES del addPostFrameCallback,
+    // para que dispose() siempre pueda despachar StopScan aunque el callback
+    // nunca se ejecute (widget destruido antes del primer frame).
+    // POR QUÉ: actualmente la captura ocurre DENTRO del callback. Si el
+    // widget se destruye sin que el callback se ejecute, _bleBloc es null
+    // y dispose() nunca despacha StopScan → el escaneo queda activo y
+    // drena batería aunque la app ya no esté en la Home tab.
+    testWidgets(
+        'T-PR1-009 RED: _bleBloc se captura sincrónicamente — StopScan en dispose funciona sin postFrameCallback',
+        (tester) async {
+      final mockBleBloc = MockBleBloc();
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockVizBloc = MockVisualizationBloc();
+
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream)
+          .thenAnswer((_) => Stream.value(const BleStopped()));
+      when(mockNodeListBloc.state).thenReturn(const NodeListInitial());
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(const NodeListInitial()));
+      when(mockVizBloc.state).thenReturn(const VisualizationInitial());
+      when(mockVizBloc.stream)
+          .thenAnswer((_) => Stream.value(const VisualizationInitial()));
+
+      // Construir el widget — initState se ejecuta inmediatamente.
+      // NOTA: NO llamamos a pump() — queremos verificar que dispose
+      // funciona incluso si addPostFrameCallback nunca se ejecutó.
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      // Destruir el widget sin esperar al primer frame.
+      // En RED: _bleBloc es null (no se capturó sincrónicamente)
+      // → StopScan nunca se despacha.
+      // En GREEN: _bleBloc fue capturado antes del callback
+      // → StopScan se despacha correctamente incluso sin callback.
+      await tester.pumpWidget(const SizedBox());
+
+      // Verificar que StopScan fue despachado
+      verify(mockBleBloc.add(const StopScan())).called(1);
+    });
+
     // T1.8: FAB removido — no debe existir FloatingActionButton en la UI.
     testWidgets('FAB is removed from HomePage (auto-scan replaces it)',
         (tester) async {
@@ -1093,6 +1144,86 @@ void main() {
 
       // Verificar el SnackBar "Conectando..."
       expect(find.textContaining('Conectando'), findsOneWidget);
+    });
+
+    // ─── T-PR1-005 RED: Botón Reintentar en SnackBar de error de conexión ──
+    // QUÉ: verifica que el SnackBarAction "Reintentar" mostrado ante
+    // BleConnectionError con retryable=true despacha ConnectToDevice
+    // con el remoteId correcto.
+    // POR QUÉ: actualmente el onPressed del botón está vacío —
+    // el usuario ve "Reintentar" pero al tocarlo no pasa nada.
+    // El bug hace que la reconexión sea imposible desde la UI.
+
+    testWidgets(
+        'T-PR1-005 RED: SnackBarAction "Reintentar" dispara ConnectToDevice con el remoteId correcto',
+        (tester) async {
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+      final mockConnectionBloc = MockBleConnectionBloc();
+
+      const testRemoteId = 'AA:BB:CC:DD:EE:FF';
+
+      when(mockNodeListBloc.state).thenReturn(const NodeListLoaded([]));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(const NodeListLoaded([])));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream)
+          .thenAnswer((_) => Stream.value(const BleStopped()));
+      when(mockVizBloc.state).thenReturn(const VisualizationInitial());
+      when(mockVizBloc.stream)
+          .thenAnswer((_) => Stream.value(const VisualizationInitial()));
+
+      // Stream del BleConnectionBloc: primero BleConnecting (para que
+      // HomePage almacene _lastRemoteId), luego BleConnectionError.
+      when(mockConnectionBloc.stream).thenAnswer(
+        (_) => Stream.fromIterable([
+          const BleConnecting(remoteId: testRemoteId),
+          const BleConnectionError(
+            message: 'Connection timed out',
+            retryable: true,
+          ),
+        ]),
+      );
+      // El estado inicial y durante el stream debe ser coherente
+      when(mockConnectionBloc.state).thenReturn(const BleConnecting(remoteId: testRemoteId));
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(
+                value: mockConnectionBloc),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      // Procesar BleConnecting → _lastRemoteId se almacenaría
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      // Procesar BleConnectionError → SnackBar con Reintentar
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Verificar que el SnackBar muestra el texto de error y botón Reintentar
+      expect(find.textContaining('Error:'), findsOneWidget);
+      expect(find.text('Reintentar'), findsOneWidget);
+
+      // Tocar Reintentar — debería despachar ConnectToDevice
+      // En RED: el onPressed está vacío, así que no despacha nada.
+      await tester.tap(find.text('Reintentar'));
+      await tester.pump();
+
+      // Verificar que ConnectToDevice fue despachado con el remoteId correcto.
+      // En RED: esta verificación falla porque onPressed está vacío.
+      verify(mockConnectionBloc.add(
+        argThat(
+          predicate((e) =>
+              e is ConnectToDevice && e.remoteId == testRemoteId),
+        ),
+      )).called(1);
     });
   });
 }

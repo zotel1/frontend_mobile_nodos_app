@@ -542,5 +542,44 @@ void main() {
         ),
       ],
     );
+
+    // ─── T-PR1-011 RED: RetryGraphBuild ──────────────────────────
+    // QUÉ: verifica que al despachar RetryGraphBuild cuando el estado
+    // es GraphError, el BLoC redispare BuildGraphRequested con los
+    // mismos parámetros (sessionId y nodos) que causaron el error.
+    // POR QUÉ: actualmente no existe RetryGraphBuild. Cuando el grafo
+    // falla, el usuario ve "Error al construir grafo" sin opción de
+    // reintentar. La UI necesita un evento de reintento que rearme
+    // la construcción del grafo con los parámetros originales.
+
+    blocTest<VisualizationBloc, VisualizationState>(
+      'T-PR1-011: RetryGraphBuild desde GraphError redispra BuildGraphRequested',
+      build: () {
+        setupDefaultMocks();
+        return VisualizationBloc(
+          buildGraph: mockBuildGraph,
+          calculateLayout: mockCalculateLayout,
+          debounceDuration: Duration.zero,
+        );
+      },
+      seed: () => const GraphError('Error previo'),
+      act: (bloc) => bloc.add(RetryGraphBuild(
+        lastSessionId: 42,
+        lastNodes: [testNodeA],
+      )),
+      // wait: el build es asíncrono, damos tiempo para que complete
+      wait: const Duration(seconds: 1),
+      expect: () => [
+        isA<GraphBuilding>(),
+        isA<GraphReady>().having(
+          (s) => s.layout,
+          'layout',
+          equals(testLayout),
+        ),
+      ],
+      verify: (_) {
+        verify(mockBuildGraph.call(42)).called(1);
+      },
+    );
   });
 }

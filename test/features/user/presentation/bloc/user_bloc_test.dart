@@ -345,5 +345,88 @@ void main() {
         ))).called(1);
       },
     );
+
+    // ─── T-PR1-003 RED: Preservación de themeMode ──────────────
+    // QUÉ: verifica que el themeMode no se pierde al realizar
+    // operaciones de perfil (updateName, updateColor, LoadProfile).
+    // POR QUÉ: actualmente _onUpdateName, _onUpdateColor, y
+    // _onLoadProfile emiten UserLoaded(user) sin el parámetro
+    // themeMode, lo que resetea el tema a ThemeMode.system.
+    // El usuario cambia a modo oscuro y al actualizar el nombre
+    // se le resetea el tema a system.
+
+    blocTest<UserBloc, UserState>(
+      'T-PR1-003 RED: setear dark mode → updateName → themeMode sigue dark',
+      seed: () => UserLoaded(testUser, themeMode: ThemeMode.dark),
+      build: () {
+        when(mockUpdateUserName.call(any))
+            .thenAnswer((_) async => const Right(null));
+        when(mockGetUserProfile.call(any))
+            .thenAnswer((_) async => Right(testUser.copyWith(name: 'Nuevo Nombre')));
+        return UserBloc(
+          getProfile: mockGetUserProfile,
+          updateName: mockUpdateUserName,
+          updateColor: mockUpdateUserColor,
+          userRepository: mockUserRepository,
+        );
+      },
+      act: (bloc) => bloc.add(const UpdateUserNameEvent('Nuevo Nombre')),
+      // En RED: el test debe fallar porque UserLoaded se emite con
+      // themeMode=system (default) en lugar de ThemeMode.dark.
+      expect: () => [
+        isA<UserLoading>(),
+        isA<UserLoaded>()
+            .having((s) => s.user.name, 'name', 'Nuevo Nombre')
+            .having((s) => s.themeMode, 'themeMode', ThemeMode.dark),
+      ],
+    );
+
+    blocTest<UserBloc, UserState>(
+      'T-PR1-003 RED: setear light mode → updateColor → themeMode sigue light',
+      seed: () => UserLoaded(testUser, themeMode: ThemeMode.light),
+      build: () {
+        when(mockUpdateUserColor.call(any))
+            .thenAnswer((_) async => const Right(null));
+        when(mockGetUserProfile.call(any))
+            .thenAnswer((_) async => Right(testUser.copyWith(color: '#00FF00')));
+        return UserBloc(
+          getProfile: mockGetUserProfile,
+          updateName: mockUpdateUserName,
+          updateColor: mockUpdateUserColor,
+          userRepository: mockUserRepository,
+        );
+      },
+      act: (bloc) => bloc.add(const UpdateUserColorEvent('#00FF00')),
+      // En RED: debe fallar — UserLoaded se emite con themeMode=system (default).
+      expect: () => [
+        isA<UserLoading>(),
+        isA<UserLoaded>()
+            .having((s) => s.user.color, 'color', '#00FF00')
+            .having((s) => s.themeMode, 'themeMode', ThemeMode.light),
+      ],
+    );
+
+    blocTest<UserBloc, UserState>(
+      'T-PR1-003 RED: LoadProfile emite UserLoaded con themeMode=system por defecto',
+      build: () {
+        when(mockGetUserProfile.call(any))
+            .thenAnswer((_) async => Right(testUser));
+        return UserBloc(
+          getProfile: mockGetUserProfile,
+          updateName: mockUpdateUserName,
+          updateColor: mockUpdateUserColor,
+          userRepository: mockUserRepository,
+        );
+      },
+      act: (bloc) => bloc.add(LoadProfile()),
+      expect: () => [
+        isA<UserLoading>(),
+        isA<UserLoaded>().having(
+          (s) => s.themeMode,
+          'themeMode',
+          ThemeMode.system,
+        ),
+      ],
+    );
   });
 }
