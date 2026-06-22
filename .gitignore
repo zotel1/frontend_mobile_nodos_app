@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Android release keystore properties (contiene contraseñas)
+/android/keystore.properties

@@ -37,28 +37,33 @@ class ScanSessionRepositoryImpl implements ScanSessionRepository {
 
   @override
   Future<void> addNodesToSession(int sessionId, List<int> nodeIds) async {
-    for (final nodeId in nodeIds) {
-      await _db.into(_db.scanSessionNodes).insert(
-            ScanSessionNodesCompanion.insert(
-              sessionId: sessionId,
-              nodeId: nodeId,
-              rssi: -100,
-            ),
-            mode: InsertMode.insertOrIgnore,
-          );
-    }
+    // R17: envolver inserts + count update en una transaction
+    // para garantizar atomicidad. Si cualquier operación falla,
+    // todas las escrituras hacen rollback automáticamente.
+    await _db.transaction(() async {
+      for (final nodeId in nodeIds) {
+        await _db.into(_db.scanSessionNodes).insert(
+              ScanSessionNodesCompanion.insert(
+                sessionId: sessionId,
+                nodeId: nodeId,
+                rssi: -100,
+              ),
+              mode: InsertMode.insertOrIgnore,
+            );
+      }
 
-    // Actualizar el contador de nodos en la sesión
-    final count = await (_db.select(_db.scanSessionNodes)
-          ..where((t) => t.sessionId.equals(sessionId)))
-        .get()
-        .then((rows) => rows.length);
+      // Actualizar el contador de nodos en la sesión
+      final count = await (_db.select(_db.scanSessionNodes)
+            ..where((t) => t.sessionId.equals(sessionId)))
+          .get()
+          .then((rows) => rows.length);
 
-    await (_db.update(_db.scanSessions)
-          ..where((t) => t.id.equals(sessionId)))
-        .write(ScanSessionsCompanion(
-      nodesDetected: Value(count),
-    ));
+      await (_db.update(_db.scanSessions)
+            ..where((t) => t.id.equals(sessionId)))
+          .write(ScanSessionsCompanion(
+        nodesDetected: Value(count),
+      ));
+    });
   }
 
   @override

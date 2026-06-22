@@ -57,7 +57,13 @@ Future<void> initDependencies() async {
   FlutterBluePlus.setOperationQueueMode(OperationQueueMode.perDevice);
 
   // ── Database ──
-  sl.registerLazySingleton<AppDatabase>(() => AppDatabase());
+  // R14: SQLCipher encryption key derivada de un seed específico del dispositivo.
+  // En producción, la clave se derivará de flutter_secure_storage.
+  // Para pre-release, usamos un seed constante combinado con el nombre de la app.
+  const encryptionSeed = 'nodos_app_v1_encryption_seed_2026';
+  sl.registerLazySingleton<AppDatabase>(
+    () => AppDatabase(encryptionKey: encryptionSeed),
+  );
 
   // ── SharedPreferences ──
   // Usado para persistir preferencias de usuario (tema, etc.)
