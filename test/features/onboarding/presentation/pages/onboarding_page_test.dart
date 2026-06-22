@@ -322,5 +322,54 @@ void main() {
       expect(find.text('Bluetooth activado'), findsOneWidget);
       expect(find.text('Continuar'), findsOneWidget);
     });
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // T5.1: Hardware back bloqueado (R20, R21)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    // T5.1: QUÉ — verifica que el botón back del hardware está bloqueado
+    // en la OnboardingPage via PopScope(canPop: false) y que al intentar
+    // salir se muestra un diálogo de confirmación.
+    // POR QUÉ — sin esta protección, el usuario puede saltarse el
+    // onboarding presionando back (N1), dejando la app sin perfil.
+    testWidgets(
+        'T5.1: hardware back bloqueado — dialogo de confirmacion aparece',
+        (tester) async {
+      await tester.pumpWidget(_pumpOnboardingPage(
+        mockUserBloc: mockUserBloc,
+        mockBleBloc: mockBleBloc,
+      ));
+      await tester.pump();
+
+      // Verificar que estamos en la página de onboarding
+      expect(find.text('Paso 1 de 3'), findsOneWidget);
+
+      // Simular hardware back button via handlePopRoute
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Dialogo de confirmación debe aparecer
+      expect(
+        find.text('¿Salir sin completar el perfil?'),
+        findsOneWidget,
+      );
+      expect(find.text('Cancelar'), findsOneWidget);
+      expect(find.text('Salir'), findsOneWidget);
+
+      // Seguimos en la página de onboarding (no navegó a ningún lado)
+      expect(find.text('Paso 1 de 3'), findsOneWidget);
+
+      // Tocar Cancelar cierra el diálogo sin salir
+      await tester.tap(find.text('Cancelar'));
+      await tester.pumpAndSettle();
+
+      // Diálogo desapareció, seguimos en onboarding
+      expect(
+        find.text('¿Salir sin completar el perfil?'),
+        findsNothing,
+      );
+      expect(find.text('Paso 1 de 3'), findsOneWidget);
+    });
   });
 }
