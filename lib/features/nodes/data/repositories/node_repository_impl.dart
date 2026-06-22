@@ -20,6 +20,19 @@ class NodeRepositoryImpl implements NodeRepository {
   Future<void> updateNodeMetadata(int id, {String? name, String? color}) async {
     final existing = await _dataSource.getNodeById(id);
     if (existing == null) return;
+
+    // T-PR2-002: Al construir el Node actualizado, preservar suggestedName
+    // y deviceType del nodo original.
+    //
+    // QUÉ: estos campos se enriquecen en la primera detección (Phase 4
+    // identity enrichment). Si no se incluyen al actualizar metadata,
+    // se pierden silenciosamente — el nodo vuelve a aparecer como
+    // "Desconocido" sin tipo de dispositivo.
+    //
+    // POR QUÉ bug existía: el código anterior construía Node{...} sin
+    // los campos suggestedName ni deviceType. Cualquier llamada a
+    // updateNodeMetadata (ej: desde el diálogo de edición de nodo)
+    // causaba pérdida irreversible de datos de identidad.
     final updated = Node(
       id: existing.id,
       bleAddress: existing.bleAddress,
@@ -28,6 +41,9 @@ class NodeRepositoryImpl implements NodeRepository {
       firstSeen: existing.firstSeen,
       lastSeen: existing.lastSeen,
       rssiHistory: existing.rssiHistory,
+      // T-PR2-002: Preservar metadatos de identidad del nodo original
+      suggestedName: existing.suggestedName,
+      deviceType: existing.deviceType,
     );
     await _dataSource.upsertNode(updated);
   }
