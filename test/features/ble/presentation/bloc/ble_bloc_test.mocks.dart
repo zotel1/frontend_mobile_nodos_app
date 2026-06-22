@@ -87,4 +87,13 @@ class MockBleRepository extends _i1.Mock implements _i2.BleRepository {
             returnValueForMissingStub: _i3.Future<void>.value(),
           )
           as _i3.Future<void>);
+
+  @override
+  _i3.Future<void> endScanSession() =>
+      (super.noSuchMethod(
+            Invocation.method(#endScanSession, []),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
 }

@@ -9,10 +9,12 @@ import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_scan
 import 'package:frontend_mobile_nodos_app/features/ble/data/repositories/ble_repository_impl.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_repository.dart';
+import 'package:frontend_mobile_nodos_app/features/scan_session/domain/repositories/scan_session_repository.dart';
 
 @GenerateNiceMocks([
   MockSpec<BleScannerDataSource>(),
   MockSpec<BleAdvertiserDataSource>(),
+  MockSpec<ScanSessionRepository>(),
 ])
 import 'ble_repository_impl_test.mocks.dart';
 
@@ -145,6 +147,60 @@ void main() {
 
       await sub.cancel();
       await btController.close();
+    });
+  });
+
+  // ─── PR6a: endScanSession ──────────────────────────────────────
+  // QUÉ: Verifica que BleRepositoryImpl.endScanSession delega
+  // al ScanSessionRepository.endSession.
+  // SC-PR6a-005: StopScan cierra la sesión con endedAt.
+
+  group('PR6a — endScanSession', () {
+    late MockScanSessionRepository mockSessionRepository;
+    late BleRepository repositoryWithSession;
+
+    setUp(() {
+      mockSessionRepository = MockScanSessionRepository();
+      repositoryWithSession = BleRepositoryImpl(
+        scanner: mockScanner,
+        advertiser: mockAdvertiser,
+        sessionRepository: mockSessionRepository,
+      );
+    });
+
+    test('endScanSession delega a ScanSessionRepository.endSession',
+        () async {
+      when(mockSessionRepository.getActiveSession())
+          .thenAnswer((_) async => 42);
+      when(mockSessionRepository.endSession(any))
+          .thenAnswer((_) async {});
+
+      await repositoryWithSession.endScanSession();
+
+      verify(mockSessionRepository.getActiveSession()).called(1);
+      verify(mockSessionRepository.endSession(42)).called(1);
+    });
+
+    test('endScanSession propaga error del repositorio de sesiones',
+        () async {
+      when(mockSessionRepository.getActiveSession())
+          .thenAnswer((_) async => 42);
+      when(mockSessionRepository.endSession(any))
+          .thenThrow(Exception('DB error'));
+
+      expect(
+        () => repositoryWithSession.endScanSession(),
+        throwsA(isA<Exception>()),
+      );
+    });
+
+    test('endScanSession lanza StateError si no tiene sessionRepository',
+        () async {
+      // repository (sin sessionRepository) debe lanzar StateError
+      expect(
+        () => repository.endScanSession(),
+        throwsA(isA<StateError>()),
+      );
     });
   });
 }

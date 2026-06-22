@@ -6,10 +6,14 @@
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Nodos necesita Bluetooth para detectar dispositivos cercanos</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Nodos necesita acceso a ubicación para detectar dispositivos Bluetooth cercanos</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>Nodos usa Bluetooth para anunciar tu presencia a otros dispositivos</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Nodos necesita acceso a ubicación para detectar dispositivos Bluetooth cercanos</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-central</string>
+	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
