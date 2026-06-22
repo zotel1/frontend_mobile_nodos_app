@@ -214,10 +214,14 @@ class BleConnectionBloc
       _stateSubscription = _gatt
           .connectionState(event.remoteId)
           .listen((connected) {
-        if (!isClosed && connected) {
+        if (!isClosed) {
+          // T-PR1-002: Enviar AMBOS valores, true y false.
+          // Antes solo enviaba connected==true — si el periférico
+          // se desconectaba, _ConnectionStateChanged nunca se disparaba
+          // y la UI quedaba mostrando "Conectado" fantasma.
           add(_ConnectionStateChanged(
             remoteId: event.remoteId,
-            connected: true,
+            connected: connected,
             myNodeId: event.myNodeId,
           ));
         }
@@ -252,7 +256,14 @@ class BleConnectionBloc
     _ConnectionStateChanged event,
     Emitter<BleConnectionState> emit,
   ) async {
-    if (!event.connected) return;
+    // T-PR1-002: Manejar connected==false → emitir BleConnectionInitial.
+    // Antes este handler solo hacía `if (!event.connected) return;` lo
+    // que dejaba el estado en BleConnected incluso después de una
+    // desconexión real del periférico.
+    if (!event.connected) {
+      emit(const BleConnectionInitial());
+      return;
+    }
 
     final remoteId = event.remoteId;
 

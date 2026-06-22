@@ -79,10 +79,18 @@ class NodeDriftDataSource implements NodeLocalDataSource {
 
   Node _toDomain(NodeRow row) {
     final history = <int>[];
+    // T-PR2-007: jsonDecode envuelto en try-catch para manejar JSON corrupto.
+    // Si la columna rssiHistory contiene datos inválidos (ej: por un bug
+    // de migración o corrupción), retornamos lista vacía en lugar de crashear
+    // con FormatException.
     if (row.rssiHistory != null && row.rssiHistory!.isNotEmpty) {
-      final decoded =
-          jsonDecode(row.rssiHistory!) as List<dynamic>;
-      history.addAll(decoded.cast<int>());
+      try {
+        final decoded =
+            jsonDecode(row.rssiHistory!) as List<dynamic>;
+        history.addAll(decoded.cast<int>());
+      } on FormatException {
+        // JSON corrupto → lista vacía, no crashear
+      }
     }
 
     return Node(

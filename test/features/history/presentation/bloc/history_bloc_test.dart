@@ -145,6 +145,8 @@ void main() {
       ),
       act: (bloc) => bloc.add(const SelectSession(sessionId: 1)),
       expect: () => [
+        // T-PR1-012: Ahora emite HistoryLoading antes de cargar el detalle.
+        const HistoryLoading(),
         // Verifica que las sesiones persisten y selectedSessionId se actualiza
         HistoryLoaded(
           sessions: testSessions,

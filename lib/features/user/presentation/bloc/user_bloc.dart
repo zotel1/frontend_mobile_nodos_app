@@ -138,18 +138,21 @@ class UserBloc extends Bloc<UserEvent, UserState> {
   /// la DB de usuarios estaba vacía.
   Future<void> _onLoadProfile(
       LoadProfile event, Emitter<UserState> emit) async {
-    emit(const UserLoading());
+    // T-PR1-004: Capturar themeMode actual para preservarlo durante la recarga.
+    // Si el estado anterior es UserLoaded, mantenemos el themeMode.
+    // Si es UserInitial (primera carga), usamos system como default.
+    final currentThemeMode = state is UserLoaded
+        ? (state as UserLoaded).themeMode
+        : ThemeMode.system;
 
-    // Leer tema persistido antes de cargar el perfil
-    final savedTheme = _prefs.getString('theme_mode');
-    final themeMode = _themeModeFromString(savedTheme);
+    emit(const UserLoading());
 
     final result = await getProfile(const NoParams());
 
     if (result.isRight()) {
       emit(UserLoaded(
         result.getOrElse(() => throw StateError('Imposible')),
-        themeMode: themeMode,
+        themeMode: currentThemeMode,
       ));
       return;
     }
@@ -168,12 +171,21 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     final reloadResult = await getProfile(const NoParams());
     reloadResult.fold(
       (failure) => emit(UserError(failure.message)),
-      (user) => emit(UserLoaded(user, themeMode: themeMode)),
+      (user) => emit(UserLoaded(user, themeMode: currentThemeMode)),
     );
   }
 
   Future<void> _onUpdateName(
       UpdateUserNameEvent event, Emitter<UserState> emit) async {
+    // T-PR1-004: Capturar themeMode actual ANTES de emitir UserLoading.
+    // QUÉ problema resuelve: antes _onUpdateName emitía UserLoaded(user)
+    // sin el parámetro themeMode, lo que reseteaba el tema a system.
+    // Si el usuario estaba en modo oscuro y cambiaba su nombre, el tema
+    // volvía a system. Ahora preserva el themeMode del estado anterior.
+    final currentThemeMode = state is UserLoaded
+        ? (state as UserLoaded).themeMode
+        : ThemeMode.system;
+
     emit(const UserLoading());
     final result = await updateName(UpdateUserNameParams(name: event.name));
     if (result.isLeft()) {
@@ -182,16 +194,21 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     }
     // Reload profile to get updated user data.
     final profileResult = await getProfile(const NoParams());
-    final savedTheme = _prefs.getString('theme_mode');
     profileResult.fold(
       (failure) => emit(UserError(failure.message)),
-      (user) =>
-          emit(UserLoaded(user, themeMode: _themeModeFromString(savedTheme))),
+      (user) => emit(UserLoaded(user, themeMode: currentThemeMode)),
     );
   }
 
   Future<void> _onUpdateColor(
       UpdateUserColorEvent event, Emitter<UserState> emit) async {
+    // T-PR1-004: Capturar themeMode actual antes de emitir UserLoading.
+    // Mismo bug que _onUpdateName — el tema se reseteaba a system al
+    // cambiar el color, perdiendo la preferencia del usuario.
+    final currentThemeMode = state is UserLoaded
+        ? (state as UserLoaded).themeMode
+        : ThemeMode.system;
+
     emit(const UserLoading());
     final result = await updateColor(UpdateUserColorParams(color: event.color));
     if (result.isLeft()) {
@@ -199,11 +216,9 @@ class UserBloc extends Bloc<UserEvent, UserState> {
       return;
     }
     final profileResult = await getProfile(const NoParams());
-    final savedTheme = _prefs.getString('theme_mode');
     profileResult.fold(
       (failure) => emit(UserError(failure.message)),
-      (user) =>
-          emit(UserLoaded(user, themeMode: _themeModeFromString(savedTheme))),
+      (user) => emit(UserLoaded(user, themeMode: currentThemeMode)),
     );
   }
 
@@ -218,23 +233,6 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     if (currentState is UserLoaded) {
       _prefs.setString('theme_mode', event.mode.name);
       emit(UserLoaded(currentState.user, themeMode: event.mode));
-    }
-  }
-
-  /// Convierte un string guardado en SharedPreferences a [ThemeMode].
-  ///
-  /// Si el string es null o no coincide con ningún valor conocido,
-  /// retorna [ThemeMode.system] como fallback seguro.
-  ThemeMode _themeModeFromString(String? value) {
-    switch (value) {
-      case 'light':
-        return ThemeMode.light;
-      case 'dark':
-        return ThemeMode.dark;
-      case 'system':
-        return ThemeMode.system;
-      default:
-        return ThemeMode.system;
     }
   }
 }
