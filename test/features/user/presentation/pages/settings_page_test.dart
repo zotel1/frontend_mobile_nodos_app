@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
+import 'package:frontend_mobile_nodos_app/core/utils/app_theme_mode.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/entities/user.dart';
 import 'package:frontend_mobile_nodos_app/features/user/presentation/bloc/user_bloc.dart';
 
@@ -172,7 +173,7 @@ void main() {
     // ─── Tema (Dark Mode) ──────────────────────────────────
     // QUÉ: verifica que el toggle de tema es visible y funcional
     // POR QUÉ: el usuario debe poder elegir entre sistema/claro/oscuro
-    //   desde SettingsPage. Cada selección despacha UpdateThemeMode.
+    //   desde SettingsPage. Cada selección despacha UpdateAppThemeMode.
 
     testWidgets('muestra toggle de tema con opciones Sistema/Claro/Oscuro',
         (tester) async {
@@ -205,8 +206,8 @@ void main() {
       await tester.tap(find.text('Oscuro'));
       await tester.pump();
 
-      // Verifica que UpdateThemeMode fue despachado con ThemeMode.dark.
-      verify(mockUserBloc.add(const UpdateThemeMode(ThemeMode.dark)))
+      // Verifica que UpdateThemeMode fue despachado con AppThemeMode.dark.
+      verify(mockUserBloc.add(const UpdateThemeMode(AppThemeMode.dark)))
           .called(1);
     });
 
@@ -217,9 +218,9 @@ void main() {
       // Siembra con themeMode=dark para que Sistema NO esté ya
       // seleccionado (SegmentedButton ignora taps en el valor ya activo).
       when(mockUserBloc.state)
-          .thenReturn(UserLoaded(_testUser, themeMode: ThemeMode.dark));
+          .thenReturn(UserLoaded(_testUser, themeMode: AppThemeMode.dark));
       when(mockUserBloc.stream).thenAnswer(
-          (_) => Stream.value(UserLoaded(_testUser, themeMode: ThemeMode.dark)));
+          (_) => Stream.value(UserLoaded(_testUser, themeMode: AppThemeMode.dark)));
 
       await tester.pumpWidget(MaterialApp(
         home: BlocProvider<UserBloc>.value(
@@ -232,8 +233,8 @@ void main() {
       await tester.tap(find.text('Sistema'));
       await tester.pump();
 
-      // Verifica que UpdateThemeMode fue despachado con ThemeMode.system.
-      verify(mockUserBloc.add(const UpdateThemeMode(ThemeMode.system)))
+      // Verifica que UpdateThemeMode fue despachado con AppThemeMode.system.
+      verify(mockUserBloc.add(const UpdateThemeMode(AppThemeMode.system)))
           .called(1);
     });
   });
