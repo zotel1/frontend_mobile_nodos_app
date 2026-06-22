@@ -321,7 +321,7 @@ void main() {
 
       final result = paramsToLayoutResult(resultMap, original);
       expect(result.nodes[0].userColor, equals(0xFF2196F3));
-      expect(result.nodes[0].displayColor, equals(const Color(0xFF2196F3)));
+      expect(result.nodes[0].displayColor, 0xFF2196F3);
     });
 
     test('preserva estimatedDistance del nodo original', () {
@@ -376,7 +376,7 @@ void main() {
       final result = paramsToLayoutResult(resultMap, original);
       expect(result.nodes[0].userColor, isNull);
       // displayColor debe caer al color de proximidad
-      expect(result.nodes[0].displayColor, equals(const Color(0xFF4CAF50)));
+      expect(result.nodes[0].displayColor, 0xFF4CAF50);
     });
 
     test('edgeType se preserva en aristas (desde original.edges)', () {

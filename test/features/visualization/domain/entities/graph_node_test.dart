@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_node.dart';
@@ -106,9 +105,9 @@ void main() {
         proximity: ProximityLevel.far,
       );
 
-      expect(closeNode.color, const Color(0xFF4CAF50));
-      expect(mediumNode.color, const Color(0xFFFFC107));
-      expect(farNode.color, const Color(0xFFF44336));
+      expect(closeNode.color, 0xFF4CAF50);
+      expect(mediumNode.color, 0xFFFFC107);
+      expect(farNode.color, 0xFFF44336);
     });
 
     test('label returns default when no name', () {
@@ -499,9 +498,9 @@ void main() {
         proximity: ProximityLevel.close, // verde
         userColor: 0xFF2196F3, // azul asignado por usuario
       );
-      expect(node.displayColor, equals(const Color(0xFF2196F3)));
+      expect(node.displayColor, 0xFF2196F3);
       // El color de proximidad original sigue siendo verde
-      expect(node.color, equals(const Color(0xFF4CAF50)));
+      expect(node.color, 0xFF4CAF50);
     });
 
     test('PR2: displayColor delega a color de proximidad cuando userColor es null', () {
@@ -511,7 +510,7 @@ void main() {
         y: 200.0,
         proximity: ProximityLevel.far, // rojo
       );
-      expect(node.displayColor, equals(const Color(0xFFF44336)));
+      expect(node.displayColor, 0xFFF44336);
     });
 
     test('PR2: estimatedDistance es null por defecto', () {

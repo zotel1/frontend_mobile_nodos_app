@@ -137,7 +137,7 @@ class GraphPainter extends CustomPainter {
 
       // Primer anillo (×1.5 radio)
       final ring1Paint = Paint()
-        ..color = node.color.withAlpha((baseAlpha * 255).round())
+        ..color = Color(node.color).withAlpha((baseAlpha * 255).round())
         ..style = PaintingStyle.fill;
       canvas.drawCircle(
         Offset(node.x, node.y),
@@ -147,7 +147,7 @@ class GraphPainter extends CustomPainter {
 
       // Segundo anillo (×2 radio)
       final ring2Paint = Paint()
-        ..color = node.color.withAlpha(((baseAlpha * 0.66) * 255).round())
+        ..color = Color(node.color).withAlpha(((baseAlpha * 0.66) * 255).round())
         ..style = PaintingStyle.fill;
       canvas.drawCircle(
         Offset(node.x, node.y),
@@ -171,7 +171,7 @@ class GraphPainter extends CustomPainter {
       if (node.isKnown) {
         // PR2: usar displayColor que respeta userColor (R5.6)
         final fillPaint = Paint()
-          ..color = node.displayColor
+          ..color = Color(node.displayColor)
           ..style = PaintingStyle.fill;
         canvas.drawCircle(center, node.radius, fillPaint);
 

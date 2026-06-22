@@ -36,6 +36,8 @@ import 'package:frontend_mobile_nodos_app/features/visualization/data/repositori
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/repositories/graph_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/usecases/build_graph.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/usecases/calculate_layout.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/algorithms/layout_algorithm.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/data/algorithms/fruchterman_reingold.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/history/domain/repositories/history_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/history/data/repositories/history_repository_impl.dart';
@@ -130,8 +132,11 @@ Future<void> initDependencies() async {
   );
   // Caso de uso: construye el LayoutResult inicial desde el repositorio.
   sl.registerLazySingleton(() => BuildGraph(sl()));
-  // Caso de uso: ejecuta Fruchterman-Reingold en un Isolate.
-  sl.registerLazySingleton(() => const CalculateLayout());
+  // Interfaz → Implementación: LayoutAlgorithm → FruchtermanReingold.
+  // AD-31: el dominio depende de la interfaz, la capa de datos provee la implementación.
+  sl.registerLazySingleton<LayoutAlgorithm>(() => const FruchtermanReingold());
+  // Caso de uso: ejecuta el layout con el algoritmo inyectado.
+  sl.registerLazySingleton(() => CalculateLayout(layoutAlgorithm: sl()));
 
   // ── History ──
   // Repositorio de historial: abstrae las queries SQL sobre Drift.

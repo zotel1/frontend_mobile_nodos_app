@@ -168,7 +168,7 @@ class _TooltipContentState extends State<_TooltipContent> {
               decoration: BoxDecoration(
                 color: const Color(0xFF1E1E2E),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: widget.node.color, width: 1),
+                border: Border.all(color: Color(widget.node.color), width: 1),
               ),
               padding: const EdgeInsets.all(10),
               child: Column(
@@ -194,7 +194,7 @@ class _TooltipContentState extends State<_TooltipContent> {
                         width: 10,
                         height: 10,
                         decoration: BoxDecoration(
-                          color: widget.node.color,
+                          color: Color(widget.node.color),
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -202,7 +202,7 @@ class _TooltipContentState extends State<_TooltipContent> {
                       Text(
                         proximityLabel,
                         style: TextStyle(
-                          color: widget.node.color,
+                          color: Color(widget.node.color),
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
                         ),

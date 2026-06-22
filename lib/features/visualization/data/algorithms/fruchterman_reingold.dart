@@ -1,6 +1,10 @@
 import 'dart:math';
 
-/// Calcula el layout del grafo usando el algoritmo de Fruchterman-Reingold.
+import 'package:flutter/foundation.dart';
+
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/algorithms/layout_algorithm.dart';
+
+/// Implementación concreta de [LayoutAlgorithm] usando Fruchterman-Reingold.
 ///
 /// Algoritmo dirigido por fuerzas que trata los nodos como partículas
 /// que se repelen (Coulomb) y las aristas como resortes que atraen
@@ -10,6 +14,29 @@ import 'dart:math';
 /// Eades (convergencia inestable sin enfriamiento). FR ofrece balance
 /// O(|V|²+|E|) por iteración con convergencia garantizada por
 /// temperatura decreciente (cooling factor 0.95).
+///
+/// Implementa [LayoutAlgorithm.calculate] que recibe y retorna
+/// [Map<String, dynamic>] compatibles con el límite de Isolate.
+/// La función top-level [calculateFRLayout] se mantiene para
+/// compatibilidad con [compute] de Flutter en la capa de datos.
+///
+/// T5.2: Extendido a 3D. Las distancias ahora incluyen dz.
+/// Si no se proporciona `depth`, Z se mantiene en 0 (comportamiento 2D).
+class FruchtermanReingold implements LayoutAlgorithm {
+  const FruchtermanReingold();
+
+  @override
+  Future<Map<String, dynamic>> calculate(Map<String, dynamic> params) async {
+    // Ejecuta el algoritmo FR en un Isolate separado para no bloquear
+    // el hilo principal de la UI. compute() spawn ea un Isolate, envía
+    // params, ejecuta calculateFRLayout, y retorna el resultado.
+    return compute(calculateFRLayout, params);
+  }
+}
+
+/// Calcula el layout del grafo usando el algoritmo de Fruchterman-Reingold.
+///
+/// (documentación existente preservada)
 ///
 /// Recibe un [params] con la estructura:
 /// ```dart

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:frontend_mobile_nodos_app/core/utils/app_theme_mode.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/entities/user.dart';
 import 'package:frontend_mobile_nodos_app/features/user/presentation/bloc/user_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/user/presentation/widgets/color_picker.dart';
@@ -64,7 +65,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final userBloc = context.read<UserBloc>();
     // Obtiene el themeMode actual del estado para reflejarlo en el toggle.
     final currentThemeMode =
-        (userBloc.state is UserLoaded) ? (userBloc.state as UserLoaded).themeMode : ThemeMode.system;
+        (userBloc.state is UserLoaded) ? (userBloc.state as UserLoaded).themeMode : AppThemeMode.system;
 
     // QUÉ: Inicializa el controller SOLO si está vacío, para preservar
     // ediciones no guardadas frente a reemisiones de UserLoaded.
@@ -84,29 +85,29 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         const SizedBox(height: 24),
         // ─── Toggle de tema ──────────────────────────────────
-        // QUÉ: SegmentedButton con 3 opciones de ThemeMode.
+        // QUÉ: SegmentedButton con 3 opciones de AppThemeMode.
         // POR QUÉ: el usuario elige entre seguir al sistema,
         //   forzar claro o forzar oscuro. El estado se mantiene
-        //   en memoria (UserBloc) sin persistir a DB (Phase 3).
+        //   en memoria (UserBloc) sin acoplar Flutter ThemeMode.
         const Text(
           'Tema',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 12),
-        SegmentedButton<ThemeMode>(
+        SegmentedButton<AppThemeMode>(
           segments: const [
-            ButtonSegment<ThemeMode>(
-              value: ThemeMode.system,
+            ButtonSegment<AppThemeMode>(
+              value: AppThemeMode.system,
               label: Text('Sistema'),
               icon: Icon(Icons.brightness_auto),
             ),
-            ButtonSegment<ThemeMode>(
-              value: ThemeMode.light,
+            ButtonSegment<AppThemeMode>(
+              value: AppThemeMode.light,
               label: Text('Claro'),
               icon: Icon(Icons.brightness_5),
             ),
-            ButtonSegment<ThemeMode>(
-              value: ThemeMode.dark,
+            ButtonSegment<AppThemeMode>(
+              value: AppThemeMode.dark,
               label: Text('Oscuro'),
               icon: Icon(Icons.brightness_2),
             ),

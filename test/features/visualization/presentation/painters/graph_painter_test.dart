@@ -144,9 +144,9 @@ void main() {
       final mediumNode = layout.nodes[1];
       final farNode = layout.nodes[2];
 
-      expect(closeNode.color, const Color(0xFF4CAF50));
-      expect(mediumNode.color, const Color(0xFFFFC107));
-      expect(farNode.color, const Color(0xFFF44336));
+      expect(closeNode.color, 0xFF4CAF50);
+      expect(mediumNode.color, 0xFFFFC107);
+      expect(farNode.color, 0xFFF44336);
 
       // El painter no lanzó excepción al pintar con estos colores
       expect(tester.takeException(), isNull);
@@ -295,7 +295,7 @@ void main() {
       expect(knownNode.isKnown, isTrue);
       // Cuando isKnown=true, el color de relleno debe ser el color
       // de proximidad (ámbar para medium), NO gris.
-      expect(knownNode.color, const Color(0xFFFFC107));
+      expect(knownNode.color, 0xFFFFC107);
     });
   });
 
@@ -654,8 +654,8 @@ void main() {
 
       expect(tester.takeException(), isNull);
       // Verifica que el displayColor sea el azul asignado, no el verde de close
-      expect(node.displayColor, equals(const Color(0xFF2196F3)));
-      expect(node.color, equals(const Color(0xFF4CAF50))); // proximidad
+      expect(node.displayColor, 0xFF2196F3);
+      expect(node.color, 0xFF4CAF50); // proximidad
     });
 
     testWidgets('pinta nodo con estimatedDistance sin excepción', (tester) async {
