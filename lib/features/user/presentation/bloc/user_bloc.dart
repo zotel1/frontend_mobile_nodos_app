@@ -126,11 +126,21 @@ class UserBloc extends Bloc<UserEvent, UserState> {
   /// la DB de usuarios estaba vacía.
   Future<void> _onLoadProfile(
       LoadProfile event, Emitter<UserState> emit) async {
+    // T-PR1-004: Capturar themeMode actual para preservarlo durante la recarga.
+    // Si el estado anterior es UserLoaded, mantenemos el themeMode.
+    // Si es UserInitial (primera carga), usamos system como default.
+    final currentThemeMode = state is UserLoaded
+        ? (state as UserLoaded).themeMode
+        : ThemeMode.system;
+
     emit(const UserLoading());
     final result = await getProfile(const NoParams());
 
     if (result.isRight()) {
-      emit(UserLoaded(result.getOrElse(() => throw StateError('Imposible'))));
+      emit(UserLoaded(
+        result.getOrElse(() => throw StateError('Imposible')),
+        themeMode: currentThemeMode,
+      ));
       return;
     }
 
@@ -148,12 +158,21 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     final reloadResult = await getProfile(const NoParams());
     reloadResult.fold(
       (failure) => emit(UserError(failure.message)),
-      (user) => emit(UserLoaded(user)),
+      (user) => emit(UserLoaded(user, themeMode: currentThemeMode)),
     );
   }
 
   Future<void> _onUpdateName(
       UpdateUserNameEvent event, Emitter<UserState> emit) async {
+    // T-PR1-004: Capturar themeMode actual ANTES de emitir UserLoading.
+    // QUÉ problema resuelve: antes _onUpdateName emitía UserLoaded(user)
+    // sin el parámetro themeMode, lo que reseteaba el tema a system.
+    // Si el usuario estaba en modo oscuro y cambiaba su nombre, el tema
+    // volvía a system. Ahora preserva el themeMode del estado anterior.
+    final currentThemeMode = state is UserLoaded
+        ? (state as UserLoaded).themeMode
+        : ThemeMode.system;
+
     emit(const UserLoading());
     final result = await updateName(UpdateUserNameParams(name: event.name));
     if (result.isLeft()) {
@@ -164,12 +183,19 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     final profileResult = await getProfile(const NoParams());
     profileResult.fold(
       (failure) => emit(UserError(failure.message)),
-      (user) => emit(UserLoaded(user)),
+      (user) => emit(UserLoaded(user, themeMode: currentThemeMode)),
     );
   }
 
   Future<void> _onUpdateColor(
       UpdateUserColorEvent event, Emitter<UserState> emit) async {
+    // T-PR1-004: Capturar themeMode actual antes de emitir UserLoading.
+    // Mismo bug que _onUpdateName — el tema se reseteaba a system al
+    // cambiar el color, perdiendo la preferencia del usuario.
+    final currentThemeMode = state is UserLoaded
+        ? (state as UserLoaded).themeMode
+        : ThemeMode.system;
+
     emit(const UserLoading());
     final result = await updateColor(UpdateUserColorParams(color: event.color));
     if (result.isLeft()) {
@@ -179,7 +205,7 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     final profileResult = await getProfile(const NoParams());
     profileResult.fold(
       (failure) => emit(UserError(failure.message)),
-      (user) => emit(UserLoaded(user)),
+      (user) => emit(UserLoaded(user, themeMode: currentThemeMode)),
     );
   }
 
