@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/data/datasources/node_drift_datasource.dart';
@@ -167,6 +168,44 @@ void main() {
 
       final retrieved = await dataSource.getNodeById(1);
       expect(retrieved!.rssiHistory, history);
+    });
+
+    // ──────────────────────────────────────────────────────────
+    // T-PR2-007 RED: jsonDecode seguro — JSON corrupto no crashea
+    //
+    // QUÉ: cuando la columna rssiHistory contiene JSON corrupto o
+    // inválido, la operación jsonDecode no debe lanzar FormatException
+    // que crashee la app. Debe retornar lista vacía [].
+    //
+    // POR QUÉ problema existe: el código actual usa jsonDecode sin
+    // try-catch. Si un bug o migración corrupta escribe JSON inválido
+    // en rssiHistory, la app crashea al leer el nodo.
+    //
+    // Estado RED esperado: el test falla porque jsonDecode lanza
+    // FormatException al encontrar JSON corrupto.
+    // ──────────────────────────────────────────────────────────
+    test(
+        'T-PR2-007 RED: rssiHistory con JSON corrupto retorna lista vacía sin crashear',
+        () async {
+      final now = DateTime(2026, 6, 18, 12, 0, 0);
+
+      // Insertar un nodo directamente en la BD con JSON corrupto
+      await database.into(database.nodes).insert(
+            NodesCompanion(
+              bleAddress: const Value('CC:DD:EE:FF:00:11'),
+              firstSeen: Value(now),
+              lastSeen: Value(now),
+              rssiHistory: const Value('esto-no-es-json'),
+            ),
+          );
+
+      // Leer el nodo a través del data source — no debe crashear
+      final node = await dataSource.getNodeById(1);
+
+      // Debe existir pero con rssiHistory vacío
+      expect(node, isNotNull);
+      expect(node!.rssiHistory, isEmpty,
+          reason: 'JSON corrupto debe producir lista vacía, no crash');
     });
   });
 }

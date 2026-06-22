@@ -131,5 +131,79 @@ void main() {
       expect(updatedNode.name, 'New Name');
       expect(updatedNode.color, '#FF0000');
     });
+
+    // ──────────────────────────────────────────────────────────
+    // T-PR2-001 RED: Metadata preservation — suggestedName y deviceType
+    // se preservan del nodo original al actualizar metadata.
+    //
+    // QUÉ: cuando updateNodeMetadata modifica name o color, los campos
+    // suggestedName y deviceType del nodo existente deben preservarse
+    // en el nodo actualizado.
+    //
+    // POR QUÉ problema existe: el método actual construye un nuevo Node
+    // sin incluir suggestedName ni deviceType del nodo existente → estos
+    // campos se pierden silenciosamente tras cualquier llamada a
+    // updateNodeMetadata.
+    //
+    // Estado RED esperado: los expects de suggestedName y deviceType
+    // fallan porque el código actual no los preserva.
+    // ──────────────────────────────────────────────────────────
+    test(
+        'T-PR2-001 RED: updateNodeMetadata preserva suggestedName y deviceType del nodo original',
+        () async {
+      final existing = Node(
+        id: 1,
+        bleAddress: 'AA:BB:CC:DD:EE:FF',
+        name: 'Nodo Original',
+        color: '#808080',
+        suggestedName: 'MiDispositivo',
+        deviceType: 'Reloj/Fitness',
+        firstSeen: now,
+        lastSeen: now,
+        rssiHistory: const [-50, -60],
+      );
+      when(mockDataSource.getNodeById(1)).thenAnswer((_) async => existing);
+      when(mockDataSource.upsertNode(any)).thenAnswer((_) async {});
+
+      await repository.updateNodeMetadata(1, name: 'Nodo Renombrado');
+
+      final captured = verify(mockDataSource.upsertNode(captureAny)).captured;
+      final updatedNode = captured.first as Node;
+
+      // Verificar que el nombre se actualizó
+      expect(updatedNode.name, 'Nodo Renombrado');
+      // Verificar que el color original se preservó (no se pasó en la llamada)
+      expect(updatedNode.color, '#808080');
+      // CRÍTICO: suggestedName y deviceType deben preservarse del original
+      expect(updatedNode.suggestedName, 'MiDispositivo');
+      expect(updatedNode.deviceType, 'Reloj/Fitness');
+    });
+
+    test(
+        'T-PR2-001 RED: updateNodeMetadata preserva suggestedName/deviceType cuando solo se actualiza color',
+        () async {
+      final existing = Node(
+        id: 2,
+        bleAddress: 'BB:CC:DD:EE:FF:00',
+        name: 'Nodo Beta',
+        color: '#333333',
+        suggestedName: 'TV Samsung',
+        deviceType: 'TV/Display',
+        firstSeen: now,
+        lastSeen: now,
+      );
+      when(mockDataSource.getNodeById(2)).thenAnswer((_) async => existing);
+      when(mockDataSource.upsertNode(any)).thenAnswer((_) async {});
+
+      await repository.updateNodeMetadata(2, color: '#FF5722');
+
+      final captured = verify(mockDataSource.upsertNode(captureAny)).captured;
+      final updatedNode = captured.first as Node;
+
+      expect(updatedNode.name, 'Nodo Beta');
+      expect(updatedNode.color, '#FF5722');
+      expect(updatedNode.suggestedName, 'TV Samsung');
+      expect(updatedNode.deviceType, 'TV/Display');
+    });
   });
 }

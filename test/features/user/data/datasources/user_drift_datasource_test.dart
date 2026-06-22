@@ -94,16 +94,60 @@ void main() {
       expect(retrieved!.color, '#FF0000');
     });
 
-    test('updateName does nothing when no user exists', () async {
-      // Should not throw
-      await dataSource.updateName('ShouldNotMatter');
-      expect(await dataSource.getUser(), isNull);
+    test('updateName lanza StateError cuando no existe usuario (no silent no-op)', () async {
+      // T-PR2-004: El datasource ahora lanza StateError en lugar de
+      // hacer silent no-op. El use case captura el error y lo convierte
+      // a Left(UnexpectedFailure), propagándose al BLoC.
+      expect(
+        () => dataSource.updateName('ShouldNotMatter'),
+        throwsA(isA<StateError>()),
+      );
     });
 
-    test('updateColor does nothing when no user exists', () async {
-      // Should not throw
-      await dataSource.updateColor('#000000');
+    test('updateColor lanza StateError cuando no existe usuario (no silent no-op)', () async {
+      expect(
+        () => dataSource.updateColor('#000000'),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    // ──────────────────────────────────────────────────────────
+    // T-PR2-003 RED: StateError en updateName / updateColor
+    // cuando no existe ningún usuario en la tabla.
+    //
+    // QUÉ: updateName y updateColor deben lanzar StateError si la
+    // tabla users está vacía, en lugar de hacer silent no-op.
+    //
+    // POR QUÉ problema existe: el código actual hace `if (existing == null)
+    // return;` → el caller (BLoC) cree que la operación fue exitosa,
+    // pero el dato nunca se persistió. Esto produce estado inconsistente
+    // entre la UI y la BD.
+    //
+    // Estado RED esperado: los expects de throwsA(StateError) fallan
+    // porque el código actual no lanza excepción.
+    // ──────────────────────────────────────────────────────────
+    test(
+        'T-PR2-003 RED: updateName lanza StateError cuando la tabla users está vacía',
+        () async {
+      // Garantizar que la tabla está vacía (el setUp ya arranca en limpio)
       expect(await dataSource.getUser(), isNull);
+
+      // Debe lanzar StateError, no silent no-op
+      expect(
+        () => dataSource.updateName('Test'),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test(
+        'T-PR2-003 RED: updateColor lanza StateError cuando la tabla users está vacía',
+        () async {
+      expect(await dataSource.getUser(), isNull);
+
+      expect(
+        () => dataSource.updateColor('#FF0000'),
+        throwsA(isA<StateError>()),
+      );
     });
   });
 }

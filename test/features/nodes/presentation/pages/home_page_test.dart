@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' hide isNull, isNotNull, Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -84,6 +85,35 @@ Node _testNode(int id, String addr) => Node(
       lastSeen: DateTime(2026, 6, 18),
       rssiHistory: const [-50],
     );
+
+/// T-PR2-005: Helper que inserta nodos en la BD de test.
+///
+/// Necesario porque con foreign keys habilitadas, _triggerGraphBuild
+/// inserta en scan_session_nodes con FK a nodes. Si los nodos no
+/// existen en nodes, la constraint FK falla.
+///
+/// Antes de PR2, las FK no se aplicaban en la BD en memoria (pragma
+/// foreign_keys estaba OFF), así que los tests pasaban con referencias
+/// huérfanas. Ahora con FK=ON, debemos insertar los nodos primero.
+Future<List<int>> _insertNodesIntoDb(AppDatabase db, int count) async {
+  final now = DateTime(2026, 6, 19);
+  final ids = <int>[];
+  for (var i = 1; i <= count; i++) {
+    final id = await db.into(db.nodes).insert(
+          NodesCompanion(
+            bleAddress: Value('AA:BB:CC:DD:EE:0$i'),
+            name: Value('Node AA:BB:CC:DD:EE:0$i'),
+            firstSeen: Value(now),
+            lastSeen: Value(now),
+            lastRssi: const Value(-50),
+            proximityZone: const Value('close'),
+            rssiHistory: const Value('[-50]'),
+          ),
+        );
+    ids.add(id);
+  }
+  return ids;
+}
 
 final _testLayout = LayoutResult(
   nodes: [
@@ -223,6 +253,10 @@ void main() {
     });
 
     testWidgets('5 nodes → crossfades to GraphView', (tester) async {
+      // T-PR2-005: Insertar nodos en BD para que FK de scan_session_nodes
+      // sea válida cuando _triggerGraphBuild intente insertar.
+      await _insertNodesIntoDb(testDb, 5);
+
       final nodes = List.generate(
         5,
         (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
@@ -247,6 +281,7 @@ void main() {
 
     testWidgets('6 nodes → graph visible with GraphReady state',
         (tester) async {
+      await _insertNodesIntoDb(testDb, 6);
       final nodes = List.generate(
         6,
         (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
@@ -266,6 +301,7 @@ void main() {
     });
 
     testWidgets('GraphReady renders GraphView widget', (tester) async {
+      await _insertNodesIntoDb(testDb, 6);
       final nodes = List.generate(
         6,
         (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
@@ -280,6 +316,9 @@ void main() {
     });
 
     testWidgets('5→3 nodes → crossfades back to ListView', (tester) async {
+      // Pre-insertar 5 nodos en BD para FK válida
+      await _insertNodesIntoDb(testDb, 5);
+
       // Empezar con 5 nodos (modo grafo)
       final fiveNodes = List.generate(
         5,
@@ -362,6 +401,7 @@ void main() {
 
     testWidgets('shows graph error message when VisualizationBloc fails',
         (tester) async {
+      await _insertNodesIntoDb(testDb, 6);
       final nodes = List.generate(
         6,
         (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
@@ -751,6 +791,7 @@ void main() {
 
     testWidgets('muestra NodeTooltip cuando GraphReady tiene selectedNodeId',
         (tester) async {
+      await _insertNodesIntoDb(testDb, 6);
       final mockNodeListBloc = MockNodeListBloc();
       final mockBleBloc = MockBleBloc();
       final mockVizBloc = MockVisualizationBloc();
@@ -800,6 +841,7 @@ void main() {
 
     testWidgets('NodeTooltip muestra contenido correcto para nodo conocido',
         (tester) async {
+      await _insertNodesIntoDb(testDb, 6);
       final mockNodeListBloc = MockNodeListBloc();
       final mockBleBloc = MockBleBloc();
       final mockVizBloc = MockVisualizationBloc();
@@ -939,6 +981,7 @@ void main() {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     testWidgets('T3.8: al tocar Enlazar se despacha ConnectToDevice',
         (tester) async {
+      await _insertNodesIntoDb(testDb, 5);
       final mockNodeListBloc = MockNodeListBloc();
       final mockBleBloc = MockBleBloc();
       final mockVizBloc = MockVisualizationBloc();
@@ -1021,6 +1064,7 @@ void main() {
 
     testWidgets('T5.6: muestra botón toggle 2D/3D en modo grafo (5+ nodos)',
         (tester) async {
+      await _insertNodesIntoDb(testDb, 6);
       final nodes = List.generate(
         6,
         (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
@@ -1064,6 +1108,7 @@ void main() {
     testWidgets(
         'T5.7: toggle cambia de 2D a 3D al presionar view_in_ar',
         (tester) async {
+      await _insertNodesIntoDb(testDb, 6);
       final nodes = List.generate(
         6,
         (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
@@ -1224,6 +1269,124 @@ void main() {
               e is ConnectToDevice && e.remoteId == testRemoteId),
         ),
       )).called(1);
+    });
+
+    // ──────────────────────────────────────────────────────────
+    // T-PR2-007 RED: RSSI null en lugar de -100 como centinela
+    //
+    // QUÉ: cuando se insertan nodos en scan_session_nodes,
+    // un nodo con rssiHistory vacío debe registrar null como RSSI,
+    // no el valor mágico -100.
+    //
+    // POR QUÉ problema existe: -100 es un valor RSSI físicamente
+    // posible (señal muy débil) y se confunde con "sin datos".
+    // Esto produce falsos positivos: nodos mostrados como "lejanos"
+    // cuando nunca se midió su RSSI real.
+    //
+    // Estado RED esperado: el test verifica que el rssi no es -100
+    // para nodos sin datos. El código actual usa -100 → falla.
+    // ──────────────────────────────────────────────────────────
+    testWidgets(
+        'T-PR2-007 RED: nodo con rssiHistory vacío usa null como RSSI (no -100)',
+        (tester) async {
+      final now = DateTime(2026, 6, 19);
+
+      // T-PR2-005: Insertar los nodos en la BD de test para que las
+      // foreign keys de scan_session_nodes sean válidas. Sin esto,
+      // la constraint FK falla porque los nodos no existen en nodes.
+      final nodeId1 = await testDb.into(testDb.nodes).insert(
+            NodesCompanion(
+              bleAddress: const Value('FF:EE:DD:CC:BB:01'),
+              name: const Value('Nodo Sin RSSI'),
+              firstSeen: Value(now),
+              lastSeen: Value(now),
+              rssiHistory: const Value('[]'),
+            ),
+          );
+
+      for (var i = 2; i <= 5; i++) {
+        await testDb.into(testDb.nodes).insert(
+              NodesCompanion(
+                bleAddress: Value('AA:BB:CC:DD:EE:0$i'),
+                name: Value('Nodo $i'),
+                firstSeen: Value(now),
+                lastSeen: Value(now),
+                lastRssi: const Value(-50),
+                proximityZone: const Value('close'),
+                rssiHistory: const Value('[-50]'),
+              ),
+            );
+      }
+
+      // Nodo con rssiHistory VACÍO (sin datos de RSSI)
+      final nodeSinRssi = Node(
+        id: nodeId1,
+        bleAddress: 'FF:EE:DD:CC:BB:01',
+        name: 'Nodo Sin RSSI',
+        firstSeen: now,
+        lastSeen: now,
+        rssiHistory: const [], // VACÍO
+      );
+
+      // Nodos adicionales para llegar a 5+ y disparar modo grafo
+      final otrosNodos = List.generate(
+        4,
+        (i) => Node(
+          id: i + 2,
+          bleAddress: 'AA:BB:CC:DD:EE:0${i + 2}',
+          name: 'Nodo ${i + 2}',
+          firstSeen: now,
+          lastSeen: now,
+          rssiHistory: const [-50],
+        ),
+      );
+
+      final allNodes = [nodeSinRssi, ...otrosNodos];
+
+      final mockNodeListBloc = MockNodeListBloc();
+      final mockBleBloc = MockBleBloc();
+      final mockVizBloc = MockVisualizationBloc();
+
+      when(mockNodeListBloc.state).thenReturn(NodeListLoaded(allNodes));
+      when(mockNodeListBloc.stream)
+          .thenAnswer((_) => Stream.value(NodeListLoaded(allNodes)));
+      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.stream)
+          .thenAnswer((_) => Stream.value(const BleStopped()));
+      when(mockVizBloc.state).thenReturn(const VisualizationInitial());
+      when(mockVizBloc.stream)
+          .thenAnswer((_) => Stream.value(const VisualizationInitial()));
+
+      await tester.pumpWidget(MaterialApp(
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+            BlocProvider<BleBloc>.value(value: mockBleBloc),
+            BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+            BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
+          ],
+          child: const HomePage(),
+        ),
+      ));
+
+      // Dejar que _triggerGraphBuild se ejecute (es async)
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Consultar scan_session_nodes directamente desde la BD
+      final rows = await testDb.select(testDb.scanSessionNodes).get();
+
+      // Buscar el registro correspondiente al nodo sin RSSI
+      final rowSinRssi =
+          rows.where((r) => r.nodeId == 1).firstOrNull;
+      expect(rowSinRssi, isNotNull,
+          reason: 'El nodo sin RSSI debe estar registrado en la sesión');
+
+      // En RED: el código actual usa -100 como centinela para
+      // nodos sin rssiHistory. La corrección debe usar null.
+      // Verificar que NO es -100 (el valor mágico incorrecto)
+      expect(rowSinRssi!.rssi, isNot(equals(-100)),
+          reason: 'No debe usar -100 como centinela mágico para RSSI ausente');
     });
   });
 }

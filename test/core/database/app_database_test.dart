@@ -135,8 +135,9 @@ void main() {
       expect(allUsers, isEmpty);
     });
 
-    test('reads all users', () async {
+    test('impide insertar segundo usuario por CHECK (id=1)', () async {
       final now = _truncateToMs(DateTime.now());
+      // Primer usuario: id=1 (válido según CHECK)
       await db.into(db.users).insert(
             UsersCompanion(
               uuid: const Value('a-1'),
@@ -146,18 +147,26 @@ void main() {
               createdAt: Value(now),
             ),
           );
-      await db.into(db.users).insert(
-            UsersCompanion(
-              uuid: const Value('b-2'),
-              name: const Value('Bob'),
-              color: const Value('#bbb'),
-              deviceType: const Value('ios'),
-              createdAt: Value(now),
+      // T-PR2-005: CHECK (id = 1) impide un segundo usuario.
+      // El segundo insert intentaría asignar id=2, violando la constraint.
+      expect(
+        () => db.into(db.users).insert(
+              UsersCompanion(
+                uuid: const Value('b-2'),
+                name: const Value('Bob'),
+                color: const Value('#bbb'),
+                deviceType: const Value('ios'),
+                createdAt: Value(now),
+              ),
             ),
-          );
+        throwsA(isA<Exception>()),
+        reason: 'CHECK (id = 1) debe impedir insertar un segundo usuario',
+      );
 
+      // Solo debe existir el primer usuario
       final users = await db.select(db.users).get();
-      expect(users, hasLength(2));
+      expect(users, hasLength(1));
+      expect(users.first.name, 'Alice');
     });
   });
 
@@ -437,6 +446,172 @@ void main() {
             ),
         throwsA(isA<Exception>()),
       );
+    });
+
+    // ──────────────────────────────────────────────────────────
+    // T-PR2-005 RED: ON DELETE CASCADE en scan_session_nodes
+    //
+    // QUÉ: al eliminar un nodo de la tabla nodes, las filas
+    // correspondientes en scan_session_nodes deben eliminarse
+    // automáticamente por ON DELETE CASCADE.
+    //
+    // POR QUÉ problema existe: las foreign keys actuales no tienen
+    // ON DELETE CASCADE → al eliminar un nodo, scan_session_nodes
+    // retiene referencias huérfanas que producen edges fantasma
+    // en el grafo (bug: nodos eliminados siguen apareciendo).
+    //
+    // Estado RED esperado: el expect final (isEmpty) falla porque
+    // sin ON DELETE CASCADE, scan_session_nodes conserva los
+    // registros tras eliminar el nodo.
+    // ──────────────────────────────────────────────────────────
+    test(
+        'T-PR2-005 RED: ON DELETE CASCADE — eliminar nodo limpia scan_session_nodes',
+        () async {
+      final now = _truncateToMs(DateTime.now());
+
+      // Crear sesión de escaneo
+      final sessionId = await db.into(db.scanSessions).insert(
+            ScanSessionsCompanion(
+              startedAt: Value(now),
+              nodesDetected: const Value(2),
+            ),
+          );
+
+      // Crear dos nodos
+      final nodeId1 = await db.into(db.nodes).insert(
+            NodesCompanion(
+              bleAddress: const Value('AA:BB:CC:DD:EE:01'),
+              firstSeen: Value(now),
+              lastSeen: Value(now),
+              rssiHistory: const Value('[-55]'),
+            ),
+          );
+      final nodeId2 = await db.into(db.nodes).insert(
+            NodesCompanion(
+              bleAddress: const Value('AA:BB:CC:DD:EE:02'),
+              firstSeen: Value(now),
+              lastSeen: Value(now),
+              rssiHistory: const Value('[-65]'),
+            ),
+          );
+
+      // Registrar ambos nodos en scan_session_nodes
+      await db.into(db.scanSessionNodes).insert(
+            ScanSessionNodesCompanion(
+              sessionId: Value(sessionId),
+              nodeId: Value(nodeId1),
+              rssi: const Value(-55),
+            ),
+          );
+      await db.into(db.scanSessionNodes).insert(
+            ScanSessionNodesCompanion(
+              sessionId: Value(sessionId),
+              nodeId: Value(nodeId2),
+              rssi: const Value(-65),
+            ),
+          );
+
+      // Verificar que hay 2 registros
+      var rows = await db.select(db.scanSessionNodes).get();
+      expect(rows, hasLength(2));
+
+      // Eliminar nodo 1
+      await (db.delete(db.nodes)..where((n) => n.id.equals(nodeId1))).go();
+
+      // Verificar que scan_session_nodes ahora solo tiene el nodo 2
+      rows = await db.select(db.scanSessionNodes).get();
+      expect(rows, hasLength(1));
+      expect(rows.first.nodeId, nodeId2);
+
+      // Eliminar nodo 2 también
+      await (db.delete(db.nodes)..where((n) => n.id.equals(nodeId2))).go();
+
+      // scan_session_nodes debe quedar vacío (cascade total)
+      rows = await db.select(db.scanSessionNodes).get();
+      expect(rows, isEmpty,
+          reason: 'ON DELETE CASCADE debe eliminar registros huérfanos');
+    });
+
+    // ──────────────────────────────────────────────────────────
+    // T-PR2-005 RED: CHECK constraint singleton en Users
+    //
+    // QUÉ: la tabla users debe aceptar exactamente UN registro
+    // (id=1). Insertar un segundo usuario debe violar una
+    // constraint CHECK.
+    //
+    // POR QUÉ problema existe: actualmente nada impide insertar
+    // múltiples usuarios. Como la app es single-user (un solo
+    // dispositivo), tener múltiples registros produce
+    // ambigüedad — getUser() retorna cualquiera.
+    //
+    // Estado RED esperado: el expect de throwsA falla porque
+    // actualmente se pueden insertar múltiples users sin error.
+    // ──────────────────────────────────────────────────────────
+    test(
+        'T-PR2-005 RED: CHECK constraint — insertar segundo usuario lanza error',
+        () async {
+      final now = _truncateToMs(DateTime.now());
+
+      // Insertar primer usuario
+      await db.into(db.users).insert(
+            UsersCompanion(
+              uuid: const Value('user-1-uuid'),
+              name: const Value('Usuario Uno'),
+              color: const Value('#2196F3'),
+              deviceType: const Value('android'),
+              createdAt: Value(now),
+            ),
+          );
+
+      // Intentar insertar un segundo usuario debe fallar
+      expect(
+        () => db.into(db.users).insert(
+              UsersCompanion(
+                uuid: const Value('user-2-uuid'),
+                name: const Value('Usuario Dos'),
+                color: const Value('#FF5722'),
+                deviceType: const Value('ios'),
+                createdAt: Value(now),
+              ),
+            ),
+        throwsA(isA<Exception>()),
+        reason: 'CHECK (id = 1) debe impedir un segundo usuario',
+      );
+    });
+
+    // ──────────────────────────────────────────────────────────
+    // T-PR2-005 RED: Migración v3→v4 con datos existentes
+    //
+    // QUÉ: una BD creada con schema v3 (con datos reales) debe
+    // migrar correctamente a v4, agregando la columna connectable
+    // sin perder los datos existentes.
+    //
+    // POR QUÉ problema existe: la migración v3→v4 no existe aún.
+    // El nuevo schema v4 agrega una columna connectable a Nodes
+    // que debe ser nullable para no romper datos existentes.
+    //
+    // Estado RED esperado: el test falla porque el schema actual
+    // es v3 y la columna connectable no existe en Nodes.
+    // ──────────────────────────────────────────────────────────
+    test(
+        'T-PR2-005 RED: migración v3→v4 agrega columna connectable (nullable) en Nodes',
+        () async {
+      // Verificar que la columna connectable existe en la tabla nodes
+      final columns = await db.customSelect(
+        "PRAGMA table_info('nodes')",
+      ).get();
+
+      // Buscar la columna 'connectable' con tipo nullable
+      final connectableCol = columns.where(
+        (row) => row.read<String>('name') == 'connectable',
+      );
+      expect(connectableCol, isNotEmpty,
+          reason: 'La columna connectable debe existir en schema v4');
+
+      // Verificar que es nullable (notnull = 0)
+      final notnull = connectableCol.first.read<int>('notnull');
+      expect(notnull, 0,
+          reason: 'connectable debe ser nullable para no romper datos existentes');
     });
   });
 }

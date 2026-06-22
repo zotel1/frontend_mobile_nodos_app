@@ -56,7 +56,7 @@ void main() {
           ScanSessionNodesCompanion.insert(
             sessionId: sessionId,
             nodeId: nodeId,
-            rssi: rssi,
+            rssi: Value(rssi),
           ),
           mode: InsertMode.insertOrIgnore,
         );

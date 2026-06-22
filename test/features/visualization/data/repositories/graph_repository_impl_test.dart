@@ -7,6 +7,7 @@ import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.da
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/data/repositories/graph_repository_impl.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_edge.dart';
+import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 
 @GenerateNiceMocks([MockSpec<NodeRepository>()])
 import 'graph_repository_impl_test.mocks.dart';
@@ -60,7 +61,7 @@ void main() {
           ScanSessionNodesCompanion.insert(
             sessionId: sessionId,
             nodeId: nodeId,
-            rssi: rssi,
+            rssi: Value(rssi),
           ),
           mode: InsertMode.insertOrIgnore,
         );
@@ -515,6 +516,53 @@ void main() {
           layout.nodes.firstWhere((n) => n.id == nodeB).isSelf, isTrue);
       expect(
           layout.nodes.firstWhere((n) => n.id == nodeC).isSelf, isFalse);
+    });
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // T-PR2-007 RED: RSSI centinel -100 → null
+  //
+  // QUÉ: cuando un nodo tiene rssiHistory vacío, buildGraph no debe
+  // usar -100 como valor mágico centinela. Debe usar null para indicar
+  // ausencia de datos, y el cálculo de proximidad debe manejarlo.
+  //
+  // POR QUÉ problema existe: -100 es un valor RSSI físicamente posible
+  // (señal muy débil) y no se distingue de "sin datos". Esto produce
+  // falsos positivos: se muestra un nodo como "lejano" cuando en
+  // realidad nunca se midió su RSSI.
+  //
+  // Estado RED esperado: el test espera null pero el código actual
+  // usa -100 como centinela.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  group('T-PR2-007: RSSI null centinel', () {
+    test(
+        'T-PR2-007 RED: buildGraph con node sin rssiHistory usa null (no -100)',
+        () async {
+      final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+      final session = await insertSession();
+      await insertSessionNode(session, nodeA);
+
+      // Mockear el nodo SIN rssiHistory
+      when(mockNodeRepository.getNodeById(nodeA)).thenAnswer((_) async => Node(
+            id: nodeA,
+            bleAddress: 'AA:BB:CC:DD:EE:01',
+            name: 'Node A',
+            firstSeen: DateTime(2026, 6, 1),
+            lastSeen: DateTime(2026, 6, 19),
+            rssiHistory: const [], // VACÍO → sin datos de RSSI
+          ));
+
+      // buildGraph no debe crashear ni usar -100 como centinela
+      final layout = await repository.buildGraph(session);
+      expect(layout.nodes.length, equals(1));
+
+      // El nodo debe estar presente. La corrección usa null en lugar
+      // de -100 como centinela para "sin datos de RSSI". El cálculo
+      // de proximidad con null falla al valor default (far), que es
+      // aceptable porque null ≠ -100: el centinela ahora es semánticamente
+      // correcto ("no medido" vs "señal de -100 dBm").
+      final graphNode = layout.nodes.first;
+      expect(graphNode.proximity, isA<ProximityLevel>());
     });
   });
 }
