@@ -461,6 +461,52 @@ void main() {
     });
   });
 
+  // ─── T5.2: dispose() cierra StreamController (R22, R23) ──────
+  // QUÉ: verifica que dispose() cierra el StreamController interno
+  // y cancela la suscripción de scan. También verifica idempotencia
+  // (llamar dispose 2x no lanza excepción).
+  // POR QUÉ: el datasource nunca cerraba _controller, causando
+  // memory leak (P1). La interfaz BleScannerDataSource ahora
+  // declara dispose() para permitir limpieza polimórfica.
+  group('T5.2 — dispose() cierra StreamController (R22, R23)', () {
+    test('dispose cierra el StreamController interno', () async {
+      final streamController = StreamController<List<BleDevice>>.broadcast();
+      final dataSource = FlutterBluePlusDataSource.test(
+        streamController.stream,
+      );
+
+      // Antes de dispose, el controller debe estar abierto
+      expect(dataSource.isControllerClosed, isFalse);
+
+      // Ejecutar dispose
+      dataSource.dispose();
+
+      // Después de dispose, el controller interno debe estar cerrado
+      expect(dataSource.isControllerClosed, isTrue);
+
+      // Limpiar el controller externo del test
+      await streamController.close();
+    });
+
+    test('dispose es idempotente — llamar 2x no lanza excepcion', () async {
+      final streamController = StreamController<List<BleDevice>>.broadcast();
+      final dataSource = FlutterBluePlusDataSource.test(
+        streamController.stream,
+      );
+
+      // Primera llamada
+      dataSource.dispose();
+
+      // Segunda llamada no debe lanzar excepción
+      expect(
+        () => dataSource.dispose(),
+        returnsNormally,
+      );
+
+      await streamController.close();
+    });
+  });
+
   // ─── T1.4: Test del filtro RSSI relajado ──────────────────────
   // QUÉ: Verifica que el umbral de filtro RSSI ahora acepta
   // dispositivos con RSSI >= -95 (antes rechazaba por debajo de -85).
