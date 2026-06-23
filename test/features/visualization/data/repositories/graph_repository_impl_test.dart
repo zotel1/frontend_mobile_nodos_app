@@ -409,6 +409,58 @@ void main() {
       // 3 co-detecciones → grosor debe ser 2.0
       expect(layout.edges.first.thickness, equals(2.0));
     });
+
+    // ─── PR6b: connectable propagation en buildGraphCoDetection ───
+    // QUÉ: verifica que el método legacy buildGraphCoDetection propaga
+    // Node.connectable a GraphNode.connectable.
+    // POR QUÉ: el pipeline connectable debe ser consistente en ambos
+    // métodos (buildGraph y buildGraphCoDetection). Sin esta propagación
+    // los nodos en el grafo legacy siempre tendrían connectable=true.
+    test('PR6b: propaga Node.connectable=false a GraphNode en legacy',
+        () async {
+      final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+      final session = await insertSession();
+      await insertSessionNode(session, nodeA);
+
+      // Node con connectable=false
+      when(mockNodeRepository.getNodeById(nodeA)).thenAnswer((_) async => Node(
+            id: nodeA,
+            bleAddress: 'AA:BB:CC:DD:EE:01',
+            name: 'Node A',
+            firstSeen: DateTime(2026, 6, 1),
+            lastSeen: DateTime(2026, 6, 19),
+            rssiHistory: const [-60],
+            connectable: false,
+          ));
+
+      final layout = await repository.buildGraphCoDetection(session);
+
+      expect(layout.nodes, hasLength(1));
+      expect(layout.nodes.first.connectable, isFalse);
+    });
+
+    test('PR6b: propaga Node.connectable=true a GraphNode en legacy',
+        () async {
+      final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+      final session = await insertSession();
+      await insertSessionNode(session, nodeA);
+
+      // Node con connectable=true
+      when(mockNodeRepository.getNodeById(nodeA)).thenAnswer((_) async => Node(
+            id: nodeA,
+            bleAddress: 'AA:BB:CC:DD:EE:01',
+            name: 'Node A',
+            firstSeen: DateTime(2026, 6, 1),
+            lastSeen: DateTime(2026, 6, 19),
+            rssiHistory: const [-60],
+            connectable: true,
+          ));
+
+      final layout = await repository.buildGraphCoDetection(session);
+
+      expect(layout.nodes, hasLength(1));
+      expect(layout.nodes.first.connectable, isTrue);
+    });
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

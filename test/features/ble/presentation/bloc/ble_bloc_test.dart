@@ -544,4 +544,92 @@ void main() {
       },
     );
   });
+
+  // ─── PR6b: BT state verification before StartScan ─────────────────
+  // QUÉ: verifica que _onStartScan rechaza el escaneo cuando
+  // Bluetooth está apagado, emitiendo BleError en lugar de BleScanning.
+  // POR QUÉ: si BT está apagado, startScan() de FlutterBluePlus lanza
+  // excepción silenciosa y el usuario no sabe por qué no ve dispositivos.
+  // Con este check, el BLoC emite un error claro y evita la llamada.
+  //
+  // SC-PR6b-003: StartScan emite BleError cuando BT está apagado.
+
+  group('PR6b — BT state verification on StartScan', () {
+    blocTest<BleBloc, BleState>(
+      'SC-PR6b-003: StartScan emite BleError cuando el estado es BluetoothOff',
+      build: () {
+        when(mockRepository.startScan()).thenAnswer((_) async {});
+        return BleBloc(repository: mockRepository);
+      },
+      seed: () => const BluetoothOff(),
+      act: (bloc) => bloc.add(const StartScan()),
+      expect: () => [
+        isA<BleError>().having(
+          (s) => s.message,
+          'message',
+          contains('Bluetooth'),
+        ),
+      ],
+      verify: (_) {
+        // No debe llamar a startScan si BT está apagado
+        verifyNever(mockRepository.startScan());
+      },
+    );
+
+    blocTest<BleBloc, BleState>(
+      'StartScan procede normalmente cuando el estado no es BluetoothOff',
+      build: () {
+        when(mockRepository.startScan()).thenAnswer((_) async {});
+        when(mockRepository.scanResults)
+            .thenAnswer((_) => Stream<List<BleDevice>>.empty());
+        return BleBloc(repository: mockRepository);
+      },
+      act: (bloc) => bloc.add(const StartScan()),
+      expect: () => [isA<BleScanning>()],
+      verify: (_) {
+        verify(mockRepository.startScan()).called(1);
+      },
+    );
+  });
+
+  // ─── PR6b: _scanSessionId reset on StopScan ───────────────────────
+  // QUÉ: verifica que _scanSessionId se resetea a null cuando
+  // se dispara StopScan, garantizando que no quede un ID de sesión
+  // stale después de detener el escaneo.
+  // POR QUÉ: sin este reset, referencias a una sesión ya cerrada
+  // pueden causar escrituras inválidas en scan_session_nodes.
+  //
+  // SC-PR6b-004: _scanSessionId es null después de StopScan.
+
+  group('PR6b — _scanSessionId reset', () {
+    test('_scanSessionId es null tras construir BleBloc', () {
+      final bloc = BleBloc(repository: mockRepository);
+      expect(bloc.scanSessionId, isNull);
+      bloc.close();
+    });
+
+    test('SC-PR6b-004: _scanSessionId es null después de StopScan', () {
+      fakeAsync((async) {
+        when(mockRepository.startScan()).thenAnswer((_) async {});
+        when(mockRepository.stopScan()).thenAnswer((_) async {});
+        when(mockRepository.endScanSession()).thenAnswer((_) async {});
+        when(mockRepository.scanResults)
+            .thenAnswer((_) => Stream<List<BleDevice>>.empty());
+
+        final bloc = BleBloc(repository: mockRepository);
+
+        // Iniciar escaneo
+        bloc.add(const StartScan());
+        async.elapse(const Duration(milliseconds: 10));
+
+        // Detener escaneo
+        bloc.add(const StopScan());
+        async.elapse(const Duration(milliseconds: 10));
+
+        expect(bloc.scanSessionId, isNull);
+
+        bloc.close();
+      });
+    });
+  });
 }

@@ -124,6 +124,22 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     on<UpdateThemeMode>(_onUpdateThemeMode);
   }
 
+  /// Expone el UUID persistente del dispositivo del usuario (myDeviceUuid).
+  ///
+  /// QUÉ: lee el UUID desde SharedPreferences bajo la clave 'device_uuid'.
+  /// Retorna null si el perfil no fue creado aún o si la clave no existe.
+  ///
+  /// POR QUÉ: otros componentes (visualization, nodes) necesitan el UUID
+  /// del dispositivo propio para marcar el self-node en el grafo y para
+  /// filtrar el dispositivo propio de la lista de nodos detectados.
+  /// Sin este getter, el UUID queda encapsulado en _createDefaultProfile
+  /// y es inaccesible desde fuera del BLoC.
+  ///
+  /// El UUID se genera UNA SOLA VEZ por instalación y se persiste en
+  /// SharedPreferences, por lo que sobrevive a reinicios de la app
+  /// y a recreaciones del perfil.
+  String? get myDeviceUuid => _prefs.getString('device_uuid');
+
   /// Carga el perfil del usuario desde Drift.
   ///
   /// F7: Si no existe perfil (primera ejecución), crea un User default
