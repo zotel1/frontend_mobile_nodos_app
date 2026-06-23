@@ -349,7 +349,7 @@ class _HomePageState extends State<HomePage> {
                     .where((n) => n.bleAddress == remoteId)
                     .firstOrNull;
                 if (node != null) {
-                  showModalBottomSheet(
+                  showModalBottomSheet<void>(
                     context: context,
                     builder: (_) => NodeMetadataSheet(
                       node: node,
@@ -413,7 +413,7 @@ class _HomePageState extends State<HomePage> {
           if (bleState is BluetoothOff) {
             if (!_dialogVisible) {
               _dialogVisible = true;
-              showDialog(
+              showDialog<void>(
                 context: context,
                 barrierDismissible: false,
                 builder: (ctx) => BluetoothOffDialog(

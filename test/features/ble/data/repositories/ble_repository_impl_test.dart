@@ -59,7 +59,7 @@ void main() {
       );
       scanResultsCtrl.add([device]);
 
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
       expect(emitted.length, 1);
       expect(emitted.first.length, 1);
@@ -135,13 +135,13 @@ void main() {
 
       // Emitimos false (simula BT apagado) — debe llegar al repositorio.
       btController.add(false);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
       expect(states, [false]);
 
       // Emitimos true (BT se enciende) — tambien debe propagarse.
       btController.add(true);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
       expect(states, [false, true]);
 

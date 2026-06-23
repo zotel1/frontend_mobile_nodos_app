@@ -27,7 +27,7 @@ class AppBlocObserver extends BlocObserver {
   /// POR QUÉ: saber qué evento causó qué transición es esencial para
   /// diagnosticar bugs de lógica de estado.
   @override
-  void onTransition(Bloc<dynamic, dynamic> bloc, Transition transition) {
+  void onTransition(Bloc<Object?, Object?> bloc, Transition<Object?, Object?> transition) {
     super.onTransition(bloc, transition);
     if (kDebugMode) {
       debugPrint(
@@ -46,7 +46,7 @@ class AppBlocObserver extends BlocObserver {
   /// el BLoC silenciosamente. Con este observer, el error queda
   /// registrado y es diagnosticable.
   @override
-  void onError(BlocBase<dynamic> bloc, Object error, StackTrace stackTrace) {
+  void onError(BlocBase<Object?> bloc, Object error, StackTrace stackTrace) {
     super.onError(bloc, error, stackTrace);
     if (kDebugMode) {
       debugPrint(
@@ -62,7 +62,7 @@ class AppBlocObserver extends BlocObserver {
   /// QUÉ: imprime el tipo de BLoC y evento. Útil para trazar
   /// el flujo completo de eventos durante debugging.
   @override
-  void onEvent(Bloc<dynamic, dynamic> bloc, Object? event) {
+  void onEvent(Bloc<Object?, Object?> bloc, Object? event) {
     super.onEvent(bloc, event);
     if (kDebugMode) {
       debugPrint('[BLoC EVENT] ${bloc.runtimeType}: ${event.runtimeType}');

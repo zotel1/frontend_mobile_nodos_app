@@ -245,7 +245,7 @@ void main() {
         verify(mockRepository.bluetoothState).called(1);
       },
       // No esperamos estados extra al cerrar.
-      expect: () => [],
+      expect: () => <BleState>[],
       tearDown: () async {},
     );
   });

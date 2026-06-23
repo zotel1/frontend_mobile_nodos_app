@@ -183,7 +183,7 @@ void main() {
             connectionRepository: mockRepo, nodeRepository: mockNodeRepo);
       },
       act: (bloc) => bloc.add(const DisconnectDevice('any-id')),
-      expect: () => [],
+      expect: () => <BleConnectionState>[],
     );
 
     // ─────────── T3.3: Nuevos estados de identidad y conexión ───────────

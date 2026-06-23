@@ -96,7 +96,7 @@ void main() {
       // Suscribirse al stream → actualiza el mapa interno
       datasource.connectionState('any-id').listen((_) {});
       stateController.add(true);
-      await Future.delayed(const Duration(milliseconds: 50));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
 
       final result = await datasource.isConnected('any-id');
       expect(result, isTrue);
@@ -119,7 +119,7 @@ void main() {
       // Suscribirse al stream y emitir desconectado
       datasource.connectionState('any-id').listen((_) {});
       stateController.add(false);
-      await Future.delayed(const Duration(milliseconds: 50));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
 
       final result = await datasource.isConnected('any-id');
       expect(result, isFalse);
@@ -171,7 +171,7 @@ void main() {
       stateController.add(true);
       stateController.add(false);
 
-      await Future.delayed(const Duration(milliseconds: 50));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
 
       expect(capturedRemoteId, equals('device-abc'));
       expect(received, equals([true, false]));

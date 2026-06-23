@@ -57,7 +57,7 @@ void main() {
           createBleDevice(deviceId: 'AA:BB:CC:DD:EE:FF', rssi: -55);
       streamController.add([device]);
 
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
       expect(emitted.length, 1);
       expect(emitted.first.length, 1);
@@ -80,9 +80,9 @@ void main() {
       final device2 = createBleDevice(deviceId: 'BB', rssi: -60);
 
       streamController.add([device1]);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
       streamController.add([device2]);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
       expect(emitted.length, 2);
       expect(emitted[0].first.deviceId, 'AA');
@@ -100,7 +100,7 @@ void main() {
       final subscription = dataSource.scanResults.listen(emitted.add);
 
       streamController.add([]);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
       expect(emitted, isEmpty);
 
@@ -169,7 +169,7 @@ void main() {
       final device =
           createBleDevice(deviceId: 'AA:BB:CC:DD:EE:FF', rssi: -55);
       streamController.add([device]);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
       expect(emitted.length, 1);
       expect(emitted.first.first.deviceId, 'AA:BB:CC:DD:EE:FF');
@@ -208,7 +208,7 @@ void main() {
       final sub = dataSource.scanResults.listen(emitted.add);
 
       streamController.add([createBleDevice(rssi: -70)]);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
       expect(emitted.length, 1);
 
@@ -229,7 +229,7 @@ void main() {
       final sub = dataSource.bluetoothState.listen(states.add);
 
       btController.add(true);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
       expect(states, [true]);
 
@@ -249,7 +249,7 @@ void main() {
       final sub = dataSource.bluetoothState.listen(states.add);
 
       btController.add(false);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
       expect(states, [false]);
 
@@ -268,11 +268,11 @@ void main() {
       final sub = dataSource.bluetoothState.listen(states.add);
 
       btController.add(true);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
       btController.add(false);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
       btController.add(true);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
       expect(states, [true, false, true]);
 

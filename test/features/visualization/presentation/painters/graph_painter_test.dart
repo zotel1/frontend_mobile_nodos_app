@@ -6,8 +6,8 @@ import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/painters/graph_painter.dart';
 
-/// Verifica que GraphPainter renderice las 5 capas sin excepciones
-/// y que los colores de nodo correspondan al nivel de proximidad.
+/// Verifica que GraphPainter renderice las 5 capas con paints() matcher,
+/// validando posición de nodos, color, label y aristas Bezier.
 void main() {
   // ── Fixtures ──
   LayoutResult buildLayout(int nodeCount) {
@@ -35,6 +35,29 @@ void main() {
       edges: edges,
       iterations: 50,
       converged: true,
+    );
+  }
+
+  /// Key única para identificar el CustomPaint bajo test.
+  const graphPainterKey = Key('graph_painter_under_test');
+
+  /// Helper: construye el widget CustomPaint para tests.
+  Widget buildTestWidget(LayoutResult layout, {int? selectedNodeId}) {
+    return MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: 600,
+          height: 600,
+          child: CustomPaint(
+            key: graphPainterKey,
+            size: const Size(600, 600),
+            painter: GraphPainter(
+              layout: layout,
+              selectedNodeId: selectedNodeId,
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -73,29 +96,24 @@ void main() {
   });
 
   group('GraphPainter — renderizado en widget test', () {
-    testWidgets('pinta 5 nodos sin lanzar excepción', (tester) async {
+    testWidgets('pinta 5 nodos con sus aristas Bezier', (tester) async {
       final layout = buildLayout(5);
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 600,
-              height: 600,
-              child: CustomPaint(
-                size: const Size(600, 600),
-                painter: GraphPainter(layout: layout),
-              ),
-            ),
-          ),
-        ),
-      );
+      await tester.pumpWidget(buildTestWidget(layout));
 
-      // Verifica que no haya errores de renderizado (overflow, etc.)
-      expect(tester.takeException(), isNull);
+      // Orden de dibujo: _drawEdges primero (path), _drawNodes después (circles)
+      // 1 arista Bezier → 1 path, 5 nodos → 5 círculos
+      expect(find.byKey(graphPainterKey), paints
+        ..path()
+        ..circle()
+        ..circle()
+        ..circle()
+        ..circle()
+        ..circle());
     });
 
-    testWidgets('pinta layout vacío sin lanzar excepción', (tester) async {
+    testWidgets('layout vacío no dibuja círculos (solo texto "Sin datos de grafo")',
+        (tester) async {
       final layout = LayoutResult(
         nodes: const [],
         edges: const [],
@@ -103,41 +121,17 @@ void main() {
         converged: false,
       );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 400,
-              height: 400,
-              child: CustomPaint(
-                size: const Size(400, 400),
-                painter: GraphPainter(layout: layout),
-              ),
-            ),
-          ),
-        ),
-      );
+      await tester.pumpWidget(buildTestWidget(layout));
 
-      expect(tester.takeException(), isNull);
+      // Sin nodos → no se dibujan círculos
+      expect(find.byKey(graphPainterKey), isNot(paints..circle()));
     });
 
-    testWidgets('colores de nodo corresponden a ProximityLevel', (tester) async {
+    testWidgets('colores de nodo corresponden a ProximityLevel con verificación de canvas',
+        (tester) async {
       final layout = buildLayout(3);
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 600,
-              height: 600,
-              child: CustomPaint(
-                size: const Size(600, 600),
-                painter: GraphPainter(layout: layout),
-              ),
-            ),
-          ),
-        ),
-      );
+      await tester.pumpWidget(buildTestWidget(layout));
 
       // Verifica que los colores derivados sean correctos
       final closeNode = layout.nodes[0];
@@ -148,32 +142,33 @@ void main() {
       expect(mediumNode.color, 0xFFFFC107);
       expect(farNode.color, 0xFFF44336);
 
-      // El painter no lanzó excepción al pintar con estos colores
-      expect(tester.takeException(), isNull);
+      // Orden: path de arista primero, luego 3 círculos de nodo
+      expect(find.byKey(graphPainterKey), paints
+        ..path()
+        ..circle()
+        ..circle()
+        ..circle());
     });
 
-    testWidgets('pinta nodo seleccionado con anillo azul', (tester) async {
+    testWidgets('pinta nodo seleccionado con anillo azul adicional',
+        (tester) async {
       final layout = buildLayout(3);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 600,
-              height: 600,
-              child: CustomPaint(
-                size: const Size(600, 600),
-                painter: GraphPainter(layout: layout, selectedNodeId: 1),
-              ),
-            ),
-          ),
-        ),
+        buildTestWidget(layout, selectedNodeId: 1),
       );
 
-      expect(tester.takeException(), isNull);
+      // Orden: path de arista, 3 círculos de nodo, 1 círculo extra (anillo)
+      expect(find.byKey(graphPainterKey), paints
+        ..path()
+        ..circle()
+        ..circle()
+        ..circle()
+        ..circle()); // anillo de selección
     });
 
-    testWidgets('nodo desconocido renderiza sin excepción', (tester) async {
+    testWidgets('nodo desconocido usa displayColor diferenciado al pintar',
+        (tester) async {
       // Layout con 1 nodo sin nombre (isKnown=false) y 1 nodo con nombre
       final nodes = [
         GraphNode(
@@ -198,23 +193,10 @@ void main() {
         converged: true,
       );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 600,
-              height: 600,
-              child: CustomPaint(
-                size: const Size(600, 600),
-                painter: GraphPainter(layout: layout),
-              ),
-            ),
-          ),
-        ),
-      );
+      await tester.pumpWidget(buildTestWidget(layout));
 
-      // El painter debe renderizar sin errores
-      expect(tester.takeException(), isNull);
+      // 2 nodos → 2 círculos, sin aristas (edges vacío)
+      expect(find.byKey(graphPainterKey), paints..circle()..circle());
       // Verifica que el nodo desconocido tenga isKnown=false
       expect(nodes[0].isKnown, isFalse);
       // Verifica que el nodo conocido tenga isKnown=true
@@ -223,7 +205,6 @@ void main() {
 
     testWidgets('nodo desconocido usa color gris en lugar de color de proximidad',
         (tester) async {
-      // Layout con UN solo nodo desconocido en posición conocida
       final unknownNode = GraphNode(
         id: 1,
         x: 300,
@@ -238,26 +219,11 @@ void main() {
         converged: true,
       );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 600,
-              height: 600,
-              child: CustomPaint(
-                size: const Size(600, 600),
-                painter: GraphPainter(layout: layout),
-              ),
-            ),
-          ),
-        ),
-      );
+      await tester.pumpWidget(buildTestWidget(layout));
 
-      expect(tester.takeException(), isNull);
+      // 1 solo nodo desconocido → 1 círculo pintado (color gris)
+      expect(find.byKey(graphPainterKey), paints..circle());
       expect(unknownNode.isKnown, isFalse);
-      // Cuando isKnown=false, el color de relleno debería ser gris,
-      // no el color de proximidad (verde para close).
-      // El painter es el encargado de aplicar esta distinción visual.
     });
 
     testWidgets('nodo conocido mantiene color de proximidad como relleno',
@@ -276,46 +242,20 @@ void main() {
         converged: true,
       );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 600,
-              height: 600,
-              child: CustomPaint(
-                size: const Size(600, 600),
-                painter: GraphPainter(layout: layout),
-              ),
-            ),
-          ),
-        ),
-      );
+      await tester.pumpWidget(buildTestWidget(layout));
 
-      expect(tester.takeException(), isNull);
+      // 1 nodo conocido → 1 círculo pintado (color ámbar de medium)
+      expect(find.byKey(graphPainterKey), paints..circle());
       expect(knownNode.isKnown, isTrue);
-      // Cuando isKnown=true, el color de relleno debe ser el color
-      // de proximidad (ámbar para medium), NO gris.
       expect(knownNode.color, 0xFFFFC107);
     });
   });
 
   // ─── T2.4: Curvas Bezier cuadráticas en aristas ────────────────
-  // QUÉ: las aristas ahora son curvas Bezier en vez de líneas rectas.
-  // El punto de control se desplaza perpendicularmente al punto medio,
-  // con curvatura proporcional a la longitud de la arista.
-  // Fórmula: cpX = midX - dy/dist * curvature
-  //          cpY = midY + dx/dist * curvature
-  //          curvature = length * 0.2
 
   group('T2.4: Punto de control Bezier', () {
     test('punto de control está desplazado perpendicularmente al punto medio',
         () {
-      // Arista horizontal de izquierda a derecha
-      // from=(100,100), to=(300,100) → length=200
-      // mid=(200,100), dx=200, dy=0, dist=200
-      // curvature = 200 * 0.2 = 40
-      // cpX = 200 - 0/200 * 40 = 200
-      // cpY = 100 + 200/200 * 40 = 140
       final cp = GraphPainter.computeBezierControlPoint(
         const Offset(100, 100),
         const Offset(300, 100),
@@ -325,11 +265,6 @@ void main() {
     });
 
     test('arista vertical tiene punto de control a la derecha', () {
-      // from=(150,50), to=(150,250) → length=200
-      // mid=(150,150), dx=0, dy=200, dist=200
-      // curvature = 40
-      // cpX = 150 - 200/200 * 40 = 110
-      // cpY = 150 + 0/200 * 40 = 150
       final cp = GraphPainter.computeBezierControlPoint(
         const Offset(150, 50),
         const Offset(150, 250),
@@ -340,11 +275,6 @@ void main() {
 
     test('arista diagonal tiene punto de control desplazado perpendicularmente',
         () {
-      // from=(0,0), to=(100,100) → length=141.42
-      // mid=(50,50), dx=100, dy=100, dist=141.42
-      // curvature = 141.42 * 0.2 = 28.28
-      // cpX = 50 - 100/141.42 * 28.28 = 50 - 20 = 30
-      // cpY = 50 + 100/141.42 * 28.28 = 50 + 20 = 70
       final cp = GraphPainter.computeBezierControlPoint(
         const Offset(0, 0),
         const Offset(100, 100),
@@ -354,28 +284,24 @@ void main() {
     });
 
     test('arista larga tiene más curvatura que arista corta', () {
-      // Arista corta: length=10 → curvature=2
       final cpShort = GraphPainter.computeBezierControlPoint(
         const Offset(0, 0),
         const Offset(10, 0),
       );
-      // mid=(5,0), curvature=2, cp=(5, 2)
       expect(cpShort.dy, closeTo(2.0, 0.01));
 
-      // Arista larga: length=500 → curvature=100
       final cpLong = GraphPainter.computeBezierControlPoint(
         const Offset(0, 0),
         const Offset(500, 0),
       );
-      // mid=(250,0), curvature=100, cp=(250, 100)
       expect(cpLong.dy, closeTo(100.0, 0.01));
-      // La curvatura de la arista larga es 50x mayor
       expect(cpLong.dy, greaterThan(cpShort.dy * 10));
     });
   });
 
   group('T2.4: Renderizado Bezier en widget test', () {
-    testWidgets('pinta aristas Bezier sin lanzar excepción', (tester) async {
+    testWidgets('pinta aristas Bezier como paths curvados en canvas',
+        (tester) async {
       final nodes = [
         GraphNode(
           id: 1,
@@ -402,33 +328,20 @@ void main() {
         converged: true,
       );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 600,
-              height: 600,
-              child: CustomPaint(
-                size: const Size(600, 600),
-                painter: GraphPainter(layout: layout),
-              ),
-            ),
-          ),
-        ),
-      );
+      await tester.pumpWidget(buildTestWidget(layout));
 
-      // El painter debe renderizar aristas Bezier sin excepciones
-      expect(tester.takeException(), isNull);
+      // Orden: path de arista Bezier primero, luego 2 círculos de nodo
+      expect(find.byKey(graphPainterKey), paints
+        ..path()
+        ..circle()
+        ..circle());
     });
   });
 
   // ─── T2.5: Efecto glow en nodo self ────────────────────────────
-  // QUÉ: los nodos marcados con isSelf=true deben renderizarse con
-  // un anillo azul exterior (glow) y un borde azul de 4px.
-  // Capa: después de _drawNodes, se llama _drawSelfNode().
 
   group('T2.5: _drawSelfNode glow effect', () {
-    testWidgets('nodo self se renderiza con glow azul sin excepción',
+    testWidgets('nodo self se renderiza con círculo de glow adicional en canvas',
         (tester) async {
       final selfNode = GraphNode(
         id: 1,
@@ -445,27 +358,15 @@ void main() {
         converged: true,
       );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 600,
-              height: 600,
-              child: CustomPaint(
-                size: const Size(600, 600),
-                painter: GraphPainter(layout: layout),
-              ),
-            ),
-          ),
-        ),
-      );
+      await tester.pumpWidget(buildTestWidget(layout));
 
-      // El painter debe renderizar el glow azul sin excepciones
-      expect(tester.takeException(), isNull);
+      // 1 círculo del nodo + 1 círculo del glow azul = 2 círculos
+      expect(find.byKey(graphPainterKey), paints..circle()..circle());
       expect(selfNode.isSelf, isTrue);
     });
 
-    testWidgets('nodo no-self NO tiene glow azul', (tester) async {
+    testWidgets('nodo no-self NO tiene círculo de glow extra',
+        (tester) async {
       final regularNode = GraphNode(
         id: 2,
         x: 300,
@@ -481,26 +382,14 @@ void main() {
         converged: true,
       );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 600,
-              height: 600,
-              child: CustomPaint(
-                size: const Size(600, 600),
-                painter: GraphPainter(layout: layout),
-              ),
-            ),
-          ),
-        ),
-      );
+      await tester.pumpWidget(buildTestWidget(layout));
 
-      expect(tester.takeException(), isNull);
+      // 1 solo círculo del nodo, sin glow extra
+      expect(find.byKey(graphPainterKey), paints..circle());
       expect(regularNode.isSelf, isFalse);
     });
 
-    testWidgets('self node con múltiples nodos solo brilla el self',
+    testWidgets('self node con múltiples nodos: solo el self tiene glow extra',
         (tester) async {
       final nodes = [
         GraphNode(
@@ -527,37 +416,22 @@ void main() {
         converged: true,
       );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 600,
-              height: 600,
-              child: CustomPaint(
-                size: const Size(600, 600),
-                painter: GraphPainter(layout: layout),
-              ),
-            ),
-          ),
-        ),
-      );
+      await tester.pumpWidget(buildTestWidget(layout));
 
-      expect(tester.takeException(), isNull);
+      // 2 círculos de nodo + 1 círculo extra de glow (solo self) = 3 círculos
+      expect(find.byKey(graphPainterKey), paints
+        ..circle()
+        ..circle()
+        ..circle());
       expect(nodes[0].isSelf, isTrue);
       expect(nodes[1].isSelf, isFalse);
     });
   });
 
   // ─── F2 T2.1: Estado vacío "Sin datos de grafo" ─────────────────
-  // QUÉ: cuando GraphPainter recibe un layout con nodes.isEmpty,
-  // debe renderizar el texto "Sin datos de grafo" centrado en el
-  // canvas en lugar de retornar silenciosamente.
-  // POR QUÉ: el usuario quedaba con un canvas en blanco sin feedback
-  // cuando no había nodos en la sesión de escaneo.
-  // CÓMO: reemplazamos `if (nodes.isEmpty) return;` por un TextPainter
-  // que dibuja el mensaje centrado en gris #9E9E9E.
+
   group('F2 T2.1: Estado vacío — texto "Sin datos de grafo"', () {
-    testWidgets('renderiza texto Sin datos de grafo con layout vacío',
+    testWidgets('layout vacío no dibuja nodos en el canvas',
         (tester) async {
       final layout = LayoutResult(
         nodes: const [],
@@ -566,36 +440,19 @@ void main() {
         converged: false,
       );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 400,
-              height: 400,
-              child: CustomPaint(
-                size: const Size(400, 400),
-                painter: GraphPainter(layout: layout),
-              ),
-            ),
-          ),
-        ),
-      );
+      await tester.pumpWidget(buildTestWidget(layout));
 
-      // El painter no debe lanzar excepción (renderiza el mensaje
-      // en lugar de retornar silenciosamente)
-      expect(tester.takeException(), isNull);
+      // Sin nodos → cero círculos. El texto se dibuja vía TextPainter
+      // (drawParagraph), que no es capturado como circle() por paints.
+      expect(find.byKey(graphPainterKey), isNot(paints..circle()));
     });
   });
 
   // ─── PR2 T2.7: Aristas transitivas dashed, userColor, distancia ──
-  // QUÉ: verifica que GraphPainter renderice sin excepciones los
-  // nuevos features visuales: aristas transitivas con patrón dashed,
-  // nodos con userColor asignado, y labels con distancia adaptativa.
-  // POR QUÉ: R5.3 (dashed transitive edges), R5.6 (userColor override),
-  // R5.15 (distance label "~35cm" / "~2.3m").
 
   group('PR2 T2.7: Aristas transitivas y userColor', () {
-    testWidgets('pinta arista transitiva sin lanzar excepción', (tester) async {
+    testWidgets('pinta arista transitiva como path en canvas',
+        (tester) async {
       final nodes = [
         const GraphNode(id: 1, x: 100, y: 200, proximity: ProximityLevel.close, name: 'A'),
         const GraphNode(id: 2, x: 400, y: 200, proximity: ProximityLevel.medium, name: 'B'),
@@ -610,24 +467,17 @@ void main() {
         nodes: nodes, edges: edges, iterations: 50, converged: true,
       );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 600, height: 600,
-              child: CustomPaint(
-                size: const Size(600, 600),
-                painter: GraphPainter(layout: layout),
-              ),
-            ),
-          ),
-        ),
-      );
+      await tester.pumpWidget(buildTestWidget(layout));
 
-      expect(tester.takeException(), isNull);
+      // Orden: path de arista transitiva primero, luego 2 círculos de nodo
+      expect(find.byKey(graphPainterKey), paints
+        ..path()
+        ..circle()
+        ..circle());
     });
 
-    testWidgets('pinta nodo con userColor asignado sin excepción', (tester) async {
+    testWidgets('pinta nodo con userColor asignado y displayColor verificado',
+        (tester) async {
       final node = GraphNode(
         id: 1, x: 300, y: 300,
         proximity: ProximityLevel.close,
@@ -638,27 +488,17 @@ void main() {
         nodes: [node], edges: const [], iterations: 50, converged: true,
       );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 600, height: 600,
-              child: CustomPaint(
-                size: const Size(600, 600),
-                painter: GraphPainter(layout: layout),
-              ),
-            ),
-          ),
-        ),
-      );
+      await tester.pumpWidget(buildTestWidget(layout));
 
-      expect(tester.takeException(), isNull);
+      // 1 nodo → al menos 1 círculo pintado
+      expect(find.byKey(graphPainterKey), paints..circle());
       // Verifica que el displayColor sea el azul asignado, no el verde de close
       expect(node.displayColor, 0xFF2196F3);
       expect(node.color, 0xFF4CAF50); // proximidad
     });
 
-    testWidgets('pinta nodo con estimatedDistance sin excepción', (tester) async {
+    testWidgets('pinta nodo con estimatedDistance y etiqueta en canvas',
+        (tester) async {
       final node = GraphNode(
         id: 1, x: 300, y: 300,
         proximity: ProximityLevel.close,
@@ -669,26 +509,14 @@ void main() {
         nodes: [node], edges: const [], iterations: 50, converged: true,
       );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 600, height: 600,
-              child: CustomPaint(
-                size: const Size(600, 600),
-                painter: GraphPainter(layout: layout),
-              ),
-            ),
-          ),
-        ),
-      );
+      await tester.pumpWidget(buildTestWidget(layout));
 
-      expect(tester.takeException(), isNull);
+      // 1 nodo → al menos 1 círculo (la etiqueta de distancia se dibuja con TextPainter)
+      expect(find.byKey(graphPainterKey), paints..circle());
       expect(node.estimatedDistance, equals(0.35));
     });
 
     test('formato de distancia: ≥1m muestra metros', () {
-      // R5.15: ≥1m → "~X.Xm"
       double d = 2.3;
       final label = d >= 1.0
           ? '~${d.toStringAsFixed(1)}m'
@@ -703,7 +531,6 @@ void main() {
     });
 
     test('formato de distancia: <1m muestra centímetros', () {
-      // R5.15: <1m → "~XXcm"
       double d = 0.35;
       final label = d >= 1.0
           ? '~${d.toStringAsFixed(1)}m'

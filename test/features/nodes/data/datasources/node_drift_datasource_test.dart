@@ -101,7 +101,7 @@ void main() {
       final sub = dataSource.watchNodes().listen(emitted.add);
 
       // Allow stream to emit
-      await Future.delayed(const Duration(milliseconds: 100));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
 
       expect(emitted.isNotEmpty, isTrue);
       expect(emitted.first, isEmpty);
@@ -114,11 +114,11 @@ void main() {
       final sub = dataSource.watchNodes().listen(emitted.add);
 
       // Give initial empty emission time
-      await Future.delayed(const Duration(milliseconds: 100));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
 
       await dataSource.upsertNode(createNode(bleAddress: 'AA:BB'));
 
-      await Future.delayed(const Duration(milliseconds: 100));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
 
       // Should have at least one emission with the new node
       final lastEmission = emitted.last;
@@ -132,7 +132,7 @@ void main() {
       final emitted = <List<Node>>[];
       final sub = dataSource.watchNodes().listen(emitted.add);
 
-      await Future.delayed(const Duration(milliseconds: 100));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
 
       // Insert
       await dataSource.upsertNode(createNode(
@@ -140,7 +140,7 @@ void main() {
         name: 'Original',
         rssiHistory: [-60],
       ));
-      await Future.delayed(const Duration(milliseconds: 100));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
 
       // Update
       await dataSource.upsertNode(createNode(
@@ -149,7 +149,7 @@ void main() {
         name: 'Updated',
         rssiHistory: [-60, -55],
       ));
-      await Future.delayed(const Duration(milliseconds: 100));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
 
       final lastEmission = emitted.last;
       expect(lastEmission.length, 1);
