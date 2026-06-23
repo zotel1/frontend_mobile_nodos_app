@@ -55,6 +55,15 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   /// Cantidad máxima de dispositivos acumulados en el mapa.
   static const _maxDevices = 50;
 
+  /// ID de la sesión de escaneo activa.
+  ///
+  /// Se resetea a null en [StopScan] y en [close] para garantizar
+  /// que no queden referencias a sesiones ya cerradas.
+  /// Expuesto como getter para verificación en tests.
+  @visibleForTesting
+  int? get scanSessionId => _scanSessionId;
+  int? _scanSessionId;
+
   BleBloc({
     required this.repository,
     Duration? dutyCyclePeriod,
@@ -106,6 +115,18 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   }
 
   Future<void> _onStartScan(StartScan event, Emitter<BleState> emit) async {
+    // PR6b: Verificar estado del adaptador Bluetooth antes de iniciar escaneo.
+    // Si BT está apagado, emitir BleError en lugar de intentar startScan
+    // que lanzaría excepción silenciosa en FlutterBluePlus.
+    // QUÉ resuelve: el usuario sabe por qué no ve dispositivos en lugar
+    // de quedarse con un BleScanning vacío sin feedback.
+    if (state is BluetoothOff) {
+      emit(const BleError(
+        'Bluetooth está apagado. Enciéndelo desde Ajustes para escanear.',
+      ));
+      return;
+    }
+
     // Cancelar duty cycling anterior si existe (por si se llama StartScan
     // mientras ya hay un ciclo activo).
     _dutyCycleTimer?.cancel();
@@ -159,6 +180,10 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     // PR6a: Cerrar la sesión de escaneo con endedAt.
     // Esto completa el ciclo de vida de la sesión.
     await repository.endScanSession();
+
+    // PR6b: Resetear el ID de sesión de escaneo.
+    // Garantiza que no quede referencia a una sesión ya cerrada.
+    _scanSessionId = null;
 
     emit(const BleStopped());
   }
@@ -286,6 +311,7 @@ class BleBloc extends Bloc<BleEvent, BleState> {
 
   @override
   Future<void> close() {
+    _scanSessionId = null;
     _scanSubscription?.cancel();
     _btSubscription?.cancel();
     _evictionTimer?.cancel();

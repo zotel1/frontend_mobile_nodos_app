@@ -329,6 +329,7 @@ class GraphRepositoryImpl implements GraphRepository {
         suggestedName: node.suggestedName,
         connectionCount: connectionCounts[node.id!] ?? 0,
         isSelf: myDeviceUuid != null && node.bleAddress == myDeviceUuid,
+        connectable: node.connectable,
       ));
     }
 

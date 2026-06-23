@@ -480,6 +480,57 @@ void main() {
       },
     );
 
+    // ─── PR6b: myDeviceUuid getter ─────────────────────────────
+    // QUÉ: verifica que UserBloc expone el UUID del dispositivo
+    // del usuario a través de un getter público myDeviceUuid.
+    // POR QUÉ: otros componentes (visualization, nodes) necesitan
+    // el UUID para marcar el self-node en el grafo. Sin este getter,
+    // el UUID queda encapsulado en SharedPreferences y es inaccesible.
+    //
+    // SC-PR6b-005: UserBloc expone myDeviceUuid desde SharedPreferences.
+
+    test('SC-PR6b-005: myDeviceUuid retorna el UUID de SharedPreferences',
+        () async {
+      SharedPreferences.setMockInitialValues({
+        'device_uuid': 'my-persisted-uuid-123',
+      });
+      final p = await SharedPreferences.getInstance();
+
+      when(mockGetUserProfile.call(any))
+          .thenAnswer((_) async => Right(testUser));
+
+      final bloc = UserBloc(
+        getProfile: mockGetUserProfile,
+        updateName: mockUpdateUserName,
+        updateColor: mockUpdateUserColor,
+        userRepository: mockUserRepository,
+        prefs: p,
+      );
+
+      expect(bloc.myDeviceUuid, equals('my-persisted-uuid-123'));
+      bloc.close();
+    });
+
+    test('SC-PR6b-005: myDeviceUuid retorna null sin UUID en SharedPreferences',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final p = await SharedPreferences.getInstance();
+
+      when(mockGetUserProfile.call(any))
+          .thenAnswer((_) async => Right(testUser));
+
+      final bloc = UserBloc(
+        getProfile: mockGetUserProfile,
+        updateName: mockUpdateUserName,
+        updateColor: mockUpdateUserColor,
+        userRepository: mockUserRepository,
+        prefs: p,
+      );
+
+      expect(bloc.myDeviceUuid, isNull);
+      bloc.close();
+    });
+
     // ─── PR4: Tema persistido desde SharedPreferences en inicio ──
     //
     // QUÉ: al iniciar la app (UserInitial), _onLoadProfile debe leer
