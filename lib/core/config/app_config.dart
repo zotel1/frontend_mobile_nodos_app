@@ -1,3 +1,16 @@
+/// Configuración centralizada de la app Nodos.
+///
+/// Todas las constantes de protocolo BLE, thresholds de proximidad,
+/// parámetros de duty cycling y configuraciones del modelo van en este archivo.
+/// NINGÚN secreto (API keys, tokens) debe estar aquí — van en GitHub Secrets.
+///
+/// Convenciones:
+/// - Números en hexadecimal para identificadores de protocolo (UUIDs).
+/// - Valores en dBm para RSSI.
+/// - Valores en segundos para duraciones.
+/// - Documentar fuente/justificación de cada valor no trivial.
+library;
+
 /// Shared Service UUID for BLE discovery.
 ///
 /// All Nodos devices advertise on this UUID — it is a protocol identifier,

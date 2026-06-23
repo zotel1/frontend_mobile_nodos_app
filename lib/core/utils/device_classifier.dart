@@ -23,21 +23,33 @@ class DeviceClassifier {
   /// Los UUIDs BLE de 16 bits se representan como GUID completo:
   /// 0000XXXX-0000-1000-8000-00805F9B34FB donde XXXX es el código de 16 bits.
   /// Este mapa usa solo el código de 16 bits en minúscula como clave.
+  ///
+  /// PR9: Expandido con Cycling Speed and Cadence (1816), Health Thermometer (1809),
+  /// Blood Pressure (1810). Fuente: Bluetooth SIG Assigned Numbers.
   static const Map<String, String> _serviceUuidMap = {
     '180d': 'Reloj/Fitness', // Heart Rate
     '180f': 'Batería', // Battery Service
     '1812': 'Teclado', // Human Interface Device (Keyboard)
     '180a': 'Dispositivo', // Device Information
     '1800': 'Genérico', // Generic Access
+    '1816': 'Ciclismo', // Cycling Speed and Cadence
+    '1809': 'Termómetro', // Health Thermometer
+    '1810': 'Presión Arterial', // Blood Pressure
   };
 
   /// Mapa de manufacturer company ID → marca.
   ///
   /// Fuente: Bluetooth SIG Company Identifiers.
+  ///
+  /// PR9: Expandido con Fitbit (0x026A), Microsoft (0x0006),
+  /// Huawei (0x012D).
   static const Map<int, String> _manufacturerMap = {
     0x004C: 'Apple',
     0x0075: 'Samsung',
     0x00E0: 'Google',
+    0x026A: 'Fitbit',
+    0x0006: 'Microsoft',
+    0x012D: 'Huawei',
   };
 
   /// Clasifica un dispositivo BLE a partir de sus service UUIDs y manufacturer ID.
