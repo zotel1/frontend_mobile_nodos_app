@@ -202,6 +202,45 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.byType(InteractiveViewer), findsOneWidget);
     });
+
+    // PR7: Verifica que con barycenter, el InteractiveViewer
+    // tiene un TransformationController con matriz NO identidad
+    // (se aplicó el centrado automático).
+    testWidgets('PR7: InteractiveViewer centra en barycenter en primer frame',
+        (tester) async {
+      final layout = buildLayout();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GraphView(
+              layout: layout,
+              barycenter: const Offset(200, 200),
+            ),
+          ),
+        ),
+      );
+
+      // Dar tiempo al postFrameCallback para que ejecute el centrado
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // El InteractiveViewer debe existir y no haber lanzado error
+      expect(tester.takeException(), isNull);
+      final viewer = tester.widget<InteractiveViewer>(
+        find.byType(InteractiveViewer),
+      );
+
+      // Verificar que la matriz de transformación NO es identidad
+      // (se aplicó translate al barycenter)
+      final matrix = viewer.transformationController!.value;
+      final isIdentity = matrix.isIdentity();
+      // Con barycenter=(200,200) y un viewport típico (~800x600),
+      // la traducción debería mover el barycenter al centro de la vista.
+      expect(isIdentity, isFalse,
+          reason: 'La matriz de transformación debe reflejar el '
+              'centrado automático al barycenter');
+    });
   });
 }
 

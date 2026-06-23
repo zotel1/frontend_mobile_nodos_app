@@ -290,7 +290,10 @@
       group.remove(child);
     }
 
-    // Crear aristas
+    // Crear aristas con TubeGeometry para visibilidad garantizada.
+    // THREE.Line tiene linewidth fijo de 1px en WebGL sin importar el valor
+    // seteado. TubeGeometry produce tubos cilíndricos visibles a cualquier
+    // zoom y distancia. PR7: reemplaza THREE.Line → THREE.TubeGeometry.
     if (data.edges) {
       const nodeMap = {};
       data.nodes.forEach(function (n) { nodeMap[n.id] = n; });
@@ -300,19 +303,24 @@
         const to = nodeMap[e.toId];
         if (!from || !to) return;
 
-        const points = [
-          new THREE.Vector3(from.x, from.y, from.z || 0),
-          new THREE.Vector3(to.x, to.y, to.z || 0),
-        ];
-        const geometry = new THREE.BufferGeometry().setFromPoints(points);
-        const material = new THREE.LineBasicMaterial({
+        const start = new THREE.Vector3(from.x, from.y, from.z || 0);
+        const end = new THREE.Vector3(to.x, to.y, to.z || 0);
+
+        // Crear curva CatmullRom entre ambos puntos para TubeGeometry
+        const curve = new THREE.CatmullRomCurve3([start, end]);
+        const tubeRadius = 2.0; // grosor del tubo
+        const tubularSegments = 16; // segmentos a lo largo del tubo
+        const radialSegments = 8; // segmentos alrededor de la sección
+        const geometry = new THREE.TubeGeometry(
+            curve, tubularSegments, tubeRadius, radialSegments, false);
+        const material = new THREE.MeshPhongMaterial({
           color: 0x4fc3f7,
           transparent: true,
           opacity: 0.35,
-          linewidth: 1,
+          emissive: 0x000000,
         });
-        const line = new THREE.Line(geometry, material);
-        group.add(line);
+        const tube = new THREE.Mesh(geometry, material);
+        group.add(tube);
       });
     }
 
@@ -340,6 +348,22 @@
 
       group.add(mesh);
     });
+
+    // PR7: Centrar la cámara en el centroide de los nodos.
+    // Calcula el promedio aritmético de las posiciones (x, y, z) de
+    // todos los nodos y actualiza controls.target para que la cámara
+    // apunte al centro del cluster automáticamente (R5.13).
+    if (data.nodes.length > 0) {
+      let cx = 0, cy = 0, cz = 0;
+      data.nodes.forEach(function (n) {
+        cx += n.x;
+        cy += n.y;
+        cz += n.z || 0;
+      });
+      const cnt = data.nodes.length;
+      controls.target.set(cx / cnt, cy / cnt, cz / cnt);
+      controls.update();
+    }
     } catch (err) {
       _log('loadGraphData ERROR: ' + (err && err.message ? err.message : String(err)));
     }

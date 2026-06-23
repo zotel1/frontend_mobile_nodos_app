@@ -73,17 +73,22 @@ class NodeDeselected extends VisualizationEvent {
 /// fallaba (GraphError), la UI mostraba el error pero no ofrecía forma
 /// de reintentar. El usuario quedaba atrapado viendo un mensaje de error.
 ///
+/// PR7: [myDeviceUuid] se agregó para preservar el UUID del dispositivo
+/// propio en el reintento, manteniendo el self-node correctamente marcado.
+///
 /// [lastSessionId] y [lastNodes] son los parámetros originales del
 /// [BuildGraphRequested] que falló.
 class RetryGraphBuild extends VisualizationEvent {
   final int lastSessionId;
   final List<Node> lastNodes;
+  final String? myDeviceUuid;
 
   const RetryGraphBuild({
     required this.lastSessionId,
     required this.lastNodes,
+    this.myDeviceUuid,
   });
 
   @override
-  List<Object?> get props => [lastSessionId, lastNodes];
+  List<Object?> get props => [lastSessionId, lastNodes, myDeviceUuid];
 }

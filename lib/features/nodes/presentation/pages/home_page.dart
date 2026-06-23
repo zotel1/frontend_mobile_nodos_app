@@ -126,14 +126,25 @@ class _HomePageState extends State<HomePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
 
-      final renderBox =
-          _graphViewKey.currentContext?.findRenderObject() as RenderBox?;
-      if (renderBox == null) return;
+      // PR7: En modo 3D, el GraphView está offstage y localToGlobal
+      // retorna coordenadas incorrectas. Usar el centro de la pantalla
+      // como posición del tooltip en modo 3D.
+      final is3D = _is3D.value;
+      final Size screenSize = MediaQuery.of(context).size;
+      final Offset globalPosition;
+      if (is3D) {
+        // Tooltip centrado en pantalla en modo 3D
+        globalPosition = Offset(screenSize.width / 2, screenSize.height / 2);
+      } else {
+        final renderBox =
+            _graphViewKey.currentContext?.findRenderObject() as RenderBox?;
+        if (renderBox == null) return;
 
-      // Calcular posición global aproximada del nodo en pantalla.
-      // La posición del canvas (2000×2000) se transforma vía el RenderBox.
-      final localPos = Offset(node.x, node.y);
-      final globalPosition = renderBox.localToGlobal(localPos);
+        // Calcular posición global aproximada del nodo en pantalla.
+        // La posición del canvas (2000×2000) se transforma vía el RenderBox.
+        final localPos = Offset(node.x, node.y);
+        globalPosition = renderBox.localToGlobal(localPos);
+      }
 
       // Remover tooltip previo si existe
       _tooltipEntry?.remove();
@@ -534,12 +545,16 @@ class _HomePageState extends State<HomePage> {
       if (!_showingGraph) {
         setState(() => _showingGraph = true);
       }
-      // Disparar construcción del grafo con la sesión activa
+      // Disparar construcción del grafo con la sesión activa.
+      // PR7: pasar myDeviceUuid desde UserBloc para que el self-node
+      // se marque con isSelf=true en el grafo.
       final sessionState = context.read<ScanSessionBloc>().state;
       if (sessionState is SessionActive) {
+        final myUuid = context.read<UserBloc>().myDeviceUuid;
         context.read<VisualizationBloc>().add(BuildGraphRequested(
           scanSessionId: sessionState.sessionId,
           nodes: nodes,
+          myDeviceUuid: myUuid,
         ));
       }
     } else if (_showingGraph) {
