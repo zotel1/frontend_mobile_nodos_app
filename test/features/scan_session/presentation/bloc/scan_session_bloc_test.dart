@@ -141,7 +141,7 @@ void main() {
       },
       act: (bloc) => bloc.add(const AddNodesToSession(1, [5])),
       // nodeCount no se actualiza porque no hay SessionActive previo
-      expect: () => [],
+      expect: () => <ScanSessionState>[],
     );
   });
 }

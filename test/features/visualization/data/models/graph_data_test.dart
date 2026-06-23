@@ -121,7 +121,7 @@ void main() {
         'nodes': [
           {'id': 1, 'x': 500.0, 'y': 600.0}, // sin z
         ],
-        'edges': [],
+        'edges': <Map<String, dynamic>>[],
         'iterations': 1,
         'converged': true,
       };
@@ -160,7 +160,7 @@ void main() {
         'nodes': [
           {'id': 1, 'x': 500.0, 'y': 600.0},
         ],
-        'edges': [],
+        'edges': <Map<String, dynamic>>[],
         'iterations': 100,
         'converged': true,
       };
@@ -188,7 +188,7 @@ void main() {
         'nodes': [
           {'id': 1, 'x': 500.0, 'y': 600.0},
         ],
-        'edges': [],
+        'edges': <Map<String, dynamic>>[],
         'iterations': 100,
         'converged': true,
       };
@@ -216,7 +216,7 @@ void main() {
         'nodes': [
           {'id': 1, 'x': 500.0, 'y': 600.0},
         ],
-        'edges': [],
+        'edges': <Map<String, dynamic>>[],
         'iterations': 100,
         'converged': true,
       };
@@ -243,7 +243,7 @@ void main() {
         'nodes': [
           {'id': 1, 'x': 500.0, 'y': 600.0},
         ],
-        'edges': [],
+        'edges': <Map<String, dynamic>>[],
         'iterations': 100,
         'converged': true,
       };
@@ -273,7 +273,7 @@ void main() {
         'nodes': [
           {'id': 1, 'x': 500.0, 'y': 600.0},
         ],
-        'edges': [],
+        'edges': <Map<String, dynamic>>[],
         'iterations': 100,
         'converged': true,
       };
@@ -313,7 +313,7 @@ void main() {
         'nodes': [
           {'id': 1, 'x': 500.0, 'y': 600.0},
         ],
-        'edges': [],
+        'edges': <Map<String, dynamic>>[],
         'iterations': 100,
         'converged': true,
       };
@@ -341,7 +341,7 @@ void main() {
         'nodes': [
           {'id': 1, 'x': 500.0, 'y': 600.0},
         ],
-        'edges': [],
+        'edges': <Map<String, dynamic>>[],
         'iterations': 100,
         'converged': true,
       };
@@ -367,7 +367,7 @@ void main() {
         'nodes': [
           {'id': 1, 'x': 500.0, 'y': 600.0},
         ],
-        'edges': [],
+        'edges': <Map<String, dynamic>>[],
         'iterations': 100,
         'converged': true,
       };

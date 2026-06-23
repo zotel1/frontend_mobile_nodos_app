@@ -210,7 +210,7 @@ void main() {
       nodeBloc.add(SyncBleDevices(devices));
       // Esperar que el handler asíncrono complete
       async.flushMicrotasks();
-      await Future.delayed(const Duration(milliseconds: 50));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
       async.flushMicrotasks();
 
       // Persistent nodes must exist in DB
@@ -248,12 +248,12 @@ void main() {
       async.flushMicrotasks();
 
       // Esperar GraphReady (FR puede tardar un poco)
-      await Future.delayed(const Duration(milliseconds: 100));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
       async.flushMicrotasks();
 
       final states = <VisualizationState>[];
       final sub = vizBloc.stream.listen(states.add);
-      await Future.delayed(const Duration(milliseconds: 100));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
       async.flushMicrotasks();
 
       final ready = states.whereType<GraphReady>().firstOrNull;
@@ -453,7 +453,7 @@ void main() {
 
       bloc.add(SyncBleDevices(devices));
       async.flushMicrotasks();
-      await Future.delayed(const Duration(milliseconds: 50));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
       async.flushMicrotasks();
 
       final nodes = await nodeRepo.observeNodes().first;
@@ -905,7 +905,7 @@ void main() {
       async.flushMicrotasks();
 
       // Esperar a que FR termine
-      await Future.delayed(const Duration(milliseconds: 200));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
       async.flushMicrotasks();
 
       final ready = states.whereType<GraphReady>().firstOrNull;
@@ -1012,7 +1012,7 @@ void main() {
 
       nodeBloc.add(SyncBleDevices(devices));
       async.flushMicrotasks();
-      await Future.delayed(const Duration(milliseconds: 50));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
       async.flushMicrotasks();
 
       final nodes = await nodeRepo.observeNodes().first;

@@ -10,7 +10,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_devic
 
 class FlutterBluePlusDataSource implements BleScannerDataSource {
   final StreamController<List<BleDevice>> _controller;
-  StreamSubscription? _scanSub;
+  StreamSubscription<Object?>? _scanSub;
   bool _isScanning = false;
   final bool _isTestMode;
 

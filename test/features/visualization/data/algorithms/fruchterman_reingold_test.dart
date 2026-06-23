@@ -50,8 +50,8 @@ void main() {
       expect(result, contains('edges'));
       expect(result, contains('iterations'));
       expect(result, contains('converged'));
-      expect(result['nodes'], isA<List>());
-      expect(result['edges'], isA<List>());
+      expect(result['nodes'], isA<List<Map<String, dynamic>>>());
+      expect(result['edges'], isA<List<Map<String, dynamic>>>());
       expect(result['iterations'], isA<int>());
       expect(result['converged'], isA<bool>());
     });

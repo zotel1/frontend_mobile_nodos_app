@@ -157,7 +157,7 @@ void main() {
       },
       act: (bloc) => bloc.add(RefreshNodes()),
       // La suscripción ya es reactiva: no se emite nada nuevo.
-      expect: () => [],
+      expect: () => <NodeListState>[],
     );
 
     blocTest<NodeListBloc, NodeListState>(
@@ -174,7 +174,7 @@ void main() {
       },
       act: (bloc) => bloc.add(RefreshNodes()),
       // La suscripción ya es reactiva: no se emite nada nuevo.
-      expect: () => [],
+      expect: () => <NodeListState>[],
     );
 
     // T1.6 F6: SyncBleDevices debe suscribirse al stream Drift
@@ -241,7 +241,7 @@ void main() {
       },
       act: (bloc) => bloc.add(const ClearNodes()),
       // El stream reactivo emitirá la lista vacía automáticamente.
-      expect: () => [],
+      expect: () => <NodeListState>[],
       verify: (_) {
         verify(mockNodeRepository.clearAllNodes()).called(1);
       },
@@ -263,7 +263,7 @@ void main() {
       },
       act: (bloc) => bloc.add(const UpdateNodeName(1, 'Nuevo Nombre')),
       // El stream reactivo emitirá la lista actualizada automáticamente.
-      expect: () => [],
+      expect: () => <NodeListState>[],
       verify: (_) {
         verify(mockUpdateNodeMetadata(
           argThat(
@@ -289,7 +289,7 @@ void main() {
       },
       act: (bloc) => bloc.add(const UpdateNodeColor(2, '#FF0000')),
       // El stream reactivo emitirá la lista actualizada automáticamente.
-      expect: () => [],
+      expect: () => <NodeListState>[],
       verify: (_) {
         verify(mockUpdateNodeMetadata(
           argThat(

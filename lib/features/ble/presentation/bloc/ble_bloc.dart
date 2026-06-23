@@ -143,7 +143,7 @@ class BleBloc extends Bloc<BleEvent, BleState> {
             add(_ScanResultsUpdated(devices));
           }
         },
-        onError: (error) {
+        onError: (Object error) {
           if (!isClosed) {
             add(_ScanError(error.toString()));
           }

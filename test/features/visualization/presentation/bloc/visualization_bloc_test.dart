@@ -131,65 +131,65 @@ void main() {
       },
     );
 
-    blocTest<VisualizationBloc, VisualizationState>(
+    test(
       'uses position cache: passes priorLayout on second build',
-      build: () {
-        setupDefaultMocks();
-        return VisualizationBloc(
-          buildGraph: mockBuildGraph,
-          calculateLayout: mockCalculateLayout,
-          // Usar debounce corto pero >0 para que eventos separados
-          // por un delay mayor al debounce se procesen secuencialmente
-          debounceDuration: const Duration(milliseconds: 10),
-        );
-      },
-      act: (bloc) async {
-        // Primer build: genera layout y lo cachea.
-        // PR7: usar nodo con RSSI específico para que el hash no sea 0
-        // (hash=0 con nodes vacíos se comporta distinto en el nuevo dedup).
-        final node1 = Node(
-          id: 10, bleAddress: 'AA:00', rssiHistory: [-42],
-          firstSeen: DateTime.now(), lastSeen: DateTime.now(),
-        );
-        bloc.add(
-          BuildGraphRequested(scanSessionId: 1, nodes: [node1]),
-        );
-        // Esperar más que el debounce para que el primer evento procese
-        await Future<void>.delayed(const Duration(milliseconds: 50));
+      () {
+        fakeAsync((async) {
+          setupDefaultMocks();
+          final bloc = VisualizationBloc(
+            buildGraph: mockBuildGraph,
+            calculateLayout: mockCalculateLayout,
+            debounceDuration: const Duration(milliseconds: 10),
+          );
 
-        // Segundo build: debe usar el cache como priorLayout.
-        // Usar nodo DISTINTO para que el dedup no lo filtre.
-        final node2 = Node(
-          id: 20, bleAddress: 'BB:00', rssiHistory: [-72],
-          firstSeen: DateTime.now(), lastSeen: DateTime.now(),
-        );
-        bloc.add(
-          BuildGraphRequested(scanSessionId: 2, nodes: [node2]),
-        );
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      },
-      expect: () => [
-        // Primer build
-        isA<GraphBuilding>(),
-        isA<GraphReady>(),
-        // Segundo build
-        isA<GraphBuilding>(),
-        isA<GraphReady>(),
-      ],
-      verify: (_) {
-        verify(mockBuildGraph.call(1,
-            myDeviceUuid: anyNamed('myDeviceUuid'))).called(1);
-        verify(mockBuildGraph.call(2,
-            myDeviceUuid: anyNamed('myDeviceUuid'))).called(1);
-        // La segunda llamada a CalculateLayout debe incluir el cache
-        verify(
-          mockCalculateLayout.call(
-            any,
-            any,
-            any,
-            priorLayout: testLayout,
-          ),
-        ).called(1);
+          final states = <VisualizationState>[];
+          final subscription = bloc.stream.listen(states.add);
+
+          // Primer build: genera layout y lo cachea.
+          final node1 = Node(
+            id: 10, bleAddress: 'AA:00', rssiHistory: [-42],
+            firstSeen: DateTime.now(), lastSeen: DateTime.now(),
+          );
+          bloc.add(
+            BuildGraphRequested(scanSessionId: 1, nodes: [node1]),
+          );
+          async.elapse(const Duration(milliseconds: 20));
+          async.flushMicrotasks();
+
+          // Segundo build: debe usar el cache como priorLayout.
+          final node2 = Node(
+            id: 20, bleAddress: 'BB:00', rssiHistory: [-72],
+            firstSeen: DateTime.now(), lastSeen: DateTime.now(),
+          );
+          bloc.add(
+            BuildGraphRequested(scanSessionId: 2, nodes: [node2]),
+          );
+          async.elapse(const Duration(milliseconds: 20));
+          async.flushMicrotasks();
+
+          // Verificar estados emitidos
+          expect(states[0], isA<GraphBuilding>());
+          expect(states[1], isA<GraphReady>());
+          expect(states[2], isA<GraphBuilding>());
+          expect(states[3], isA<GraphReady>());
+
+          // Verificar llamadas a mocks
+          verify(mockBuildGraph.call(1,
+              myDeviceUuid: anyNamed('myDeviceUuid'))).called(1);
+          verify(mockBuildGraph.call(2,
+              myDeviceUuid: anyNamed('myDeviceUuid'))).called(1);
+          verify(
+            mockCalculateLayout.call(
+              any,
+              any,
+              any,
+              priorLayout: testLayout,
+            ),
+          ).called(1);
+
+          bloc.close();
+          subscription.cancel();
+        });
       },
     );
 
@@ -243,7 +243,7 @@ void main() {
         );
       },
       act: (bloc) => bloc.add(const NodeSelected(1)),
-      expect: () => [],
+      expect: () => <VisualizationState>[],
     );
 
     blocTest<VisualizationBloc, VisualizationState>(
@@ -394,80 +394,98 @@ void main() {
     // contador de secuencia, reseteando el debounce y previniendo que
     // el grafo se construya durante escaneo continuo.
 
-    blocTest<VisualizationBloc, VisualizationState>(
+    test(
       'T1.1: BuildGraphRequested con mismos node IDs saltea segundo request',
-      build: () {
-        setupDefaultMocks();
-        return VisualizationBloc(
-          buildGraph: mockBuildGraph,
-          calculateLayout: mockCalculateLayout,
-          debounceDuration: const Duration(milliseconds: 10),
-        );
-      },
-      act: (bloc) async {
-        // Primer build con nodos [A] — procesa normalmente
-        bloc.add(
-          BuildGraphRequested(scanSessionId: 1, nodes: [testNodeA]),
-        );
-        await Future<void>.delayed(const Duration(milliseconds: 50));
+      () {
+        fakeAsync((async) {
+          setupDefaultMocks();
+          final bloc = VisualizationBloc(
+            buildGraph: mockBuildGraph,
+            calculateLayout: mockCalculateLayout,
+            debounceDuration: const Duration(milliseconds: 10),
+          );
 
-        // Segundo build con los MISMOS nodos — debe ser ignorado
-        bloc.add(
-          BuildGraphRequested(scanSessionId: 1, nodes: [testNodeA]),
-        );
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      },
-      expect: () => [
-        isA<GraphBuilding>(),
-        isA<GraphReady>(),
-        // No debe haber segundo GraphBuilding/GraphReady
-      ],
-      verify: (_) {
-        // Solo se llamó a buildGraph UNA vez
-        verify(mockBuildGraph.call(any, myDeviceUuid: anyNamed('myDeviceUuid'))).called(1);
-        verify(mockCalculateLayout.call(
-          any,
-          any,
-          any,
-          priorLayout: anyNamed('priorLayout'),
-        )).called(1);
+          final states = <VisualizationState>[];
+          final subscription = bloc.stream.listen(states.add);
+
+          // Primer build con nodos [A] — procesa normalmente
+          bloc.add(
+            BuildGraphRequested(scanSessionId: 1, nodes: [testNodeA]),
+          );
+          async.elapse(const Duration(milliseconds: 20));
+          async.flushMicrotasks();
+
+          // Segundo build con los MISMOS nodos — debe ser ignorado
+          bloc.add(
+            BuildGraphRequested(scanSessionId: 1, nodes: [testNodeA]),
+          );
+          async.elapse(const Duration(milliseconds: 20));
+          async.flushMicrotasks();
+
+          // Solo primer build → 2 estados (GraphBuilding + GraphReady)
+          expect(states.length, equals(2));
+          expect(states[0], isA<GraphBuilding>());
+          expect(states[1], isA<GraphReady>());
+
+          // Solo se llamó a buildGraph UNA vez
+          verify(mockBuildGraph.call(any,
+              myDeviceUuid: anyNamed('myDeviceUuid'))).called(1);
+          verify(mockCalculateLayout.call(
+            any,
+            any,
+            any,
+            priorLayout: anyNamed('priorLayout'),
+          )).called(1);
+
+          bloc.close();
+          subscription.cancel();
+        });
       },
     );
 
-    blocTest<VisualizationBloc, VisualizationState>(
+    test(
       'T1.1: BuildGraphRequested con node IDs distintos SÍ procesa',
-      build: () {
-        setupDefaultMocks();
-        return VisualizationBloc(
-          buildGraph: mockBuildGraph,
-          calculateLayout: mockCalculateLayout,
-          debounceDuration: const Duration(milliseconds: 10),
-        );
-      },
-      act: (bloc) async {
-        // Primer build con testNodeA (id=1)
-        bloc.add(
-          BuildGraphRequested(scanSessionId: 1, nodes: [testNodeA]),
-        );
-        await Future<void>.delayed(const Duration(milliseconds: 50));
+      () {
+        fakeAsync((async) {
+          setupDefaultMocks();
+          final bloc = VisualizationBloc(
+            buildGraph: mockBuildGraph,
+            calculateLayout: mockCalculateLayout,
+            debounceDuration: const Duration(milliseconds: 10),
+          );
 
-        // Segundo build con testNodeB (id=2, DISTINTO) — debe procesar
-        bloc.add(
-          BuildGraphRequested(scanSessionId: 2, nodes: [testNodeB]),
-        );
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      },
-      expect: () => [
-        // Primer build
-        isA<GraphBuilding>(),
-        isA<GraphReady>(),
-        // Segundo build con nodos distintos SÍ se procesa
-        isA<GraphBuilding>(),
-        isA<GraphReady>(),
-      ],
-      verify: (_) {
-        verify(mockBuildGraph.call(1, myDeviceUuid: anyNamed('myDeviceUuid'))).called(1);
-        verify(mockBuildGraph.call(2, myDeviceUuid: anyNamed('myDeviceUuid'))).called(1);
+          final states = <VisualizationState>[];
+          final subscription = bloc.stream.listen(states.add);
+
+          // Primer build con testNodeA (id=1)
+          bloc.add(
+            BuildGraphRequested(scanSessionId: 1, nodes: [testNodeA]),
+          );
+          async.elapse(const Duration(milliseconds: 20));
+          async.flushMicrotasks();
+
+          // Segundo build con testNodeB (id=2, DISTINTO) — debe procesar
+          bloc.add(
+            BuildGraphRequested(scanSessionId: 2, nodes: [testNodeB]),
+          );
+          async.elapse(const Duration(milliseconds: 20));
+          async.flushMicrotasks();
+
+          // Ambos builds → 4 estados
+          expect(states.length, equals(4));
+          expect(states[0], isA<GraphBuilding>());
+          expect(states[1], isA<GraphReady>());
+          expect(states[2], isA<GraphBuilding>());
+          expect(states[3], isA<GraphReady>());
+
+          verify(mockBuildGraph.call(1,
+              myDeviceUuid: anyNamed('myDeviceUuid'))).called(1);
+          verify(mockBuildGraph.call(2,
+              myDeviceUuid: anyNamed('myDeviceUuid'))).called(1);
+
+          bloc.close();
+          subscription.cancel();
+        });
       },
     );
 
@@ -582,38 +600,45 @@ void main() {
     // POR QUÉ: previene reconstrucciones innecesarias durante escaneo
     // BLE continuo con los mismos dispositivos (R5.16).
 
-    blocTest<VisualizationBloc, VisualizationState>(
+    test(
       'PR2 T2.5: isSameSet con mismos IDs pero distinto tamaño de lista no dispara build',
-      build: () {
-        setupDefaultMocks();
-        return VisualizationBloc(
-          buildGraph: mockBuildGraph,
-          calculateLayout: mockCalculateLayout,
-          debounceDuration: const Duration(milliseconds: 10),
-        );
-      },
-      act: (bloc) async {
-        // Primer build con [A, B]
-        bloc.add(
-          BuildGraphRequested(scanSessionId: 1, nodes: [testNodeA, testNodeB]),
-        );
-        await Future<void>.delayed(const Duration(milliseconds: 50));
+      () {
+        fakeAsync((async) {
+          setupDefaultMocks();
+          final bloc = VisualizationBloc(
+            buildGraph: mockBuildGraph,
+            calculateLayout: mockCalculateLayout,
+            debounceDuration: const Duration(milliseconds: 10),
+          );
 
-        // Segundo build con [A, B, A] (mismo Set de IDs, lista más larga)
-        // isSameSet debe detectar que el Set es idéntico y saltear el build
-        bloc.add(
-          BuildGraphRequested(scanSessionId: 2, nodes: [testNodeA, testNodeB, testNodeA]),
-        );
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      },
-      expect: () => [
-        isA<GraphBuilding>(),
-        isA<GraphReady>(),
-        // No debe haber segundo GraphBuilding/GraphReady (Set.equals detecta
-        // que {A, B} == {A, B, A} como Set)
-      ],
-      verify: (_) {
-        verify(mockBuildGraph.call(any, myDeviceUuid: anyNamed('myDeviceUuid'))).called(1);
+          final states = <VisualizationState>[];
+          final subscription = bloc.stream.listen(states.add);
+
+          // Primer build con [A, B]
+          bloc.add(
+            BuildGraphRequested(scanSessionId: 1, nodes: [testNodeA, testNodeB]),
+          );
+          async.elapse(const Duration(milliseconds: 20));
+          async.flushMicrotasks();
+
+          // Segundo build con [A, B, A] (mismo Set de IDs)
+          bloc.add(
+            BuildGraphRequested(scanSessionId: 2, nodes: [testNodeA, testNodeB, testNodeA]),
+          );
+          async.elapse(const Duration(milliseconds: 20));
+          async.flushMicrotasks();
+
+          // Solo primer build → 2 estados
+          expect(states.length, equals(2));
+          expect(states[0], isA<GraphBuilding>());
+          expect(states[1], isA<GraphReady>());
+
+          verify(mockBuildGraph.call(any,
+              myDeviceUuid: anyNamed('myDeviceUuid'))).called(1);
+
+          bloc.close();
+          subscription.cancel();
+        });
       },
     );
 
@@ -699,115 +724,131 @@ void main() {
     // hacer dedup (no procesar). Esto mantiene la optimización
     // original para escaneos estables.
 
-    blocTest<VisualizationBloc, VisualizationState>(
+    test(
       'PR7 T7.1: mismos IDs pero distinto RSSI → NO hace dedup (procesa)',
-      build: () {
-        setupDefaultMocks();
-        return VisualizationBloc(
-          buildGraph: mockBuildGraph,
-          calculateLayout: mockCalculateLayout,
-          debounceDuration: const Duration(milliseconds: 10),
-        );
-      },
-      act: (bloc) async {
-        // Nodo con RSSI alto (cerca) — close
-        final nodeClose = Node(
-          id: 1,
-          bleAddress: 'AA:BB:CC:DD:EE:FF',
-          firstSeen: DateTime.now(),
-          lastSeen: DateTime.now(),
-          rssiHistory: [-40],
-        );
-        bloc.add(
-          BuildGraphRequested(scanSessionId: 1, nodes: [nodeClose]),
-        );
-        await Future<void>.delayed(const Duration(milliseconds: 50));
+      () {
+        fakeAsync((async) {
+          setupDefaultMocks();
+          final bloc = VisualizationBloc(
+            buildGraph: mockBuildGraph,
+            calculateLayout: mockCalculateLayout,
+            debounceDuration: const Duration(milliseconds: 10),
+          );
 
-        // Mismo nodo ID pero con RSSI bajo (lejos) — far
-        // El hash de IDs+proximity cambiaron → DEBE procesar
-        final nodeFar = Node(
-          id: 1,
-          bleAddress: 'AA:BB:CC:DD:EE:FF',
-          firstSeen: DateTime.now(),
-          lastSeen: DateTime.now(),
-          rssiHistory: [-85],
-        );
-        bloc.add(
-          BuildGraphRequested(scanSessionId: 2, nodes: [nodeFar]),
-        );
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      },
-      expect: () => [
-        // Primer build
-        isA<GraphBuilding>(),
-        isA<GraphReady>(),
-        // Segundo build — SÍ debe procesar (proximidad cambió)
-        isA<GraphBuilding>(),
-        isA<GraphReady>(),
-      ],
-      verify: (_) {
-        verify(mockBuildGraph.call(1, myDeviceUuid: anyNamed('myDeviceUuid'))).called(1);
-        verify(mockBuildGraph.call(2, myDeviceUuid: anyNamed('myDeviceUuid'))).called(1);
-        verify(mockCalculateLayout.call(
-          any,
-          any,
-          any,
-          priorLayout: anyNamed('priorLayout'),
-        )).called(2);
+          final states = <VisualizationState>[];
+          final subscription = bloc.stream.listen(states.add);
+
+          // Nodo con RSSI alto (cerca) — close
+          final nodeClose = Node(
+            id: 1,
+            bleAddress: 'AA:BB:CC:DD:EE:FF',
+            firstSeen: DateTime.now(),
+            lastSeen: DateTime.now(),
+            rssiHistory: [-40],
+          );
+          bloc.add(
+            BuildGraphRequested(scanSessionId: 1, nodes: [nodeClose]),
+          );
+          async.elapse(const Duration(milliseconds: 20));
+          async.flushMicrotasks();
+
+          // Mismo nodo ID pero con RSSI bajo (lejos) — distinto hash
+          final nodeFar = Node(
+            id: 1,
+            bleAddress: 'AA:BB:CC:DD:EE:FF',
+            firstSeen: DateTime.now(),
+            lastSeen: DateTime.now(),
+            rssiHistory: [-85],
+          );
+          bloc.add(
+            BuildGraphRequested(scanSessionId: 2, nodes: [nodeFar]),
+          );
+          async.elapse(const Duration(milliseconds: 20));
+          async.flushMicrotasks();
+
+          // Ambos builds → 4 estados (proximidad cambió → procesa)
+          expect(states.length, equals(4));
+          expect(states[0], isA<GraphBuilding>());
+          expect(states[1], isA<GraphReady>());
+          expect(states[2], isA<GraphBuilding>());
+          expect(states[3], isA<GraphReady>());
+
+          verify(mockBuildGraph.call(1,
+              myDeviceUuid: anyNamed('myDeviceUuid'))).called(1);
+          verify(mockBuildGraph.call(2,
+              myDeviceUuid: anyNamed('myDeviceUuid'))).called(1);
+          verify(mockCalculateLayout.call(
+            any,
+            any,
+            any,
+            priorLayout: anyNamed('priorLayout'),
+          )).called(2);
+
+          bloc.close();
+          subscription.cancel();
+        });
       },
     );
 
-    blocTest<VisualizationBloc, VisualizationState>(
+    test(
       'PR7 T7.1: mismos IDs e igual RSSI → SÍ hace dedup (no procesa)',
-      build: () {
-        setupDefaultMocks();
-        return VisualizationBloc(
-          buildGraph: mockBuildGraph,
-          calculateLayout: mockCalculateLayout,
-          debounceDuration: const Duration(milliseconds: 10),
-        );
-      },
-      act: (bloc) async {
-        // Nodo con RSSI alto (cerca)
-        final nodeA = Node(
-          id: 1,
-          bleAddress: 'AA:BB:CC:DD:EE:FF',
-          firstSeen: DateTime.now(),
-          lastSeen: DateTime.now(),
-          rssiHistory: [-42],
-        );
-        bloc.add(
-          BuildGraphRequested(scanSessionId: 1, nodes: [nodeA]),
-        );
-        await Future<void>.delayed(const Duration(milliseconds: 50));
+      () {
+        fakeAsync((async) {
+          setupDefaultMocks();
+          final bloc = VisualizationBloc(
+            buildGraph: mockBuildGraph,
+            calculateLayout: mockCalculateLayout,
+            debounceDuration: const Duration(milliseconds: 10),
+          );
 
-        // Mismo nodo con MISMO RSSI — hash idéntico
-        final nodeB = Node(
-          id: 1,
-          bleAddress: 'AA:BB:CC:DD:EE:FF',
-          firstSeen: DateTime.now(),
-          lastSeen: DateTime.now(),
-          rssiHistory: [-42],
-        );
-        bloc.add(
-          BuildGraphRequested(scanSessionId: 1, nodes: [nodeB]),
-        );
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      },
-      expect: () => [
-        // Primer build — procesa
-        isA<GraphBuilding>(),
-        isA<GraphReady>(),
-        // NO hay segundo build — dedup funciona
-      ],
-      verify: (_) {
-        verify(mockBuildGraph.call(any, myDeviceUuid: anyNamed('myDeviceUuid'))).called(1);
-        verify(mockCalculateLayout.call(
-          any,
-          any,
-          any,
-          priorLayout: anyNamed('priorLayout'),
-        )).called(1);
+          final states = <VisualizationState>[];
+          final subscription = bloc.stream.listen(states.add);
+
+          // Nodo con RSSI [-42]
+          final nodeA = Node(
+            id: 1,
+            bleAddress: 'AA:BB:CC:DD:EE:FF',
+            firstSeen: DateTime.now(),
+            lastSeen: DateTime.now(),
+            rssiHistory: [-42],
+          );
+          bloc.add(
+            BuildGraphRequested(scanSessionId: 1, nodes: [nodeA]),
+          );
+          async.elapse(const Duration(milliseconds: 20));
+          async.flushMicrotasks();
+
+          // Mismo nodo con MISMO RSSI → hash idéntico → dedup
+          final nodeB = Node(
+            id: 1,
+            bleAddress: 'AA:BB:CC:DD:EE:FF',
+            firstSeen: DateTime.now(),
+            lastSeen: DateTime.now(),
+            rssiHistory: [-42],
+          );
+          bloc.add(
+            BuildGraphRequested(scanSessionId: 1, nodes: [nodeB]),
+          );
+          async.elapse(const Duration(milliseconds: 20));
+          async.flushMicrotasks();
+
+          // Solo primer build → 2 estados
+          expect(states.length, equals(2));
+          expect(states[0], isA<GraphBuilding>());
+          expect(states[1], isA<GraphReady>());
+
+          verify(mockBuildGraph.call(any,
+              myDeviceUuid: anyNamed('myDeviceUuid'))).called(1);
+          verify(mockCalculateLayout.call(
+            any,
+            any,
+            any,
+            priorLayout: anyNamed('priorLayout'),
+          )).called(1);
+
+          bloc.close();
+          subscription.cancel();
+        });
       },
     );
 
