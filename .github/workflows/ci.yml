@@ -42,7 +42,10 @@ jobs:
           retention-days: 7
 
   build-apk:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # PR9: Habilitar build-apk también en push a dev, no solo main.
+    # Esto permite verificar que el APK compila correctamente en cada merge
+    # a dev antes de llegar a main.
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
