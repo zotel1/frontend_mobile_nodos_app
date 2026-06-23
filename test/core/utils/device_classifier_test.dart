@@ -54,6 +54,28 @@ void main() {
       expect(type, 'Genérico');
     });
 
+    // PR9: Nuevos service UUIDs expandidos
+    test('Cycling Speed and Cadence (0x1816) → "Ciclismo"', () {
+      final type = DeviceClassifier.classify([
+        '00001816-0000-1000-8000-00805f9b34fb',
+      ], null);
+      expect(type, 'Ciclismo');
+    });
+
+    test('Health Thermometer (0x1809) → "Termómetro"', () {
+      final type = DeviceClassifier.classify([
+        '00001809-0000-1000-8000-00805f9b34fb',
+      ], null);
+      expect(type, 'Termómetro');
+    });
+
+    test('Blood Pressure (0x1810) → "Presión Arterial"', () {
+      final type = DeviceClassifier.classify([
+        '00001810-0000-1000-8000-00805f9b34fb',
+      ], null);
+      expect(type, 'Presión Arterial');
+    });
+
     test('Nodos UUID → "Nodo" con prioridad máxima', () {
       final type = DeviceClassifier.classify([
         '0000180a-0000-1000-8000-00805f9b34fb', // Device Info
@@ -84,6 +106,22 @@ void main() {
     test('Google (0x00E0) → "Google (Desconocido)"', () {
       final type = DeviceClassifier.classify([], 0x00E0);
       expect(type, 'Google (Desconocido)');
+    });
+
+    // PR9: Nuevos manufacturer IDs expandidos
+    test('Fitbit (0x026A) → "Fitbit (Desconocido)"', () {
+      final type = DeviceClassifier.classify([], 0x026A);
+      expect(type, 'Fitbit (Desconocido)');
+    });
+
+    test('Microsoft (0x0006) → "Microsoft (Desconocido)"', () {
+      final type = DeviceClassifier.classify([], 0x0006);
+      expect(type, 'Microsoft (Desconocido)');
+    });
+
+    test('Huawei (0x012D) → "Huawei (Desconocido)"', () {
+      final type = DeviceClassifier.classify([], 0x012D);
+      expect(type, 'Huawei (Desconocido)');
     });
   });
 

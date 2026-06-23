@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:equatable/equatable.dart';
+import 'package:frontend_mobile_nodos_app/core/errors/failures.dart';
+import 'package:frontend_mobile_nodos_app/core/utils/app_theme_mode.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/uuid_generator.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/entities/user.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/repositories/user_repository.dart';
@@ -46,7 +47,7 @@ class UpdateUserColorEvent extends UserEvent {
 /// Persiste en SharedPreferences bajo la clave 'theme_mode'
 /// para que sobreviva a reinicios de la app.
 class UpdateThemeMode extends UserEvent {
-  final ThemeMode mode;
+  final AppThemeMode mode;
 
   const UpdateThemeMode(this.mode);
 
@@ -73,10 +74,10 @@ class UserLoading extends UserState {
 
 class UserLoaded extends UserState {
   final User user;
-  /// Modo de tema actual. Por defecto [ThemeMode.system] (deferido al SO).
-  final ThemeMode themeMode;
+  /// Modo de tema actual. Por defecto [AppThemeMode.system] (deferido al SO).
+  final AppThemeMode themeMode;
 
-  const UserLoaded(this.user, {this.themeMode = ThemeMode.system});
+  const UserLoaded(this.user, {this.themeMode = AppThemeMode.system});
 
   @override
   List<Object?> get props => [user, themeMode];
@@ -123,6 +124,22 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     on<UpdateThemeMode>(_onUpdateThemeMode);
   }
 
+  /// Expone el UUID persistente del dispositivo del usuario (myDeviceUuid).
+  ///
+  /// QUÉ: lee el UUID desde SharedPreferences bajo la clave 'device_uuid'.
+  /// Retorna null si el perfil no fue creado aún o si la clave no existe.
+  ///
+  /// POR QUÉ: otros componentes (visualization, nodes) necesitan el UUID
+  /// del dispositivo propio para marcar el self-node en el grafo y para
+  /// filtrar el dispositivo propio de la lista de nodos detectados.
+  /// Sin este getter, el UUID queda encapsulado en _createDefaultProfile
+  /// y es inaccesible desde fuera del BLoC.
+  ///
+  /// El UUID se genera UNA SOLA VEZ por instalación y se persiste en
+  /// SharedPreferences, por lo que sobrevive a reinicios de la app
+  /// y a recreaciones del perfil.
+  String? get myDeviceUuid => _prefs.getString('device_uuid');
+
   /// Carga el perfil del usuario desde Drift.
   ///
   /// F7: Si no existe perfil (primera ejecución), crea un User default
@@ -130,33 +147,76 @@ class UserBloc extends Bloc<UserEvent, UserState> {
   /// deviceType "android". Luego recarga el perfil para obtener los
   /// datos persistidos.
   ///
+  /// PR4: El UUID se genera UNA SOLA VEZ por instalación y se persiste
+  /// en SharedPreferences bajo 'device_uuid'. Si el perfil se recrea
+  /// (por corrupción o reseteo), se reusa el mismo UUID.
+  ///
+  /// PR4: Solo crea perfil default cuando el fallo es
+  /// CacheFailure('No user profile found'). DatabaseFailure y
+  /// UnexpectedFailure emiten UserError en vez de crear perfil fantasma.
+  ///
   /// Tema: lee el tema guardado en SharedPreferences bajo la clave
-  /// 'theme_mode'. Si no existe, usa [ThemeMode.system] por defecto.
+  /// 'theme_mode'. Si no existe, usa [AppThemeMode.system] por defecto.
   ///
   /// QUÉ problema resuelve: sin este fallback, Settings mostraba
   /// "Error: No user profile found" en primera ejecución porque
   /// la DB de usuarios estaba vacía.
   Future<void> _onLoadProfile(
       LoadProfile event, Emitter<UserState> emit) async {
-    emit(const UserLoading());
+    // PR4: Capturar themeMode. Si hay estado previo UserLoaded, preservarlo.
+    // Si es UserInitial (primera carga), leer de SharedPreferences.
+    // Si no hay valor guardado, usar AppThemeMode.system.
+    final AppThemeMode currentThemeMode;
+    if (state is UserLoaded) {
+      currentThemeMode = (state as UserLoaded).themeMode;
+    } else {
+      currentThemeMode = _themeModeFromPrefs();
+    }
 
-    // Leer tema persistido antes de cargar el perfil
-    final savedTheme = _prefs.getString('theme_mode');
-    final themeMode = _themeModeFromString(savedTheme);
+    emit(const UserLoading());
 
     final result = await getProfile(const NoParams());
 
-    if (result.isRight()) {
-      emit(UserLoaded(
-        result.getOrElse(() => throw StateError('Imposible')),
-        themeMode: themeMode,
-      ));
-      return;
+    // PR4: Usar result.fold() para diferenciar tipos de Failure.
+    // Solo CacheFailure('No user profile found') dispara la creación
+    // automática de perfil default.
+    return result.fold(
+      (failure) async {
+        // PR4: Solo crear perfil default si es "no encontrado".
+        // DatabaseFailure y UnexpectedFailure → UserError.
+        if (failure is CacheFailure &&
+            failure.message == 'No user profile found') {
+          await _createDefaultProfile(emit, currentThemeMode);
+        } else {
+          emit(UserError(failure.message));
+        }
+      },
+      (user) => emit(UserLoaded(user, themeMode: currentThemeMode)),
+    );
+  }
+
+  /// Crea un perfil default con UUID persistente.
+  ///
+  /// PR4: El UUID se lee de SharedPreferences (clave 'device_uuid').
+  /// Si no existe, se genera uno nuevo con [generateUuidV4] y se
+  /// persiste. Esto garantiza que el dispositivo mantenga la misma
+  /// identidad incluso si la tabla users se corrompe y se recrea.
+  ///
+  /// Después de crear el perfil, recarga desde la DB para obtener
+  /// los datos con el id asignado por Drift.
+  Future<void> _createDefaultProfile(
+    Emitter<UserState> emit,
+    AppThemeMode themeMode,
+  ) async {
+    // PR4: Reusar UUID persistido o generar uno nuevo.
+    var uuid = _prefs.getString('device_uuid');
+    if (uuid == null || uuid.isEmpty) {
+      uuid = generateUuidV4();
+      await _prefs.setString('device_uuid', uuid);
     }
 
-    // F7: Si no hay perfil, crear uno default automáticamente.
     final defaultUser = User(
-      uuid: generateUuidV4(),
+      uuid: uuid,
       name: 'Mi dispositivo',
       color: '#2196F3',
       deviceType: 'android',
@@ -172,8 +232,29 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     );
   }
 
+  /// Lee el modo de tema desde SharedPreferences.
+  ///
+  /// QUÉ: convierte el string guardado bajo 'theme_mode' en un
+  /// [AppThemeMode]. Si la clave no existe o el valor es inválido,
+  /// retorna [AppThemeMode.system].
+  ///
+  /// PR5a: usa [AppThemeMode.fromString] para centralizar el parseo.
+  AppThemeMode _themeModeFromPrefs() {
+    final modeStr = _prefs.getString('theme_mode') ?? '';
+    return AppThemeMode.fromString(modeStr);
+  }
+
   Future<void> _onUpdateName(
       UpdateUserNameEvent event, Emitter<UserState> emit) async {
+    // T-PR1-004: Capturar themeMode actual ANTES de emitir UserLoading.
+    // QUÉ problema resuelve: antes _onUpdateName emitía UserLoaded(user)
+    // sin el parámetro themeMode, lo que reseteaba el tema a system.
+    // Si el usuario estaba en modo oscuro y cambiaba su nombre, el tema
+    // volvía a system. Ahora preserva el themeMode del estado anterior.
+    final currentThemeMode = state is UserLoaded
+        ? (state as UserLoaded).themeMode
+        : AppThemeMode.system;
+
     emit(const UserLoading());
     final result = await updateName(UpdateUserNameParams(name: event.name));
     if (result.isLeft()) {
@@ -182,16 +263,21 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     }
     // Reload profile to get updated user data.
     final profileResult = await getProfile(const NoParams());
-    final savedTheme = _prefs.getString('theme_mode');
     profileResult.fold(
       (failure) => emit(UserError(failure.message)),
-      (user) =>
-          emit(UserLoaded(user, themeMode: _themeModeFromString(savedTheme))),
+      (user) => emit(UserLoaded(user, themeMode: currentThemeMode)),
     );
   }
 
   Future<void> _onUpdateColor(
       UpdateUserColorEvent event, Emitter<UserState> emit) async {
+    // T-PR1-004: Capturar themeMode actual antes de emitir UserLoading.
+    // Mismo bug que _onUpdateName — el tema se reseteaba a system al
+    // cambiar el color, perdiendo la preferencia del usuario.
+    final currentThemeMode = state is UserLoaded
+        ? (state as UserLoaded).themeMode
+        : AppThemeMode.system;
+
     emit(const UserLoading());
     final result = await updateColor(UpdateUserColorParams(color: event.color));
     if (result.isLeft()) {
@@ -199,11 +285,9 @@ class UserBloc extends Bloc<UserEvent, UserState> {
       return;
     }
     final profileResult = await getProfile(const NoParams());
-    final savedTheme = _prefs.getString('theme_mode');
     profileResult.fold(
       (failure) => emit(UserError(failure.message)),
-      (user) =>
-          emit(UserLoaded(user, themeMode: _themeModeFromString(savedTheme))),
+      (user) => emit(UserLoaded(user, themeMode: currentThemeMode)),
     );
   }
 
@@ -218,23 +302,6 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     if (currentState is UserLoaded) {
       _prefs.setString('theme_mode', event.mode.name);
       emit(UserLoaded(currentState.user, themeMode: event.mode));
-    }
-  }
-
-  /// Convierte un string guardado en SharedPreferences a [ThemeMode].
-  ///
-  /// Si el string es null o no coincide con ningún valor conocido,
-  /// retorna [ThemeMode.system] como fallback seguro.
-  ThemeMode _themeModeFromString(String? value) {
-    switch (value) {
-      case 'light':
-        return ThemeMode.light;
-      case 'dark':
-        return ThemeMode.dark;
-      case 'system':
-        return ThemeMode.system;
-      default:
-        return ThemeMode.system;
     }
   }
 }

@@ -11,7 +11,13 @@ class UserDriftDataSource implements UserLocalDataSource {
 
   @override
   Future<domain.User?> getUser() async {
-    final row = await _db.select(_db.users).getSingleOrNull();
+    // PR4: .limit(1) hace explícito que solo esperamos una fila.
+    // QUÉ: agrega LIMIT 1 a la query SQL generada por Drift.
+    // POR QUÉ: getSingleOrNull ya lanza si hay más de una fila,
+    // pero sin LIMIT el plan de ejecución podría escanear toda la
+    // tabla. Con CHECK(id=1) solo hay una fila, pero .limit(1)
+    // es documentación ejecutable del contrato.
+    final row = await (_db.select(_db.users)..limit(1)).getSingleOrNull();
     return row != null ? _toDomain(row) : null;
   }
 
@@ -34,7 +40,22 @@ class UserDriftDataSource implements UserLocalDataSource {
   @override
   Future<void> updateName(String name) async {
     final existing = await _db.select(_db.users).getSingleOrNull();
-    if (existing == null) return;
+    // T-PR2-004: Lanzar StateError en lugar de silent no-op cuando
+    // no hay perfil de usuario creado.
+    //
+    // QUÉ: si la tabla users está vacía, lanzamos StateError con
+    // mensaje descriptivo. El repository que llama a este datasource
+    // captura la excepción y la convierte en Left(Failure).
+    //
+    // POR QUÉ: el código anterior hacía `if (existing == null) return;`
+    // → el BLoC creía que la operación fue exitosa pero el dato nunca
+    // se persistió. Esto producía UI inconsistente: el usuario veía
+    // su nombre "cambiado" en pantalla pero al recargar volvía al
+    // estado anterior (porque el cambio nunca llegó a la BD).
+    if (existing == null) {
+      throw StateError('No hay perfil de usuario creado. '
+          'Usá createUser() primero para inicializar el perfil.');
+    }
     await (_db.update(_db.users)..where((t) => t.id.equals(existing.id)))
         .write(db.UsersCompanion(name: Value(name)));
   }
@@ -42,7 +63,12 @@ class UserDriftDataSource implements UserLocalDataSource {
   @override
   Future<void> updateColor(String color) async {
     final existing = await _db.select(_db.users).getSingleOrNull();
-    if (existing == null) return;
+    // T-PR2-004: StateError en lugar de silent no-op (mismo rationale
+    // que updateName arriba).
+    if (existing == null) {
+      throw StateError('No hay perfil de usuario creado. '
+          'Usá createUser() primero para inicializar el perfil.');
+    }
     await (_db.update(_db.users)..where((t) => t.id.equals(existing.id)))
         .write(db.UsersCompanion(color: Value(color)));
   }

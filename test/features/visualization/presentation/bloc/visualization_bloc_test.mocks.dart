@@ -3,16 +3,18 @@
 // Do not manually edit this file.
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
-import 'dart:async' as _i4;
+import 'dart:async' as _i5;
 
 import 'package:dartz/dartz.dart' as _i2;
-import 'package:frontend_mobile_nodos_app/core/errors/failures.dart' as _i5;
-import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart'
-    as _i6;
-import 'package:frontend_mobile_nodos_app/features/visualization/domain/usecases/build_graph.dart'
+import 'package:frontend_mobile_nodos_app/core/errors/failures.dart' as _i6;
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/algorithms/layout_algorithm.dart'
     as _i3;
-import 'package:frontend_mobile_nodos_app/features/visualization/domain/usecases/calculate_layout.dart'
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart'
     as _i7;
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/usecases/build_graph.dart'
+    as _i4;
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/usecases/calculate_layout.dart'
+    as _i8;
 import 'package:mockito/mockito.dart' as _i1;
 
 // ignore_for_file: type=lint
@@ -35,12 +37,18 @@ class _FakeEither_0<L, R> extends _i1.SmartFake implements _i2.Either<L, R> {
     : super(parent, parentInvocation);
 }
 
+class _FakeLayoutAlgorithm_1 extends _i1.SmartFake
+    implements _i3.LayoutAlgorithm {
+  _FakeLayoutAlgorithm_1(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
 /// A class which mocks [BuildGraph].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockBuildGraph extends _i1.Mock implements _i3.BuildGraph {
+class MockBuildGraph extends _i1.Mock implements _i4.BuildGraph {
   @override
-  _i4.Future<_i2.Either<_i5.Failure, _i6.LayoutResult>> call(
+  _i5.Future<_i2.Either<_i6.Failure, _i7.LayoutResult>> call(
     int? scanSessionId, {
     String? myDeviceUuid,
   }) =>
@@ -51,8 +59,8 @@ class MockBuildGraph extends _i1.Mock implements _i3.BuildGraph {
               {#myDeviceUuid: myDeviceUuid},
             ),
             returnValue:
-                _i4.Future<_i2.Either<_i5.Failure, _i6.LayoutResult>>.value(
-                  _FakeEither_0<_i5.Failure, _i6.LayoutResult>(
+                _i5.Future<_i2.Either<_i6.Failure, _i7.LayoutResult>>.value(
+                  _FakeEither_0<_i6.Failure, _i7.LayoutResult>(
                     this,
                     Invocation.method(
                       #call,
@@ -62,8 +70,8 @@ class MockBuildGraph extends _i1.Mock implements _i3.BuildGraph {
                   ),
                 ),
             returnValueForMissingStub:
-                _i4.Future<_i2.Either<_i5.Failure, _i6.LayoutResult>>.value(
-                  _FakeEither_0<_i5.Failure, _i6.LayoutResult>(
+                _i5.Future<_i2.Either<_i6.Failure, _i7.LayoutResult>>.value(
+                  _FakeEither_0<_i6.Failure, _i7.LayoutResult>(
                     this,
                     Invocation.method(
                       #call,
@@ -73,20 +81,35 @@ class MockBuildGraph extends _i1.Mock implements _i3.BuildGraph {
                   ),
                 ),
           )
-          as _i4.Future<_i2.Either<_i5.Failure, _i6.LayoutResult>>);
+          as _i5.Future<_i2.Either<_i6.Failure, _i7.LayoutResult>>);
 }
 
 /// A class which mocks [CalculateLayout].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockCalculateLayout extends _i1.Mock implements _i7.CalculateLayout {
+class MockCalculateLayout extends _i1.Mock implements _i8.CalculateLayout {
   @override
-  _i4.Future<_i2.Either<_i5.Failure, _i6.LayoutResult>> call(
-    _i6.LayoutResult? layout,
+  _i3.LayoutAlgorithm get layoutAlgorithm =>
+      (super.noSuchMethod(
+            Invocation.getter(#layoutAlgorithm),
+            returnValue: _FakeLayoutAlgorithm_1(
+              this,
+              Invocation.getter(#layoutAlgorithm),
+            ),
+            returnValueForMissingStub: _FakeLayoutAlgorithm_1(
+              this,
+              Invocation.getter(#layoutAlgorithm),
+            ),
+          )
+          as _i3.LayoutAlgorithm);
+
+  @override
+  _i5.Future<_i2.Either<_i6.Failure, _i7.LayoutResult>> call(
+    _i7.LayoutResult? layout,
     double? width,
     double? height, {
     double? depth = 0.0,
-    _i6.LayoutResult? priorLayout,
+    _i7.LayoutResult? priorLayout,
     int? seed,
   }) =>
       (super.noSuchMethod(
@@ -96,8 +119,8 @@ class MockCalculateLayout extends _i1.Mock implements _i7.CalculateLayout {
               {#depth: depth, #priorLayout: priorLayout, #seed: seed},
             ),
             returnValue:
-                _i4.Future<_i2.Either<_i5.Failure, _i6.LayoutResult>>.value(
-                  _FakeEither_0<_i5.Failure, _i6.LayoutResult>(
+                _i5.Future<_i2.Either<_i6.Failure, _i7.LayoutResult>>.value(
+                  _FakeEither_0<_i6.Failure, _i7.LayoutResult>(
                     this,
                     Invocation.method(
                       #call,
@@ -107,8 +130,8 @@ class MockCalculateLayout extends _i1.Mock implements _i7.CalculateLayout {
                   ),
                 ),
             returnValueForMissingStub:
-                _i4.Future<_i2.Either<_i5.Failure, _i6.LayoutResult>>.value(
-                  _FakeEither_0<_i5.Failure, _i6.LayoutResult>(
+                _i5.Future<_i2.Either<_i6.Failure, _i7.LayoutResult>>.value(
+                  _FakeEither_0<_i6.Failure, _i7.LayoutResult>(
                     this,
                     Invocation.method(
                       #call,
@@ -118,5 +141,5 @@ class MockCalculateLayout extends _i1.Mock implements _i7.CalculateLayout {
                   ),
                 ),
           )
-          as _i4.Future<_i2.Either<_i5.Failure, _i6.LayoutResult>>);
+          as _i5.Future<_i2.Either<_i6.Failure, _i7.LayoutResult>>);
 }

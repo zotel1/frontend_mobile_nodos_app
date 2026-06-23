@@ -50,10 +50,15 @@ class VisualizationBloc
   /// coincide con el valor al inicio de la espera.
   int _debounceSeq = 0;
 
-  /// Último conjunto de IDs de nodo procesados.
-  /// Se usa para evitar reconstrucciones cuando los mismos dispositivos
-  /// se anuncian repetidamente durante el escaneo continuo (F1: dedup).
-  final Set<int> _lastNodeIds = {};
+  /// Hash del último conjunto de nodos procesados, combinando IDs y
+  /// niveles de proximidad (RSSI).
+  ///
+  /// PR7: antes era `Set<int>` (_lastNodeIds) comparando solo IDs.
+  /// Ahora incluye el último RSSI de cada nodo en el hash para detectar
+  /// cambios de proximidad: si los mismos dispositivos se detectan con
+  /// RSSI distinto (el usuario se movió), el grafo debe reconstruirse
+  /// para reflejar el nuevo nivel de proximidad en los colores.
+  int _lastNodeHash = 0;
 
   /// Guardia contra builds concurrentes (F1: _isBuilding).
   ///
@@ -90,6 +95,8 @@ class VisualizationBloc
     on<BuildGraphRequested>(_onBuildGraphRequested);
     on<NodeSelected>(_onNodeSelected);
     on<NodeDeselected>(_onNodeDeselected);
+    // T-PR1-012: Handler para reintentar construcción del grafo tras error.
+    on<RetryGraphBuild>(_onRetryGraphBuild);
   }
 
   /// Aplica debounce a BuildGraphRequested usando un contador de secuencia.
@@ -108,29 +115,23 @@ class VisualizationBloc
     BuildGraphRequested event,
     Emitter<VisualizationState> emit,
   ) async {
-    // F1: Dedup por IDs de nodo — si los mismos dispositivos se anuncian
-    // repetidamente, no reiniciar el contador de debounce. Esto previene
-    // el starvation: durante escaneo continuo, cada paquete de advertisement
-    // disparaba BuildGraphRequested con los mismos nodos, reseteando el
-    // debounce y evitando que el grafo se construya.
-    final currentIds = event.nodes
-        .where((n) => n.id != null)
-        .map((n) => n.id!)
-        .toSet();
+    // PR7: Dedup con hash de IDs + proximity.
+    //
+    // Antes (F1) se comparaba solo el Set<int> de node IDs. Esto ignoraba
+    // cambios de RSSI/proximidad: si el usuario se movía, los mismos
+    // nodos aparecían con distinto RSSI pero el grafo no se actualizaba.
+    //
+    // Ahora se computa un hash combinando cada (nodeId, lastRssi).
+    // Si algún nodo cambió de proximidad (RSSI distinto), el hash
+    // cambia y se procesa el build. Si IDs + RSSI son idénticos
+    // (escaneo estable), se hace dedup para ahorrar cómputo.
+    final currentHash = _computeNodeHash(event.nodes);
 
-    // Si la cantidad de nodos cambió, siempre procesar (nodo nuevo o removido).
-    // Solo hacer dedup cuando la cantidad Y el conjunto son idénticos.
-    if (_lastNodeIds.isNotEmpty) {
-      if (_lastNodeIds.length != currentIds.length) {
-        // Count cambió: nuevo nodo detectado o removido → procesar
-      } else if (_lastNodeIds.containsAll(currentIds)) {
-        return; // Mismos nodos: ignorar
-      }
+    if (_lastNodeHash != 0 && _lastNodeHash == currentHash) {
+      return; // Mismos IDs + misma proximidad: dedup
     }
 
-    _lastNodeIds
-      ..clear()
-      ..addAll(currentIds);
+    _lastNodeHash = currentHash;
     _debounceSeq++;
     final int currentSeq = _debounceSeq;
 
@@ -139,6 +140,31 @@ class VisualizationBloc
     if (currentSeq != _debounceSeq || isClosed) return;
 
     await processBuildRequest(event, emit);
+  }
+
+  /// PR7: Computa un hash estable combinando IDs de nodo y último RSSI.
+  ///
+  /// Usa un [Set] de strings `$id:$rssi` para eliminar duplicados (si un
+  /// nodo aparece múltiples veces en la lista de entrada, se cuenta una
+  /// sola). Luego ordena alfabéticamente para garantizar determinismo
+  /// independiente del orden de entrada. Finalmente aplica
+  /// [Object.hashAll] sobre la lista ordenada.
+  ///
+  /// Garantías:
+  /// - Mismos IDs + mismo RSSI → mismo hash (dedup efectivo)
+  /// - Mismos IDs + distinto RSSI → distinto hash (se reconstruye)
+  /// - Nodos duplicados en la lista → mismo hash que sin duplicados
+  int _computeNodeHash(List<dynamic> nodes) {
+    final keys = <String>{};
+    for (final n in nodes) {
+      if (n.id == null) continue;
+      final rssi = (n.rssiHistory is List && (n.rssiHistory as List).isNotEmpty)
+          ? (n.rssiHistory as List).last
+          : -100;
+      keys.add('${n.id}:$rssi');
+    }
+    final sorted = keys.toList()..sort();
+    return Object.hashAll(sorted);
   }
 
   /// Procesa la construcción y layout del grafo.
@@ -255,6 +281,37 @@ class VisualizationBloc
       emit(GraphReady(currentState.layout,
           barycenter: currentState.barycenter));
     }
+  }
+
+  /// Reintenta la construcción del grafo después de un error.
+  ///
+  /// QUÉ: convierte [RetryGraphBuild] en un nuevo [BuildGraphRequested]
+  /// con los mismos parámetros originales y lo procesa con el pipeline
+  /// normal de construcción (debounce + build + layout).
+  ///
+  /// POR QUÉ: T-PR1-012 — antes no existía este mecanismo. Cuando
+  /// el grafo fallaba (GraphError), no había forma de reintentar
+  /// desde la UI. El usuario quedaba atrapado en el mensaje de error.
+  ///
+  /// PR7: preserva [myDeviceUuid] del evento original para que el
+  /// self-node siga marcado correctamente tras el reintento.
+  ///
+  /// Solo procesa si el estado actual es [GraphError] — no tiene
+  /// sentido reintentar desde otros estados.
+  void _onRetryGraphBuild(
+    RetryGraphBuild event,
+    Emitter<VisualizationState> emit,
+  ) {
+    if (state is! GraphError) return;
+
+    // Redispatch como un BuildGraphRequested normal, que pasará
+    // por el pipeline completo: debounce → build → layout.
+    // PR7: preservar myDeviceUuid del evento original.
+    add(BuildGraphRequested(
+      scanSessionId: event.lastSessionId,
+      nodes: event.lastNodes,
+      myDeviceUuid: event.myDeviceUuid,
+    ));
   }
 
   /// PR2: Calcula el barycenter (centro geométrico) del cluster de nodos.

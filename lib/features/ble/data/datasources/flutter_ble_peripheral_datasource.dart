@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
 import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_advertiser_datasource.dart';
@@ -17,20 +17,36 @@ import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_adve
 class FlutterBlePeripheralDataSource implements BleAdvertiserDataSource {
   final FlutterBlePeripheral _peripheral = FlutterBlePeripheral();
 
-  @override
-  Future<void> startAdvertise(
-      String deviceUuid, String name, String color) async {
-    /// JSON con metadatos de identidad: uuid, name, color.
+  /// Construye el payload de identidad como Uint8List con JSON codificado.
+  ///
+  /// QUÉ hace: serializa uuid, name y color en un JSON string y lo
+  /// codifica como bytes UTF-8 para incluirlo en el ManufacturerData
+  /// del advertisement BLE.
+  ///
+  /// POR QUÉ es estático y público: permite testear la construcción
+  /// del payload unitariamente sin depender de la plataforma BLE.
+  /// Extract-Before-Mock pattern — la lógica de serialización es
+  /// determinística y no requiere hardware.
+  @visibleForTesting
+  static Uint8List buildIdentityPayload(
+      String deviceUuid, String name, String color) {
     final identityJson = jsonEncode({
       'uuid': deviceUuid,
       'name': name,
       'color': color,
     });
+    return Uint8List.fromList(utf8.encode(identityJson));
+  }
+
+  @override
+  Future<void> startAdvertise(
+      String deviceUuid, String name, String color) async {
+    final manufacturerData = buildIdentityPayload(deviceUuid, name, color);
 
     final advertiseData = AdvertiseData(
       serviceUuids: [serviceUuid],
       manufacturerId: 0x004C, // Apple como placeholder para manufacturer
-      manufacturerData: Uint8List.fromList(utf8.encode(identityJson)),
+      manufacturerData: manufacturerData,
       includeDeviceName: false,
       localName: name,
     );

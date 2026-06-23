@@ -43,7 +43,7 @@ void main() {
       );
       nodesCtrl.add([node]);
 
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
       expect(emitted.length, 1);
       expect(emitted.first.length, 1);

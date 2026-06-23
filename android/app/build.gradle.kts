@@ -57,6 +57,13 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            // PR9: Reglas ProGuard/R8 para plugins que usan reflexión/JNI
+            // (flutter_blue_plus, drift, permission_handler).
+            // Sin esto, R8 puede eliminar clases necesarias en runtime.
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }

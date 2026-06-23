@@ -57,7 +57,7 @@ void main() {
           createBleDevice(deviceId: 'AA:BB:CC:DD:EE:FF', rssi: -55);
       streamController.add([device]);
 
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
       expect(emitted.length, 1);
       expect(emitted.first.length, 1);
@@ -80,9 +80,9 @@ void main() {
       final device2 = createBleDevice(deviceId: 'BB', rssi: -60);
 
       streamController.add([device1]);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
       streamController.add([device2]);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
       expect(emitted.length, 2);
       expect(emitted[0].first.deviceId, 'AA');
@@ -100,7 +100,7 @@ void main() {
       final subscription = dataSource.scanResults.listen(emitted.add);
 
       streamController.add([]);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
       expect(emitted, isEmpty);
 
@@ -169,7 +169,7 @@ void main() {
       final device =
           createBleDevice(deviceId: 'AA:BB:CC:DD:EE:FF', rssi: -55);
       streamController.add([device]);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
       expect(emitted.length, 1);
       expect(emitted.first.first.deviceId, 'AA:BB:CC:DD:EE:FF');
@@ -208,7 +208,7 @@ void main() {
       final sub = dataSource.scanResults.listen(emitted.add);
 
       streamController.add([createBleDevice(rssi: -70)]);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
       expect(emitted.length, 1);
 
@@ -229,7 +229,7 @@ void main() {
       final sub = dataSource.bluetoothState.listen(states.add);
 
       btController.add(true);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
       expect(states, [true]);
 
@@ -249,7 +249,7 @@ void main() {
       final sub = dataSource.bluetoothState.listen(states.add);
 
       btController.add(false);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
       expect(states, [false]);
 
@@ -268,11 +268,11 @@ void main() {
       final sub = dataSource.bluetoothState.listen(states.add);
 
       btController.add(true);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
       btController.add(false);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
       btController.add(true);
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
       expect(states, [true, false, true]);
 
@@ -507,46 +507,41 @@ void main() {
     });
   });
 
-  // ─── T1.4: Test del filtro RSSI relajado ──────────────────────
-  // QUÉ: Verifica que el umbral de filtro RSSI ahora acepta
-  // dispositivos con RSSI >= -95 (antes rechazaba por debajo de -85).
-  // POR QUÉ: en producción _bindToPlatform() usa rssiPassesFilter()
-  // para decidir si un dispositivo se incluye en los resultados.
-  group('T1.4 — RSSI filter threshold (R2)', () {
-    test('RSSI -92 pasa el filtro con el nuevo umbral -95', () {
-      // El método estático rssiPassesFilter usa proximityThresholdFar (-95).
-      // RSSI -92 >= -95 → true (pasa el filtro).
+  // ─── PR6a: Sin filtro RSSI en datasource ──────────────────────
+  // QUÉ: Verifica que rssiPassesFilter acepta TODOS los valores RSSI
+  // porque el filtrado por proximidad ahora ocurre en la capa de
+  // presentación (toggle "Mostrar solo cercanos").
+  // REQ-PR6a-004: Proximity threshold no debe filtrar en datasource.
+  // SC-PR6a-006: Dispositivos lejanos se persisten aunque no se muestren.
+  group('PR6a — Sin filtro RSSI en datasource (REQ-PR6a-004)', () {
+    test('SC-PR6a-006: RSSI -92 pasa el filtro (señal débil)', () {
       expect(
         FlutterBluePlusDataSource.rssiPassesFilter(-92),
         isTrue,
-        reason: 'RSSI -92 debe pasar con umbral -95 (relajado de -85)',
+        reason: 'Todos los RSSI deben persistirse sin filtrar en datasource',
       );
     });
 
-    test('RSSI -95 (exacto en el umbral) pasa el filtro', () {
-      // El umbral es >= (inclusive). RSSI -95 debe pasar.
-      expect(
-        FlutterBluePlusDataSource.rssiPassesFilter(-95),
-        isTrue,
-        reason: 'RSSI igual al umbral (-95) debe pasar (>=)',
-      );
-    });
-
-    test('RSSI -96 no pasa el filtro (debajo del umbral)', () {
-      // RSSI -96 < -95 → false (rechazado).
+    test('SC-PR6a-006: RSSI -96 pasa el filtro (muy débil)', () {
       expect(
         FlutterBluePlusDataSource.rssiPassesFilter(-96),
-        isFalse,
-        reason: 'RSSI -96 no debe pasar con umbral -95',
+        isTrue,
+        reason: 'Incluso RSSI muy débil se persiste; filtrado en UI',
+      );
+    });
+
+    test('SC-PR6a-006: RSSI -100 pasa el filtro (extremadamente débil)', () {
+      expect(
+        FlutterBluePlusDataSource.rssiPassesFilter(-100),
+        isTrue,
+        reason: 'Sin umbral: todo RSSI se acepta en el datasource',
       );
     });
 
     test('RSSI -40 (señal fuerte) pasa el filtro', () {
-      // Dispositivo cercano con señal fuerte debe pasar siempre.
       expect(
         FlutterBluePlusDataSource.rssiPassesFilter(-40),
         isTrue,
-        reason: 'RSSI fuerte (-40) debe pasar cualquier filtro razonable',
       );
     });
   });

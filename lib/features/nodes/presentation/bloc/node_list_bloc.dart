@@ -333,7 +333,7 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
           }
         }
       },
-      onError: (error) {
+      onError: (Object error) {
         if (!isClosed) {
           add(_NodesLoadError(error.toString()));
         }

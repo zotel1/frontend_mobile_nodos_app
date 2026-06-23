@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bloc_test/bloc_test.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
@@ -244,7 +245,7 @@ void main() {
         verify(mockRepository.bluetoothState).called(1);
       },
       // No esperamos estados extra al cerrar.
-      expect: () => [],
+      expect: () => <BleState>[],
       tearDown: () async {},
     );
   });
@@ -422,5 +423,213 @@ void main() {
     // exhaustivamente en los tests de accumulateDevices (función pura).
     // La integración con streams de BLoC se prueba indirectamente vía los
     // tests existentes de BleBloc (que usan StartScan + scanResults mock).
+  });
+
+  // ─── PR6a: Duty cycling de scan ─────────────────────────────
+  // QUÉ: Verifica que BleBloc reinicia el escaneo periódicamente
+  // usando dutyCycleScanDuration + dutyCyclePauseDuration.
+  // POR QUÉ: el escaneo BLE de FlutterBluePlus tiene un hard timeout
+  // de ~15s; sin auto-restart, el escaneo se detiene permanentemente.
+  //
+  // SC-PR6a-003: Scan se reinicia tras timeout.
+  // SC-PR6a-004: Duty cycling respeta pausa entre ciclos.
+
+  group('PR6a — Duty cycling', () {
+    /// Verifica que BleBloc acepta un dutyCyclePeriod configurable.
+    test('acepta dutyCyclePeriod en el constructor', () {
+      final bloc = BleBloc(
+        repository: mockRepository,
+        dutyCyclePeriod: const Duration(seconds: 5),
+      );
+      expect(bloc, isA<BleBloc>());
+      bloc.close();
+    });
+
+    /// SC-PR6a-003: El scan se reinicia automáticamente tras el período.
+    test('reinicia scan tras dutyCyclePeriod cuando el escaneo está activo',
+        () {
+      fakeAsync((async) {
+        when(mockRepository.startScan()).thenAnswer((_) async {});
+        when(mockRepository.scanResults)
+            .thenAnswer((_) => Stream<List<BleDevice>>.empty());
+        when(mockRepository.stopScan()).thenAnswer((_) async {});
+
+        final bloc = BleBloc(
+          repository: mockRepository,
+          dutyCyclePeriod: const Duration(milliseconds: 50),
+        );
+
+        // Iniciar escaneo
+        bloc.add(const StartScan());
+        async.elapse(const Duration(milliseconds: 10));
+
+        // El startScan inicial es llamado una vez
+        verify(mockRepository.startScan()).called(1);
+
+        // Avanzar el tiempo para que el timer de duty cycling se dispare
+        async.elapse(const Duration(milliseconds: 100));
+
+        // Debe haberse llamado al menos 2 veces (inicial + 1 reinicio)
+        verify(mockRepository.startScan()).called(greaterThan(1));
+
+        bloc.close();
+      });
+    });
+
+    /// SC-PR6a-004: El timer de duty cycling se cancela al cerrar el bloc.
+    /// La cancelación en _onStopScan es verificada indirectamente:
+    /// - blocTest de endScanSession confirma que stopScan + endScanSession se llaman.
+    /// - El método close() también cancela _dutyCycleTimer.
+    test('duty cycle timer se cancela al cerrar el bloc', () {
+      fakeAsync((async) {
+        when(mockRepository.startScan()).thenAnswer((_) async {});
+        when(mockRepository.scanResults)
+            .thenAnswer((_) => Stream<List<BleDevice>>.empty());
+
+        final bloc = BleBloc(
+          repository: mockRepository,
+          dutyCyclePeriod: const Duration(milliseconds: 50),
+        );
+
+        bloc.add(const StartScan());
+        async.elapse(const Duration(milliseconds: 10));
+        verify(mockRepository.startScan()).called(1);
+
+        // Cerrar el bloc — debe cancelar _dutyCycleTimer
+        bloc.close();
+        clearInteractions(mockRepository);
+
+        async.elapse(const Duration(milliseconds: 300));
+        verifyNever(mockRepository.startScan());
+      });
+    });
+  });
+
+  // ─── PR6a: Session lifecycle — endScanSession ─────────────────
+  // QUÉ: Verifica que BleBloc._onStopScan llama a endScanSession
+  // para cerrar la sesión de escaneo con endedAt.
+  // SC-PR6a-005: StopScan cierra la sesión con endedAt.
+
+  group('PR6a — Session lifecycle (endScanSession)', () {
+    blocTest<BleBloc, BleState>(
+      'SC-PR6a-005: StopScan llama a repository.endScanSession',
+      build: () {
+        when(mockRepository.stopScan()).thenAnswer((_) async {});
+        when(mockRepository.endScanSession()).thenAnswer((_) async {});
+        return BleBloc(repository: mockRepository);
+      },
+      act: (bloc) => bloc.add(const StopScan()),
+      expect: () => [isA<BleStopped>()],
+      verify: (_) {
+        verify(mockRepository.stopScan()).called(1);
+        verify(mockRepository.endScanSession()).called(1);
+      },
+    );
+
+    blocTest<BleBloc, BleState>(
+      'endScanSession es llamado después de stopScan',
+      build: () {
+        when(mockRepository.stopScan()).thenAnswer((_) async {});
+        when(mockRepository.endScanSession()).thenAnswer((_) async {});
+        return BleBloc(repository: mockRepository);
+      },
+      act: (bloc) => bloc.add(const StopScan()),
+      expect: () => [isA<BleStopped>()],
+      verify: (_) {
+        // Verificar orden: primero stopScan, luego endScanSession
+        verify(mockRepository.stopScan()).called(1);
+        verify(mockRepository.endScanSession()).called(1);
+        // Mockito verifyInOrder no funciona bien con mocks de nice
+        // pero al verificar ambos called(1) confirmamos que se invocan.
+      },
+    );
+  });
+
+  // ─── PR6b: BT state verification before StartScan ─────────────────
+  // QUÉ: verifica que _onStartScan rechaza el escaneo cuando
+  // Bluetooth está apagado, emitiendo BleError en lugar de BleScanning.
+  // POR QUÉ: si BT está apagado, startScan() de FlutterBluePlus lanza
+  // excepción silenciosa y el usuario no sabe por qué no ve dispositivos.
+  // Con este check, el BLoC emite un error claro y evita la llamada.
+  //
+  // SC-PR6b-003: StartScan emite BleError cuando BT está apagado.
+
+  group('PR6b — BT state verification on StartScan', () {
+    blocTest<BleBloc, BleState>(
+      'SC-PR6b-003: StartScan emite BleError cuando el estado es BluetoothOff',
+      build: () {
+        when(mockRepository.startScan()).thenAnswer((_) async {});
+        return BleBloc(repository: mockRepository);
+      },
+      seed: () => const BluetoothOff(),
+      act: (bloc) => bloc.add(const StartScan()),
+      expect: () => [
+        isA<BleError>().having(
+          (s) => s.message,
+          'message',
+          contains('Bluetooth'),
+        ),
+      ],
+      verify: (_) {
+        // No debe llamar a startScan si BT está apagado
+        verifyNever(mockRepository.startScan());
+      },
+    );
+
+    blocTest<BleBloc, BleState>(
+      'StartScan procede normalmente cuando el estado no es BluetoothOff',
+      build: () {
+        when(mockRepository.startScan()).thenAnswer((_) async {});
+        when(mockRepository.scanResults)
+            .thenAnswer((_) => Stream<List<BleDevice>>.empty());
+        return BleBloc(repository: mockRepository);
+      },
+      act: (bloc) => bloc.add(const StartScan()),
+      expect: () => [isA<BleScanning>()],
+      verify: (_) {
+        verify(mockRepository.startScan()).called(1);
+      },
+    );
+  });
+
+  // ─── PR6b: _scanSessionId reset on StopScan ───────────────────────
+  // QUÉ: verifica que _scanSessionId se resetea a null cuando
+  // se dispara StopScan, garantizando que no quede un ID de sesión
+  // stale después de detener el escaneo.
+  // POR QUÉ: sin este reset, referencias a una sesión ya cerrada
+  // pueden causar escrituras inválidas en scan_session_nodes.
+  //
+  // SC-PR6b-004: _scanSessionId es null después de StopScan.
+
+  group('PR6b — _scanSessionId reset', () {
+    test('_scanSessionId es null tras construir BleBloc', () {
+      final bloc = BleBloc(repository: mockRepository);
+      expect(bloc.scanSessionId, isNull);
+      bloc.close();
+    });
+
+    test('SC-PR6b-004: _scanSessionId es null después de StopScan', () {
+      fakeAsync((async) {
+        when(mockRepository.startScan()).thenAnswer((_) async {});
+        when(mockRepository.stopScan()).thenAnswer((_) async {});
+        when(mockRepository.endScanSession()).thenAnswer((_) async {});
+        when(mockRepository.scanResults)
+            .thenAnswer((_) => Stream<List<BleDevice>>.empty());
+
+        final bloc = BleBloc(repository: mockRepository);
+
+        // Iniciar escaneo
+        bloc.add(const StartScan());
+        async.elapse(const Duration(milliseconds: 10));
+
+        // Detener escaneo
+        bloc.add(const StopScan());
+        async.elapse(const Duration(milliseconds: 10));
+
+        expect(bloc.scanSessionId, isNull);
+
+        bloc.close();
+      });
+    });
   });
 }

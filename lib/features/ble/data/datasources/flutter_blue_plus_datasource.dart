@@ -10,7 +10,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_devic
 
 class FlutterBluePlusDataSource implements BleScannerDataSource {
   final StreamController<List<BleDevice>> _controller;
-  StreamSubscription? _scanSub;
+  StreamSubscription<Object?>? _scanSub;
   bool _isScanning = false;
   final bool _isTestMode;
 
@@ -46,30 +46,27 @@ class FlutterBluePlusDataSource implements BleScannerDataSource {
   void _bindToPlatform() {
     _scanSub = FlutterBluePlus.onScanResults.listen((results) {
       if (results.isEmpty) return;
-      final mapped = results
-          .map(mapScanResultToDevice)
-          .where((s) => rssiPassesFilter(s.rssi))
-          .toList();
+      // PR6a: Sin filtro RSSI en datasource — todos los dispositivos
+      // se persisten. El filtrado por proximidad ocurre en la capa
+      // de presentación (toggle "Mostrar solo cercanos").
+      // REQ-PR6a-004.
+      final mapped = results.map(mapScanResultToDevice).toList();
       if (mapped.isNotEmpty) {
         _controller.add(mapped);
       }
     });
   }
 
-  /// Filtro RSSI: determina si un dispositivo con un RSSI dado debe
-  /// incluirse en los resultados de escaneo.
+  /// Sin filtro RSSI: todos los dispositivos se persisten.
   ///
-  /// Usa [proximityThresholdFar] (-95 dBm) como umbral. Dispositivos
-  /// con RSSI >= -95 pasan el filtro (señal suficientemente fuerte).
+  /// QUÉ cambió (PR6a): antes filtraba con [proximityThresholdFar] (-95 dBm).
+  /// Ahora siempre retorna true — el filtrado se delegó a la capa de
+  /// presentación para que el usuario decida qué dispositivos ver.
   ///
-  /// QUÉ cambió: antes usaba [proximityThresholdMedium] (-85 dBm),
-  /// que era demasiado restrictivo y filtraba dispositivos a más
-  /// de 5-8m. Con -95 dBm detectamos dispositivos hasta ~10-15m.
-  ///
-  /// Es público y estático para permitir testing unitario sin
-  /// depender de la plataforma FlutterBluePlus.
+  /// Se mantiene como método público para compatibilidad con tests existentes.
+  /// REQ-PR6a-004.
   @visibleForTesting
-  static bool rssiPassesFilter(int rssi) => rssi >= proximityThresholdFar;
+  static bool rssiPassesFilter(int rssi) => true;
 
   /// Convierte un [ScanResult] de flutter_blue_plus en un [BleDevice] de dominio.
   ///

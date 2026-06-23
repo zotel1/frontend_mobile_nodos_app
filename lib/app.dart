@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:frontend_mobile_nodos_app/core/di/injection_container.dart';
 import 'package:frontend_mobile_nodos_app/core/theme/app_theme.dart';
+import 'package:frontend_mobile_nodos_app/core/utils/app_theme_mode.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
@@ -125,11 +126,17 @@ class NodosApp extends StatelessWidget {
       ],
       child: BlocBuilder<UserBloc, UserState>(
         builder: (context, state) {
-          // Lee el themeMode del estado del UserBloc.
-          // Si el perfil aún no cargó, usa system como fallback.
-          final themeMode = (state is UserLoaded)
+          // Lee el themeMode del estado del UserBloc y mapea
+          // AppThemeMode (dominio) → ThemeMode (Flutter Material).
+          final appThemeMode = (state is UserLoaded)
               ? state.themeMode
-              : ThemeMode.system;
+              : AppThemeMode.system;
+
+          final themeMode = switch (appThemeMode) {
+            AppThemeMode.light => ThemeMode.light,
+            AppThemeMode.dark => ThemeMode.dark,
+            AppThemeMode.system => ThemeMode.system,
+          };
 
           return MaterialApp.router(
             title: 'Nodos',

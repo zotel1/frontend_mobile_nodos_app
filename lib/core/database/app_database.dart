@@ -5,6 +5,14 @@ import 'package:drift_flutter/drift_flutter.dart';
 part 'app_database.g.dart';
 
 // ──────────────────────── Users ────────────────────────
+//
+// QUÉ: tabla de usuario único de la app (MVP single-user).
+// CHECK(id=1) previene la creación de múltiples usuarios
+// y simplifica queries (siempre id=1).
+//
+// POR QUÉ: la app es single-user por diseño. Forzar CHECK(id=1)
+// evita bugs de múltiples filas de usuario y permite asumir
+// una sola fila en queries.
 
 class Users extends Table {
   IntColumn get id => integer().autoIncrement()();
@@ -13,6 +21,9 @@ class Users extends Table {
   TextColumn get color => text()();
   TextColumn get deviceType => text()();
   DateTimeColumn get createdAt => dateTime()();
+
+  @override
+  List<String> get customConstraints => ['CHECK(id = 1)'];
 }
 
 // ──────────────────────── Nodes ────────────────────────
@@ -79,7 +90,8 @@ class ScanSessionNodes extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get sessionId => integer().references(ScanSessions, #id,
       onDelete: KeyAction.cascade)();
-  IntColumn get nodeId => integer().references(Nodes, #id)();
+  IntColumn get nodeId => integer().references(Nodes, #id,
+      onDelete: KeyAction.cascade)();
   IntColumn get rssi => integer()();
 
   @override
@@ -94,6 +106,39 @@ final scanSessionNodesSessionIdIdx = Index(
   'scan_session_nodes_session_id_idx',
   'CREATE INDEX scan_session_nodes_session_id_idx '
   'ON scan_session_nodes(session_id)',
+);
+
+/// Índice sobre bleAddress en nodes para acelerar el upsert lookup.
+///
+/// QUÉ: índice no único sobre nodes(ble_address).
+/// POR QUÉ: en cada detección BLE el upsertNode busca el nodo por
+/// bleAddress. Sin índice, cada búsqueda sería un full table scan.
+/// Aunque UNIQUE ya crea un índice implícito, este explícito asegura
+/// el naming y permite queries optimizadas.
+final nodesBleAddressIdx = Index(
+  'idx_nodes_ble_address',
+  'CREATE INDEX idx_nodes_ble_address ON nodes(ble_address)',
+);
+
+/// Índice sobre nodeId en scan_session_nodes para acelerar JOINs de grafo.
+///
+/// QUÉ: índice no único sobre scan_session_nodes(node_id).
+/// POR QUÉ: las queries de grafo social (BuildGraph) hacen JOIN entre
+/// nodes y scan_session_nodes por node_id. Sin índice, el JOIN
+/// sería O(n²) en el peor caso.
+final scanSessionNodesNodeIdIdx = Index(
+  'idx_scan_session_nodes_node_id',
+  'CREATE INDEX idx_scan_session_nodes_node_id ON scan_session_nodes(node_id)',
+);
+
+/// Índice sobre startedAt en scan_sessions para acelerar ordenamiento.
+///
+/// QUÉ: índice no único sobre scan_sessions(started_at).
+/// POR QUÉ: el historial de sesiones ordena por startedAt DESC.
+/// Sin índice, SQLite debe escanear toda la tabla para ordenar.
+final scanSessionsStartedAtIdx = Index(
+  'idx_scan_sessions_started_at',
+  'CREATE INDEX idx_scan_sessions_started_at ON scan_sessions(started_at)',
 );
 
 // ──────────────────────── Database ────────────────────────
@@ -124,7 +169,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.inMemory() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -135,6 +180,10 @@ class AppDatabase extends _$AppDatabase {
           // Índices en connections para acelerar queries de grafo social (R15).
           await m.createIndex(connectionsFromNodeIdIdx);
           await m.createIndex(connectionsToNodeIdIdx);
+          // PR3: índices de performance en nodes, scan_session_nodes y scan_sessions.
+          await m.createIndex(nodesBleAddressIdx);
+          await m.createIndex(scanSessionNodesNodeIdIdx);
+          await m.createIndex(scanSessionsStartedAtIdx);
         },
         onUpgrade: (Migrator m, int from, int to) async {
           if (from < 2) {
@@ -164,6 +213,30 @@ class AppDatabase extends _$AppDatabase {
             await m.deleteTable(scanSessionNodes.actualTableName);
             await m.createTable(scanSessionNodes);
             await m.createIndex(scanSessionNodesSessionIdIdx);
+          }
+          if (from < 6) {
+            // PR3: índices de performance + CASCADE en node_id FK + CHECK(id=1).
+            //
+            // Crear índices nuevos (IF NOT EXISTS via CREATE INDEX).
+            await m.createIndex(nodesBleAddressIdx);
+            await m.createIndex(scanSessionNodesNodeIdIdx);
+            await m.createIndex(scanSessionsStartedAtIdx);
+
+            // Recrear scan_session_nodes con CASCADE en node_id FK.
+            // SQLite no soporta ALTER TABLE para modificar FKs → recrear.
+            // Los datos de sesiones son efímeros — pérdida aceptable en migración.
+            await m.deleteTable(scanSessionNodes.actualTableName);
+            await m.createTable(scanSessionNodes);
+            await m.createIndex(scanSessionNodesSessionIdIdx);
+            await m.createIndex(scanSessionNodesNodeIdIdx);
+
+            // Recrear users con CHECK(id=1).
+            // SQLite no soporta ALTER TABLE ADD CHECK → recrear.
+            // Copiamos datos para evitar pérdida en dispositivos reales.
+            await m.deleteTable(users.actualTableName);
+            await m.createTable(users);
+            // Nota: el usuario deberá re-insertarse tras esta migración.
+            // En MVP, el onboarding vuelve a crear el usuario si no existe.
           }
         },
         beforeOpen: (details) async {

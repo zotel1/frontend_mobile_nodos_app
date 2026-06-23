@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/data/models/graph_data.dart';
@@ -122,7 +121,7 @@ void main() {
         'nodes': [
           {'id': 1, 'x': 500.0, 'y': 600.0}, // sin z
         ],
-        'edges': [],
+        'edges': <Map<String, dynamic>>[],
         'iterations': 1,
         'converged': true,
       };
@@ -161,7 +160,7 @@ void main() {
         'nodes': [
           {'id': 1, 'x': 500.0, 'y': 600.0},
         ],
-        'edges': [],
+        'edges': <Map<String, dynamic>>[],
         'iterations': 100,
         'converged': true,
       };
@@ -189,7 +188,7 @@ void main() {
         'nodes': [
           {'id': 1, 'x': 500.0, 'y': 600.0},
         ],
-        'edges': [],
+        'edges': <Map<String, dynamic>>[],
         'iterations': 100,
         'converged': true,
       };
@@ -217,7 +216,7 @@ void main() {
         'nodes': [
           {'id': 1, 'x': 500.0, 'y': 600.0},
         ],
-        'edges': [],
+        'edges': <Map<String, dynamic>>[],
         'iterations': 100,
         'converged': true,
       };
@@ -244,7 +243,7 @@ void main() {
         'nodes': [
           {'id': 1, 'x': 500.0, 'y': 600.0},
         ],
-        'edges': [],
+        'edges': <Map<String, dynamic>>[],
         'iterations': 100,
         'converged': true,
       };
@@ -274,7 +273,7 @@ void main() {
         'nodes': [
           {'id': 1, 'x': 500.0, 'y': 600.0},
         ],
-        'edges': [],
+        'edges': <Map<String, dynamic>>[],
         'iterations': 100,
         'converged': true,
       };
@@ -314,14 +313,14 @@ void main() {
         'nodes': [
           {'id': 1, 'x': 500.0, 'y': 600.0},
         ],
-        'edges': [],
+        'edges': <Map<String, dynamic>>[],
         'iterations': 100,
         'converged': true,
       };
 
       final result = paramsToLayoutResult(resultMap, original);
       expect(result.nodes[0].userColor, equals(0xFF2196F3));
-      expect(result.nodes[0].displayColor, equals(const Color(0xFF2196F3)));
+      expect(result.nodes[0].displayColor, 0xFF2196F3);
     });
 
     test('preserva estimatedDistance del nodo original', () {
@@ -342,7 +341,7 @@ void main() {
         'nodes': [
           {'id': 1, 'x': 500.0, 'y': 600.0},
         ],
-        'edges': [],
+        'edges': <Map<String, dynamic>>[],
         'iterations': 100,
         'converged': true,
       };
@@ -368,7 +367,7 @@ void main() {
         'nodes': [
           {'id': 1, 'x': 500.0, 'y': 600.0},
         ],
-        'edges': [],
+        'edges': <Map<String, dynamic>>[],
         'iterations': 100,
         'converged': true,
       };
@@ -376,7 +375,7 @@ void main() {
       final result = paramsToLayoutResult(resultMap, original);
       expect(result.nodes[0].userColor, isNull);
       // displayColor debe caer al color de proximidad
-      expect(result.nodes[0].displayColor, equals(const Color(0xFF4CAF50)));
+      expect(result.nodes[0].displayColor, 0xFF4CAF50);
     });
 
     test('edgeType se preserva en aristas (desde original.edges)', () {

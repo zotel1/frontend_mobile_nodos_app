@@ -92,6 +92,15 @@ class _HomePageState extends State<HomePage> {
   /// cuando el usuario presiona "Enlazar" en el tooltip.
   List<Node> _currentNodes = [];
 
+  /// T-PR1-006: Último remoteId para el que se intentó conectar.
+  ///
+  /// Se almacena cuando [BleConnecting] es recibido. Se usa en el
+  /// botón "Reintentar" del SnackBar de error para redisparar
+  /// [ConnectToDevice] con el mismo remoteId.
+  /// QUÉ problema resuelve: antes el onPressed de Reintentar estaba
+  /// vacío — el usuario veía el botón pero al tocarlo no pasaba nada.
+  String? _lastRemoteId;
+
   /// Abre el tooltip para un nodo específico en el grafo.
   ///
   /// QUÉ hace: busca el GraphNode por ID en el layout, calcula su
@@ -117,14 +126,25 @@ class _HomePageState extends State<HomePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
 
-      final renderBox =
-          _graphViewKey.currentContext?.findRenderObject() as RenderBox?;
-      if (renderBox == null) return;
+      // PR7: En modo 3D, el GraphView está offstage y localToGlobal
+      // retorna coordenadas incorrectas. Usar el centro de la pantalla
+      // como posición del tooltip en modo 3D.
+      final is3D = _is3D.value;
+      final Size screenSize = MediaQuery.of(context).size;
+      final Offset globalPosition;
+      if (is3D) {
+        // Tooltip centrado en pantalla en modo 3D
+        globalPosition = Offset(screenSize.width / 2, screenSize.height / 2);
+      } else {
+        final renderBox =
+            _graphViewKey.currentContext?.findRenderObject() as RenderBox?;
+        if (renderBox == null) return;
 
-      // Calcular posición global aproximada del nodo en pantalla.
-      // La posición del canvas (2000×2000) se transforma vía el RenderBox.
-      final localPos = Offset(node.x, node.y);
-      final globalPosition = renderBox.localToGlobal(localPos);
+        // Calcular posición global aproximada del nodo en pantalla.
+        // La posición del canvas (2000×2000) se transforma vía el RenderBox.
+        final localPos = Offset(node.x, node.y);
+        globalPosition = renderBox.localToGlobal(localPos);
+      }
 
       // Remover tooltip previo si existe
       _tooltipEntry?.remove();
@@ -196,12 +216,15 @@ class _HomePageState extends State<HomePage> {
         _is3D.value = prefs.getBool('is3D') ?? false;
       }
     });
+    // T-PR1-010: Capturar referencia a BleBloc ANTES del callback.
+    // Esto asegura que dispose() siempre tenga la referencia para
+    // despachar StopScan, incluso si el widget se destruye antes
+    // de que el postFrameCallback se ejecute.
+    _bleBloc = context.read<BleBloc>();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final bleBloc = context.read<BleBloc>();
-      _bleBloc = bleBloc;
       context.read<NodeListBloc>().add(const LoadNodes());
-      bleBloc.add(const StartScan());
+      _bleBloc!.add(const StartScan());
     });
   }
 
@@ -244,6 +267,8 @@ class _HomePageState extends State<HomePage> {
         listener: (context, connectionState) {
           switch (connectionState) {
             case BleConnecting(:final remoteId):
+              // T-PR1-006: Almacenar el remoteId para el botón Reintentar.
+              _lastRemoteId = remoteId;
               // Buscar nombre del nodo para el mensaje
               final nodeName = _currentNodes
                   .where((n) => n.bleAddress == remoteId)
@@ -268,11 +293,25 @@ class _HomePageState extends State<HomePage> {
               );
             case BleConnectionError(:final message, :final retryable):
               ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              // T-PR1-006: El botón Reintentar ahora redispra ConnectToDevice
+              // con el último remoteId conocido (almacenado en BleConnecting).
+              // Antes el onPressed estaba vacío → el botón no hacía nada.
               final action = retryable
                   ? SnackBarAction(
                       label: 'Reintentar',
                       onPressed: () {
-                        // Reintentar con el último remoteId conocido
+                        if (_lastRemoteId != null && mounted) {
+                          final userState = context.read<UserBloc>().state;
+                          final myNodeId = userState is UserLoaded
+                              ? userState.user.id
+                              : null;
+                          if (myNodeId != null) {
+                            context
+                                .read<BleConnectionBloc>()
+                                .add(ConnectToDevice(_lastRemoteId!,
+                                    myNodeId: myNodeId));
+                          }
+                        }
                       },
                     )
                   : null;
@@ -310,7 +349,7 @@ class _HomePageState extends State<HomePage> {
                     .where((n) => n.bleAddress == remoteId)
                     .firstOrNull;
                 if (node != null) {
-                  showModalBottomSheet(
+                  showModalBottomSheet<void>(
                     context: context,
                     builder: (_) => NodeMetadataSheet(
                       node: node,
@@ -374,7 +413,7 @@ class _HomePageState extends State<HomePage> {
           if (bleState is BluetoothOff) {
             if (!_dialogVisible) {
               _dialogVisible = true;
-              showDialog(
+              showDialog<void>(
                 context: context,
                 barrierDismissible: false,
                 builder: (ctx) => BluetoothOffDialog(
@@ -506,12 +545,16 @@ class _HomePageState extends State<HomePage> {
       if (!_showingGraph) {
         setState(() => _showingGraph = true);
       }
-      // Disparar construcción del grafo con la sesión activa
+      // Disparar construcción del grafo con la sesión activa.
+      // PR7: pasar myDeviceUuid desde UserBloc para que el self-node
+      // se marque con isSelf=true en el grafo.
       final sessionState = context.read<ScanSessionBloc>().state;
       if (sessionState is SessionActive) {
+        final myUuid = context.read<UserBloc>().myDeviceUuid;
         context.read<VisualizationBloc>().add(BuildGraphRequested(
           scanSessionId: sessionState.sessionId,
           nodes: nodes,
+          myDeviceUuid: myUuid,
         ));
       }
     } else if (_showingGraph) {
