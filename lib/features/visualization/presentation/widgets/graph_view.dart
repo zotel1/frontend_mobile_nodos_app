@@ -72,11 +72,17 @@ class _GraphViewState extends State<GraphView> {
 
         return GestureDetector(
           onTapUp: (details) => _handleTap(details.localPosition),
-          child: InteractiveViewer(
-            transformationController: _transformController,
-            minScale: 0.5,
-            maxScale: 3.0,
-            boundaryMargin: const EdgeInsets.all(100),
+          //child: InteractiveViewer(
+            //transformationController: _transformController,
+            //minScale: 0.5,
+            //maxScale: 3.0,
+            //boundaryMargin: const EdgeInsets.all(100),
+            child: InteractiveViewer(
+              transformationController: _transformController,
+              minScale: 0.05,
+              maxScale: 5,
+              boundaryMargin: const EdgeInsets.all(double.infinity),
+              constrained: false,
             child: CustomPaint(
               // Canvas fijo de 2000×2000 donde el algoritmo FR posiciona nodos.
               // InteractiveViewer permite navegar dentro de este espacio.
