@@ -64,7 +64,9 @@ class _HomePageState extends State<HomePage> {
   ///
   /// Usado por NodeTooltip.show() para posicionar el tooltip cerca del
   /// nodo tocado en coordenadas de pantalla.
-  final GlobalKey _graphViewKey = GlobalKey();
+  /// Tipado como GraphViewState para acceder al transformController
+  /// y mapear correctamente coordenadas del canvas (2000×2000) a pantalla.
+  final GlobalKey<GraphViewState> _graphViewKey = GlobalKey<GraphViewState>();
 
   /// Referencia al BleBloc guardada en initState para usar en dispose()
   /// cuando el context ya no es seguro para ancestor lookup.
@@ -140,10 +142,17 @@ class _HomePageState extends State<HomePage> {
             _graphViewKey.currentContext?.findRenderObject() as RenderBox?;
         if (renderBox == null) return;
 
-        // Calcular posición global aproximada del nodo en pantalla.
-        // La posición del canvas (2000×2000) se transforma vía el RenderBox.
-        final localPos = Offset(node.x, node.y);
-        globalPosition = renderBox.localToGlobal(localPos);
+        // BUG-FIX: transformar coordenadas del canvas (2000×2000)
+        // a viewport usando la matriz del InteractiveViewer ANTES de
+        // mapear a coordenadas globales de pantalla.
+        // Sin esta transformación, localToGlobal usa coordenadas
+        // de canvas directamente, posicionando el tooltip fuera
+        // de la pantalla visible.
+        final controller = _graphViewKey.currentState?.transformController;
+        final matrix = controller?.value ?? Matrix4.identity();
+        final canvasPoint = Offset(node.x, node.y);
+        final viewportPoint = MatrixUtils.transformPoint(matrix, canvasPoint);
+        globalPosition = renderBox.localToGlobal(viewportPoint);
       }
 
       // Remover tooltip previo si existe
