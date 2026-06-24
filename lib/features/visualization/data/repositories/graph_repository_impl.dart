@@ -136,8 +136,8 @@ class GraphRepositoryImpl implements GraphRepository {
         final idx = indices[j];
         final node = validNodeEntities[idx]!;
         final angle = (2 * pi * j) / indices.length;
-        final x = centerX + radius * cos(angle);
-        final y = centerY + radius * sin(angle);
+        final x = (centerX + radius * cos(angle)).clamp(50.0, 1950.0);
+        final y = (centerY + radius * sin(angle)).clamp(50.0, 1950.0);
 
         // Proximidad desde último RSSI
         final lastRssi =

@@ -131,6 +131,12 @@ class VisualizationBloc
       return; // Mismos IDs + misma proximidad: dedup
     }
 
+    // BUG-FIX: invalidar cache de layout cuando cambia el set de nodos.
+    // Si no se resetea, _lastLayout (del set anterior con menos nodos)
+    // se usa como source en CalculateLayout, truncando los nodos nuevos.
+    if (_lastNodeHash != 0 && _lastNodeHash != currentHash) {
+      _lastLayout = null;
+    }
     _lastNodeHash = currentHash;
     _debounceSeq++;
     final int currentSeq = _debounceSeq;

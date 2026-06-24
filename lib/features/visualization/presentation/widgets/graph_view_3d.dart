@@ -60,6 +60,23 @@ class _GraphView3DState extends State<GraphView3D> {
     _loadContent();
   }
 
+  /// Reinyecta datos cuando el layout cambia después de la primera build.
+  ///
+  /// QUÉ: compara el layout actual con el anterior y, si cambió,
+  /// vuelve a serializar e inyectar los datos en el WebView.
+  ///
+  /// POR QUÉ: sin didUpdateWidget, el grafo 3D solo se renderizaba
+  /// en la primera build. Si el layout cambiaba después (nuevo scan,
+  /// recálculo FR con más nodos), el WebView seguía mostrando
+  /// los datos viejos.
+  @override
+  void didUpdateWidget(covariant GraphView3D oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.layout != oldWidget.layout) {
+      _injectData();
+    }
+  }
+
   /// Crea y configura el WebViewController con los canales JavaScript
   /// para recibir eventos de tap en nodos y logs de consola.
   WebViewController _createController() {
