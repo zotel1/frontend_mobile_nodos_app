@@ -195,9 +195,12 @@ class VisualizationBloc
 
       // Paso 1: Construir grafo desde el repositorio.
       // PR2: pasar myDeviceUuid para marcar self-node en el grafo.
+      // REQ-SN-01: pasar userName y userColor para el self-node sintético.
       final buildResult = await _buildGraph(
         event.scanSessionId,
         myDeviceUuid: event.myDeviceUuid,
+        userName: event.userName,
+        userColor: event.userColor,
       );
 
       final initialLayout = buildResult.fold<LayoutResult?>(
@@ -310,10 +313,13 @@ class VisualizationBloc
     // Redispatch como un BuildGraphRequested normal, que pasará
     // por el pipeline completo: debounce → build → layout.
     // PR7: preservar myDeviceUuid del evento original.
+    // REQ-SN-01: preservar userName y userColor para el self-node.
     add(BuildGraphRequested(
       scanSessionId: event.lastSessionId,
       nodes: event.lastNodes,
       myDeviceUuid: event.myDeviceUuid,
+      userName: event.userName,
+      userColor: event.userColor,
     ));
   }
 

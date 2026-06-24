@@ -548,13 +548,24 @@ class _HomePageState extends State<HomePage> {
       // Disparar construcción del grafo con la sesión activa.
       // PR7: pasar myDeviceUuid desde UserBloc para que el self-node
       // se marque con isSelf=true en el grafo.
+      // REQ-SN-01: pasar userName y userColor del perfil para el
+      // self-node sintético y el anillo distintivo (REQ-VR-01).
       final sessionState = context.read<ScanSessionBloc>().state;
       if (sessionState is SessionActive) {
-        final myUuid = context.read<UserBloc>().myDeviceUuid;
+        final userBloc = context.read<UserBloc>();
+        final userState = userBloc.state;
+        final String? myUuid = userBloc.myDeviceUuid;
+        final String? userName =
+            userState is UserLoaded ? userState.user.name : null;
+        final String? userColor =
+            userState is UserLoaded ? userState.user.color : null;
+
         context.read<VisualizationBloc>().add(BuildGraphRequested(
           scanSessionId: sessionState.sessionId,
           nodes: nodes,
           myDeviceUuid: myUuid,
+          userName: userName,
+          userColor: userColor,
         ));
       }
     } else if (_showingGraph) {

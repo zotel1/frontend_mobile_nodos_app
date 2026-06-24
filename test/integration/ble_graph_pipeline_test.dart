@@ -412,13 +412,13 @@ void main() {
     final layout = await graphRepo.buildGraph(sessionId,
         myDeviceUuid: myUuid);
 
-    // Encontrar el self-node por isSelf=true
-    final selfNodes = layout.nodes.where((n) => n.isSelf).toList();
+    // Encontrar el self-node por isSelf=true (excluyendo el sintético id=-1)
+    final selfNodes = layout.nodes.where((n) => n.isSelf && n.id != -1).toList();
     expect(selfNodes, hasLength(1),
-        reason: 'Exactly 1 node must be marked isSelf');
+        reason: 'Exactly 1 BLE node must be marked isSelf');
     expect(selfNodes.single.id, isNotNull);
 
-    // Al menos 1 nodo NO es self
+    // Al menos 1 nodo NO es self (excluyendo el sintético)
     final nonSelf = layout.nodes.where((n) => !n.isSelf).toList();
     expect(nonSelf, isNotEmpty,
         reason: 'Other node must not be isSelf');
@@ -578,7 +578,8 @@ void main() {
     final graphRepo = GraphRepositoryImpl(nodeRepo, db);
     final layout = await graphRepo.buildGraph(sessionId);
 
-    expect(layout.nodes, hasLength(3));
+    expect(layout.nodes, hasLength(4),
+        reason: '3 external nodes + 1 synthetic self-node');
     // Debe haber al menos una arista directa
     final directEdges = layout.edges
         .where((e) => e.edgeType == EdgeType.direct);
@@ -615,7 +616,8 @@ void main() {
     final graphRepo = GraphRepositoryImpl(nodeRepo, db);
     final layout = await graphRepo.buildGraph(sessionId);
 
-    final gn = layout.nodes.single;
+    // Buscar el nodo externo (no el self-node sintético id=-1)
+    final gn = layout.nodes.firstWhere((n) => n.id != -1);
     expect(gn.suggestedName, 'Living Room Sensor');
     expect(gn.connectable, isTrue);
 
@@ -627,7 +629,7 @@ void main() {
       (r) => r,
     );
 
-    final refinedNode = refined.nodes.single;
+    final refinedNode = refined.nodes.firstWhere((n) => n.id != -1);
     expect(refinedNode.suggestedName, 'Living Room Sensor',
         reason: 'Metadata must survive FR isolate computation');
 
@@ -752,7 +754,8 @@ void main() {
     final graphRepo = GraphRepositoryImpl(nodeRepo, db);
     final layout = await graphRepo.buildGraph(sessionId);
 
-    final gn = layout.nodes.single;
+    // Buscar el nodo externo (no el self-node sintético id=-1)
+    final gn = layout.nodes.firstWhere((n) => n.id != -1);
     // Sin RSSI → rssiHistory vacío → lastRssi = -100 → proximity far
     expect(gn.proximity, ProximityLevel.far,
         reason: 'Node without RSSI must render as far (RSSI -100 fallback)');
