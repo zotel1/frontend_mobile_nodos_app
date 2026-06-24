@@ -102,39 +102,67 @@ class GraphRepositoryImpl implements GraphRepository {
     // 7. Agregar nodos externos a la lista (ya contiene el self-node).
     //    metadata propagada desde Node (connectable, userColor, distance).
     final validNodeEntities = nodeEntities.where((n) => n != null).toList();
+
+    // ── Posiciones iniciales por proximidad (REQ-GL-01) ──
+    // Reemplaza el anillo único de 300px por anillos concéntricos
+    // basados en rssiToDistance(). Nodos más cercanos (RSSI fuerte)
+    // se posicionan en anillos interiores; nodos lejanos en exteriores.
+    // La distribución angular es equiespaciada dentro de cada anillo.
+    //
+    // Agrupar nodos por anillo para distribuir el ángulo equiespaciadamente
+    final Map<String, List<int>> ringGroups = {};
+    final Map<int, double> nodeRingRadii = {};
     for (var i = 0; i < validNodeEntities.length; i++) {
       final node = validNodeEntities[i]!;
+      final lastRssi =
+          node.rssiHistory.isNotEmpty ? node.rssiHistory.last : -100;
+      final dist = rssiToDistance(lastRssi);
 
-      // Posición inicial circular (será refinada por FR)
-      final angle = (2 * pi * i) / validNodeEntities.length;
-      final centerX = 1000.0;
-      final centerY = 1000.0;
-      final radius = 300.0;
-      final x = centerX + radius * cos(angle);
-      final y = centerY + radius * sin(angle);
+      // Mapear distancia estimada → radio del anillo (interpolado)
+      final ringRadius = _ringRadiusForDistance(dist);
+      final ringKey = ringRadius.toStringAsFixed(0);
+      ringGroups.putIfAbsent(ringKey, () => []);
+      ringGroups[ringKey]!.add(i);
+      nodeRingRadii[i] = ringRadius;
+    }
 
-      // Proximidad desde último RSSI
-      final lastRssi = node.rssiHistory.isNotEmpty ? node.rssiHistory.last : -100;
-      final proximity = rssiToProximity(lastRssi);
+    // Posicionar nodos en sus anillos con ángulo equiespaciado
+    final centerX = 1000.0;
+    final centerY = 1000.0;
+    for (final entry in ringGroups.entries) {
+      final indices = entry.value;
+      final radius = double.parse(entry.key);
+      for (var j = 0; j < indices.length; j++) {
+        final idx = indices[j];
+        final node = validNodeEntities[idx]!;
+        final angle = (2 * pi * j) / indices.length;
+        final x = centerX + radius * cos(angle);
+        final y = centerY + radius * sin(angle);
 
-      // PR2: userColor desde Node.color (formato hex string "#FF2196F3")
-      final int? userColor = node.color != null
-          ? int.tryParse(node.color!.replaceFirst('#', '0xFF'))
-          : null;
+        // Proximidad desde último RSSI
+        final lastRssi =
+            node.rssiHistory.isNotEmpty ? node.rssiHistory.last : -100;
+        final proximity = rssiToProximity(lastRssi);
 
-      graphNodes.add(GraphNode(
-        id: node.id,
-        x: x,
-        y: y,
-        proximity: proximity,
-        name: node.name,
-        suggestedName: node.suggestedName,
-        connectionCount: connectionCounts[node.id!] ?? 0,
-        isSelf: myDeviceUuid != null && node.bleAddress == myDeviceUuid,
-        connectable: node.connectable,
-        userColor: userColor,
-        estimatedDistance: node.estimatedDistance,
-      ));
+        // PR2: userColor desde Node.color
+        final int? nodeUserColor = node.color != null
+            ? int.tryParse(node.color!.replaceFirst('#', '0xFF'))
+            : null;
+
+        graphNodes.add(GraphNode(
+          id: node.id,
+          x: x,
+          y: y,
+          proximity: proximity,
+          name: node.name,
+          suggestedName: node.suggestedName,
+          connectionCount: connectionCounts[node.id!] ?? 0,
+          isSelf: myDeviceUuid != null && node.bleAddress == myDeviceUuid,
+          connectable: node.connectable,
+          userColor: nodeUserColor,
+          estimatedDistance: node.estimatedDistance,
+        ));
+      }
     }
 
     return LayoutResult(
@@ -143,6 +171,56 @@ class GraphRepositoryImpl implements GraphRepository {
       iterations: 0,
       converged: false,
     );
+  }
+
+  /// Mapea una distancia estimada en metros al radio del anillo
+  /// correspondiente para el layout inicial (REQ-GL-01).
+  ///
+  /// Rangos:
+  /// | Distancia estimada | Radio del anillo |
+  /// |---|---|
+  /// | 0–0.5m | 80–150px |
+  /// | 0.5–2m | 150–400px |
+  /// | 2–5m | 400–900px |
+  /// | 5–10m | 900–1500px |
+  /// | >10m o sin RSSI | 1500–1850px |
+  ///
+  /// Usa [_interpolate] para mapeo lineal dentro de cada rango.
+  double _ringRadiusForDistance(double distanceMeters) {
+    if (distanceMeters <= 0.5) {
+      return _interpolate(distanceMeters, 0.0, 0.5, 80.0, 150.0);
+    }
+    if (distanceMeters <= 2.0) {
+      return _interpolate(distanceMeters, 0.5, 2.0, 150.0, 400.0);
+    }
+    if (distanceMeters <= 5.0) {
+      return _interpolate(distanceMeters, 2.0, 5.0, 400.0, 900.0);
+    }
+    if (distanceMeters <= 10.0) {
+      return _interpolate(distanceMeters, 5.0, 10.0, 900.0, 1500.0);
+    }
+    // >10m o sin datos RSSI → anillo exterior
+    return _interpolate(
+        distanceMeters.clamp(10.0, 20.0), 10.0, 20.0, 1500.0, 1850.0);
+  }
+
+  /// Interpolación lineal entre [inMin]→[outMin] y [inMax]→[outMax].
+  ///
+  /// QUÉ: mapea un valor [value] del rango de entrada al rango de salida.
+  /// Clampea [value] al rango [inMin, inMax] para evitar extrapolación.
+  ///
+  /// POR QUÉ: necesaria para mapear distancias continuas en metros a
+  /// radios de anillo continuos en píxeles para el layout inicial.
+  static double _interpolate(
+    double value,
+    double inMin,
+    double inMax,
+    double outMin,
+    double outMax,
+  ) {
+    final clamped = value.clamp(inMin, inMax);
+    final t = (clamped - inMin) / (inMax - inMin);
+    return outMin + t * (outMax - outMin);
   }
 
   /// Obtiene aristas directas desde la tabla [connections] para los nodos

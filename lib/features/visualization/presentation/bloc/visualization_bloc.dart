@@ -219,11 +219,14 @@ class VisualizationBloc
         return;
       }
 
-      // Paso 2: Calcular layout con FR, reusando cache si existe
+      // Paso 2: Calcular layout con FR, reusando cache si existe.
+      // REQ-GL-03: depth=2000 activa el modo 3D del algoritmo FR,
+      // permitiendo que los nodos exploren el eje Z (profundidad).
       final calcResult = await _calculateLayout(
         initialLayout,
         _canvasWidth,
         _canvasHeight,
+        depth: 2000.0,
         priorLayout: _lastLayout,
       );
 
@@ -314,10 +317,14 @@ class VisualizationBloc
     ));
   }
 
-  /// PR2: Calcula el barycenter (centro geométrico) del cluster de nodos.
+  /// Calcula el barycenter (centro de referencia) del cluster de nodos.
   ///
-  /// El barycenter es el promedio aritmético de las posiciones (x, y)
-  /// de todos los nodos en el layout. Si no hay nodos, se usa (0, 0).
+  /// REQ-SN-02: si existe un self-node (isSelf=true), usa su posición
+  /// como barycenter. El self-node está anclado al centro del canvas
+  /// y es el punto de referencia natural (el usuario es el centro de su red).
+  /// Fallback: promedio aritmético de todos los nodos (centroide).
+  /// Si no hay nodos, usa (0, 0).
+  ///
   /// Este valor se usa en GraphView para centrar la vista automáticamente
   /// en el primer GraphReady (R5.13).
   void _computeBarycenter(LayoutResult layout) {
@@ -325,6 +332,16 @@ class VisualizationBloc
       _barycenter = Offset.zero;
       return;
     }
+
+    // Buscar self-node — su posición es el centro de referencia ideal
+    for (final node in layout.nodes) {
+      if (node.isSelf) {
+        _barycenter = Offset(node.x, node.y);
+        return;
+      }
+    }
+
+    // Fallback: centroide de todos los nodos
     double sumX = 0, sumY = 0;
     for (final node in layout.nodes) {
       sumX += node.x;
