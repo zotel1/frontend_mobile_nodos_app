@@ -24,20 +24,27 @@ abstract class VisualizationEvent extends Equatable {
 /// [nodes] provee contexto de cantidad de nodos disponibles.
 /// [myDeviceUuid] UUID del dispositivo propio, para marcar el self-node
 /// en el grafo (R5.13). Opcional — si es null, ningún nodo se marca isSelf.
+/// [userName] nombre del perfil para el self-node sintético (REQ-SN-01).
+/// [userColor] color hex del perfil para el anillo del self-node (REQ-VR-01).
 /// Agregado en PR2.
 class BuildGraphRequested extends VisualizationEvent {
   final int scanSessionId;
   final List<Node> nodes;
   final String? myDeviceUuid;
+  final String? userName;
+  final String? userColor;
 
   const BuildGraphRequested({
     required this.scanSessionId,
     required this.nodes,
     this.myDeviceUuid,
+    this.userName,
+    this.userColor,
   });
 
   @override
-  List<Object?> get props => [scanSessionId, nodes, myDeviceUuid];
+  List<Object?> get props =>
+      [scanSessionId, nodes, myDeviceUuid, userName, userColor];
 }
 
 /// El usuario tocó un nodo en el grafo.
@@ -82,13 +89,18 @@ class RetryGraphBuild extends VisualizationEvent {
   final int lastSessionId;
   final List<Node> lastNodes;
   final String? myDeviceUuid;
+  final String? userName;
+  final String? userColor;
 
   const RetryGraphBuild({
     required this.lastSessionId,
     required this.lastNodes,
     this.myDeviceUuid,
+    this.userName,
+    this.userColor,
   });
 
   @override
-  List<Object?> get props => [lastSessionId, lastNodes, myDeviceUuid];
+  List<Object?> get props =>
+      [lastSessionId, lastNodes, myDeviceUuid, userName, userColor];
 }

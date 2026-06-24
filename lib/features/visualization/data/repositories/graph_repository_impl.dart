@@ -30,15 +30,42 @@ class GraphRepositoryImpl implements GraphRepository {
 
   @override
   Future<LayoutResult> buildGraph(int scanSessionId,
-      {String? myDeviceUuid}) async {
-    // 1. Obtener todos los nodos detectados en esta sesión
+      {String? myDeviceUuid, String? userName, String? userColor}) async {
+    // Obtener todos los nodos detectados en esta sesión
     final sessionRows = await (_db.select(_db.scanSessionNodes)
           ..where((t) => t.sessionId.equals(scanSessionId)))
         .get();
 
+    // ── Parsear userColor de hex string a ARGB int ──
+    // userColor llega como hex string "#E91E63" desde el perfil.
+    // Se convierte a 0xFFE91E63 para almacenar en GraphNode.userColor.
+    final int? userColorInt = userColor != null
+        ? int.tryParse(userColor.replaceFirst('#', '0xFF'))
+        : null;
+
+    // ── Self-node sintético (REQ-SN-01) ──
+    // Siempre se crea al inicio de la lista, incluso con 0 nodos externos.
+    // id=-1 no colisiona con IDs de Drift (≥1 por autoincrement).
+    // Posición centro (1000, 1000) — anclado, no se mueve con FR.
+    final graphNodes = <GraphNode>[];
+    graphNodes.add(GraphNode(
+      id: -1,
+      x: 1000.0,
+      y: 1000.0,
+      z: 0.0,
+      proximity: ProximityLevel.close,
+      name: userName ?? 'Mi dispositivo',
+      connectionCount: 0,
+      isSelf: true,
+      connectable: false,
+      userColor: userColorInt,
+    ));
+
+    // Si no hay nodos externos, retornar SOLO el self-node.
+    // Ya no se retorna LayoutResult vacío — siempre ≥1 nodo.
     if (sessionRows.isEmpty) {
-      return const LayoutResult(
-        nodes: [],
+      return LayoutResult(
+        nodes: graphNodes,
         edges: [],
         iterations: 0,
         converged: false,
@@ -72,9 +99,8 @@ class GraphRepositoryImpl implements GraphRepository {
           (connectionCounts[edge.toId] ?? 0) + 1;
     }
 
-    // 7. Crear GraphNode con posiciones iniciales en círculo y
+    // 7. Agregar nodos externos a la lista (ya contiene el self-node).
     //    metadata propagada desde Node (connectable, userColor, distance).
-    final graphNodes = <GraphNode>[];
     final validNodeEntities = nodeEntities.where((n) => n != null).toList();
     for (var i = 0; i < validNodeEntities.length; i++) {
       final node = validNodeEntities[i]!;
