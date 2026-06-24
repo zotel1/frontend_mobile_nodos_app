@@ -198,11 +198,14 @@ class GraphPainter extends CustomPainter {
     }
   }
 
-  /// Capa 3.5: Efecto glow azul para el nodo propio (isSelf=true).
+  /// Capa 3.5: Efecto glow para el nodo propio (isSelf=true).
   ///
   /// Renderiza dos anillos adicionales alrededor del nodo self:
-  /// - Anillo exterior (glow): círculo relleno, radius+10, azul alpha 80
-  /// - Anillo interior (acento): borde azul sólido, radius+4, 4px stroke
+  /// - Anillo exterior (glow): círculo relleno, radius+10, color del perfil
+  ///   con alpha 80. REQ-VR-01: usa [node.userColor] en lugar de hardcodeado.
+  /// - Anillo interior (acento): borde sólido 4px, color del perfil.
+  ///
+  /// Fallback: azul #42a5f5 si userColor es null.
   ///
   /// Se llama después de _drawNodes para que el glow quede detrás
   /// de las etiquetas pero sobre los nodos normales.
@@ -212,15 +215,21 @@ class GraphPainter extends CustomPainter {
 
       final center = Offset(node.x, node.y);
 
-      // Anillo exterior de glow: relleno azul translúcido
+      // REQ-VR-01: color del anillo desde el perfil del usuario.
+      // Fallback azul #42a5f5 si el perfil no tiene color asignado.
+      final ringColor = node.userColor != null
+          ? Color(node.userColor!)
+          : const Color(0xFF42A5F5);
+
+      // Anillo exterior de glow: relleno translúcido con alpha ~0.31
       final glowPaint = Paint()
-        ..color = const Color(0x500000FF) // azul con alpha ~0.31 (80/255)
+        ..color = ringColor.withAlpha(80)
         ..style = PaintingStyle.fill;
       canvas.drawCircle(center, node.radius + 10, glowPaint);
 
-      // Anillo interior de acento: borde azul sólido 4px
+      // Anillo interior de acento: borde sólido 4px
       final accentPaint = Paint()
-        ..color = const Color(0xFF2196F3) // azul material
+        ..color = ringColor
         ..style = PaintingStyle.stroke
         ..strokeWidth = 4.0;
       canvas.drawCircle(center, node.radius + 4, accentPaint);

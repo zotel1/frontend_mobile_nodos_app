@@ -294,6 +294,11 @@ Map<String, dynamic> layoutResultToJson(LayoutResult layout) {
       'color': '#${n.color.toRadixString(16).padLeft(8, '0').substring(2)}',
       'label': n.label,
       'isSelf': n.isSelf,
+      // REQ-VR-01: color del perfil para el anillo del self-node en 3D.
+      // Se convierte de ARGB int (0xFFE91E63) a hex string sin alpha ("#E91E63").
+      'userColor': n.userColor != null
+          ? '#${n.userColor!.toRadixString(16).padLeft(8, '0').substring(2)}'
+          : null,
     }).toList(),
     'edges': layout.edges.map((e) => {
       'fromId': e.fromId,

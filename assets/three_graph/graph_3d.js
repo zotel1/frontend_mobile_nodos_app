@@ -338,10 +338,17 @@
       mesh.userData.nodeId = n.id;
       mesh.userData.label = n.label;
 
-      // Anillo de glow para self node
+      // Anillo de glow para self node (REQ-VR-01)
+      // Usa userColor del perfil en lugar de color hardcodeado.
+      // Fallback a #42a5f5 si userColor no está disponible.
       if (n.isSelf) {
         const ringGeo = new THREE.TorusGeometry((n.radius || 15) * 1.25, 3, 16, 32);
-        const ringMat = new THREE.MeshBasicMaterial({ color: 0x42a5f5, transparent: true, opacity: 0.7 });
+        const ringColor = n.userColor || '#42a5f5';
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: new THREE.Color(ringColor),
+          transparent: true,
+          opacity: 0.7
+        });
         const ring = new THREE.Mesh(ringGeo, ringMat);
         mesh.add(ring);
       }
@@ -349,20 +356,65 @@
       group.add(mesh);
     });
 
-    // PR7: Centrar la cámara en el centroide de los nodos.
-    // Calcula el promedio aritmético de las posiciones (x, y, z) de
-    // todos los nodos y actualiza controls.target para que la cámara
-    // apunte al centro del cluster automáticamente (R5.13).
+    // ── Cámara auto-fit (REQ-CA-01) ──
+    // Calcula BoundingBox + BoundingSphere a partir de todos los nodos
+    // para ajustar cámara, far plane y controls.target dinámicamente.
     if (data.nodes.length > 0) {
-      let cx = 0, cy = 0, cz = 0;
+      // 1. BoundingBox: min/max de x, y, z
+      let minX = Infinity, minY = Infinity, minZ = Infinity;
+      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+      let selfNode = null;
+
       data.nodes.forEach(function (n) {
-        cx += n.x;
-        cy += n.y;
-        cz += n.z || 0;
+        if (n.x < minX) minX = n.x;
+        if (n.y < minY) minY = n.y;
+        const nz = n.z || 0;
+        if (nz < minZ) minZ = nz;
+        if (n.x > maxX) maxX = n.x;
+        if (n.y > maxY) maxY = n.y;
+        if (nz > maxZ) maxZ = nz;
+        if (n.isSelf) selfNode = n;
       });
-      const cnt = data.nodes.length;
-      controls.target.set(cx / cnt, cy / cnt, cz / cnt);
+
+      // 2. BoundingSphere: centro = promedio min/max, radio = max distancia
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+      const cz = (minZ + maxZ) / 2;
+      const center = new THREE.Vector3(cx, cy, cz);
+
+      let maxDist = 0;
+      data.nodes.forEach(function (n) {
+        const dx = n.x - cx;
+        const dy = n.y - cy;
+        const dz = (n.z || 0) - cz;
+        const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (d > maxDist) maxDist = d;
+      });
+
+      // 3. maxDistance: radio × 4, mínimo 2000
+      const maxDistance = Math.max(maxDist * 4, 2000);
+
+      // 4. camera.far: maxDistance × 1.5, tope 8000 (mobile Z-buffer)
+      camera.far = Math.min(maxDistance * 1.5, 8000);
+      camera.updateProjectionMatrix();
+
+      // 5. Posicionar cámara: distancia = radio × 2.5, mínimo 500
+      const camDistance = Math.max(maxDist * 2.5, 500);
+      camera.position.set(0, -camDistance, camDistance * 0.75);
+
+      // 6. controls.target = posición del self-node (REQ-CA-01 S1-S3)
+      //    Si no hay self-node, usar centroide.
+      if (selfNode) {
+        controls.target.set(selfNode.x, selfNode.y, selfNode.z || 0);
+      } else {
+        controls.target.copy(center);
+      }
       controls.update();
+
+      _log('Camera auto-fit: radius=' + Math.round(maxDist) +
+           ' maxDist=' + Math.round(maxDistance) +
+           ' far=' + Math.round(camera.far) +
+           ' camDist=' + Math.round(camDistance));
     }
     } catch (err) {
       _log('loadGraphData ERROR: ' + (err && err.message ? err.message : String(err)));
