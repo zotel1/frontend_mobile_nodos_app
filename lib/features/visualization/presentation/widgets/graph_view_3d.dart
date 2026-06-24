@@ -123,6 +123,10 @@ class _GraphView3DState extends State<GraphView3D> {
       },
     );
 
+    // Habilitar JavaScript en el WebView (Android lo tiene OFF por defecto).
+    // Sin esto, three.min.js nunca se ejecuta y el 3D queda en blanco.
+    controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+
     return controller;
   }
 

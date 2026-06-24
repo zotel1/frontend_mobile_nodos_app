@@ -274,7 +274,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   /// para su dispositivo. Al presionar "Comenzar", guarda el perfil
   /// y navega a la HomePage.
   Widget _buildProfileStep() {
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,

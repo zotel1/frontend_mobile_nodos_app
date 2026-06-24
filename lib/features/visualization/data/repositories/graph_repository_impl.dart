@@ -176,32 +176,28 @@ class GraphRepositoryImpl implements GraphRepository {
   /// Mapea una distancia estimada en metros al radio del anillo
   /// correspondiente para el layout inicial (REQ-GL-01).
   ///
-  /// Rangos:
+  /// Rangos (compactados para mejor visualización en canvas 2000×2000):
   /// | Distancia estimada | Radio del anillo |
   /// |---|---|
-  /// | 0–0.5m | 80–150px |
-  /// | 0.5–2m | 150–400px |
-  /// | 2–5m | 400–900px |
-  /// | 5–10m | 900–1500px |
-  /// | >10m o sin RSSI | 1500–1850px |
+  /// | 0–1m | 80–300px |
+  /// | 1–5m | 300–600px |
+  /// | 5–15m | 600–1000px |
+  /// | >15m o sin RSSI | 1000–1400px |
   ///
   /// Usa [_interpolate] para mapeo lineal dentro de cada rango.
   double _ringRadiusForDistance(double distanceMeters) {
-    if (distanceMeters <= 0.5) {
-      return _interpolate(distanceMeters, 0.0, 0.5, 80.0, 150.0);
-    }
-    if (distanceMeters <= 2.0) {
-      return _interpolate(distanceMeters, 0.5, 2.0, 150.0, 400.0);
+    if (distanceMeters <= 1.0) {
+      return _interpolate(distanceMeters, 0.0, 1.0, 80.0, 300.0);
     }
     if (distanceMeters <= 5.0) {
-      return _interpolate(distanceMeters, 2.0, 5.0, 400.0, 900.0);
+      return _interpolate(distanceMeters, 1.0, 5.0, 300.0, 600.0);
     }
-    if (distanceMeters <= 10.0) {
-      return _interpolate(distanceMeters, 5.0, 10.0, 900.0, 1500.0);
+    if (distanceMeters <= 15.0) {
+      return _interpolate(distanceMeters, 5.0, 15.0, 600.0, 1000.0);
     }
-    // >10m o sin datos RSSI → anillo exterior
+    // >15m o sin datos RSSI → anillo exterior
     return _interpolate(
-        distanceMeters.clamp(10.0, 20.0), 10.0, 20.0, 1500.0, 1850.0);
+        distanceMeters.clamp(15.0, 30.0), 15.0, 30.0, 1000.0, 1400.0);
   }
 
   /// Interpolación lineal entre [inMin]→[outMin] y [inMax]→[outMax].
