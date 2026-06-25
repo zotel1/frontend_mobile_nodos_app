@@ -76,6 +76,7 @@ void main() {
         any,
         any,
         any,
+        depth: anyNamed('depth'),
         priorLayout: anyNamed('priorLayout'),
       ),
     ).thenAnswer((_) async => Right(testLayout));
@@ -125,6 +126,7 @@ void main() {
             any,
             any,
             any,
+            depth: anyNamed('depth'),
             priorLayout: anyNamed('priorLayout'),
           ),
         ).called(1);
@@ -183,6 +185,7 @@ void main() {
               any,
               any,
               any,
+              depth: anyNamed('depth'),
               priorLayout: testLayout,
             ),
           ).called(1);
@@ -257,6 +260,7 @@ void main() {
             any,
             any,
             any,
+            depth: anyNamed('depth'),
             priorLayout: anyNamed('priorLayout'),
           ),
         ).thenAnswer((_) async => Right(testLayout));
@@ -290,6 +294,7 @@ void main() {
             any,
             any,
             any,
+            depth: anyNamed('depth'),
             priorLayout: anyNamed('priorLayout'),
           ),
         ).thenAnswer(
@@ -325,7 +330,8 @@ void main() {
               any,
               any,
               any,
-              priorLayout: anyNamed('priorLayout'),
+              depth: anyNamed('depth'),
+            priorLayout: anyNamed('priorLayout'),
             ),
           ).thenAnswer((_) async => Right(testLayout));
 
@@ -434,6 +440,7 @@ void main() {
             any,
             any,
             any,
+            depth: anyNamed('depth'),
             priorLayout: anyNamed('priorLayout'),
           )).called(1);
 
@@ -508,6 +515,7 @@ void main() {
             any,
             any,
             any,
+            depth: anyNamed('depth'),
             priorLayout: anyNamed('priorLayout'),
           ),
         ).thenAnswer((_) async => const Right(testLayout));
@@ -781,6 +789,7 @@ void main() {
             any,
             any,
             any,
+            depth: anyNamed('depth'),
             priorLayout: anyNamed('priorLayout'),
           )).called(2);
 
@@ -843,6 +852,7 @@ void main() {
             any,
             any,
             any,
+            depth: anyNamed('depth'),
             priorLayout: anyNamed('priorLayout'),
           )).called(1);
 

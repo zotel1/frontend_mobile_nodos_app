@@ -486,8 +486,10 @@ void main() {
       mockNodeWithAddress(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
 
       final layout = await repository.buildGraph(session);
-      // Sin myDeviceUuid, ningún nodo debe ser self
+      // Sin myDeviceUuid, ningún nodo externo debe ser self.
+      // El self-node sintético (id=-1) siempre es isSelf=true.
       for (final node in layout.nodes) {
+        if (node.id == -1) continue; // self-node sintético
         expect(node.isSelf, isFalse);
       }
     });
@@ -505,6 +507,7 @@ void main() {
           myDeviceUuid: 'completely-different-uuid');
 
       for (final node in layout.nodes) {
+        if (node.id == -1) continue; // self-node sintético
         expect(node.isSelf, isFalse);
       }
     });
@@ -607,8 +610,8 @@ void main() {
       // Act
       final layout = await repository.buildGraph(session);
 
-      // Assert: debe haber 2 nodos y 1 arista directa (desde connections)
-      expect(layout.nodes.length, equals(2));
+      // Assert: debe haber 3 nodos (2 externos + 1 self-node sintético) y 1 arista directa
+      expect(layout.nodes.length, equals(3));
       expect(layout.edges.length, equals(1));
       expect(layout.edges.first.edgeType, equals(EdgeType.direct));
     });
@@ -627,7 +630,8 @@ void main() {
 
       final layout = await repository.buildGraph(session);
 
-      expect(layout.nodes.length, equals(2));
+      // 3 nodos: 2 externos + 1 self-node sintético (id=-1)
+      expect(layout.nodes.length, equals(3));
       // Sin conexiones → sin aristas (a diferencia del viejo buildGraph
       // que usaba co-detección de scan_session_nodes)
       expect(layout.edges, isEmpty);
@@ -653,8 +657,8 @@ void main() {
 
       final layout = await repository.buildGraph(session);
 
-      // 3 nodos, 3 aristas: 2 directas (A-B, B-C) + 1 transitiva (A-C)
-      expect(layout.nodes.length, equals(3));
+      // 4 nodos: 3 externos + 1 self-node sintético. 3 aristas: 2 directas + 1 transitiva
+      expect(layout.nodes.length, equals(4));
       expect(layout.edges.length, equals(3));
 
       // La arista A-C debe ser transitiva
@@ -697,8 +701,8 @@ void main() {
 
       final layout = await repository.buildGraph(session);
 
-      // 3 nodos, solo 1 arista directa (A-B). Sin aristas transitivas.
-      expect(layout.nodes.length, equals(3));
+      // 4 nodos: 3 externos + 1 self-node sintético. Solo 1 arista directa (A-B)
+      expect(layout.nodes.length, equals(4));
       expect(layout.edges.length, equals(1));
       expect(layout.edges.first.edgeType, equals(EdgeType.direct));
     });

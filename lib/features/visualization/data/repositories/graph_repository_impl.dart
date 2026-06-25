@@ -30,15 +30,42 @@ class GraphRepositoryImpl implements GraphRepository {
 
   @override
   Future<LayoutResult> buildGraph(int scanSessionId,
-      {String? myDeviceUuid}) async {
-    // 1. Obtener todos los nodos detectados en esta sesión
+      {String? myDeviceUuid, String? userName, String? userColor}) async {
+    // Obtener todos los nodos detectados en esta sesión
     final sessionRows = await (_db.select(_db.scanSessionNodes)
           ..where((t) => t.sessionId.equals(scanSessionId)))
         .get();
 
+    // ── Parsear userColor de hex string a ARGB int ──
+    // userColor llega como hex string "#E91E63" desde el perfil.
+    // Se convierte a 0xFFE91E63 para almacenar en GraphNode.userColor.
+    final int? userColorInt = userColor != null
+        ? int.tryParse(userColor.replaceFirst('#', '0xFF'))
+        : null;
+
+    // ── Self-node sintético (REQ-SN-01) ──
+    // Siempre se crea al inicio de la lista, incluso con 0 nodos externos.
+    // id=-1 no colisiona con IDs de Drift (≥1 por autoincrement).
+    // Posición centro (1000, 1000) — anclado, no se mueve con FR.
+    final graphNodes = <GraphNode>[];
+    graphNodes.add(GraphNode(
+      id: -1,
+      x: 1000.0,
+      y: 1000.0,
+      z: 0.0,
+      proximity: ProximityLevel.close,
+      name: userName ?? 'Mi dispositivo',
+      connectionCount: 0,
+      isSelf: true,
+      connectable: false,
+      userColor: userColorInt,
+    ));
+
+    // Si no hay nodos externos, retornar SOLO el self-node.
+    // Ya no se retorna LayoutResult vacío — siempre ≥1 nodo.
     if (sessionRows.isEmpty) {
-      return const LayoutResult(
-        nodes: [],
+      return LayoutResult(
+        nodes: graphNodes,
         edges: [],
         iterations: 0,
         converged: false,
@@ -72,43 +99,70 @@ class GraphRepositoryImpl implements GraphRepository {
           (connectionCounts[edge.toId] ?? 0) + 1;
     }
 
-    // 7. Crear GraphNode con posiciones iniciales en círculo y
+    // 7. Agregar nodos externos a la lista (ya contiene el self-node).
     //    metadata propagada desde Node (connectable, userColor, distance).
-    final graphNodes = <GraphNode>[];
     final validNodeEntities = nodeEntities.where((n) => n != null).toList();
+
+    // ── Posiciones iniciales por proximidad (REQ-GL-01) ──
+    // Reemplaza el anillo único de 300px por anillos concéntricos
+    // basados en rssiToDistance(). Nodos más cercanos (RSSI fuerte)
+    // se posicionan en anillos interiores; nodos lejanos en exteriores.
+    // La distribución angular es equiespaciada dentro de cada anillo.
+    //
+    // Agrupar nodos por anillo para distribuir el ángulo equiespaciadamente
+    final Map<String, List<int>> ringGroups = {};
+    final Map<int, double> nodeRingRadii = {};
     for (var i = 0; i < validNodeEntities.length; i++) {
       final node = validNodeEntities[i]!;
+      final lastRssi =
+          node.rssiHistory.isNotEmpty ? node.rssiHistory.last : -100;
+      final dist = rssiToDistance(lastRssi);
 
-      // Posición inicial circular (será refinada por FR)
-      final angle = (2 * pi * i) / validNodeEntities.length;
-      final centerX = 1000.0;
-      final centerY = 1000.0;
-      final radius = 300.0;
-      final x = centerX + radius * cos(angle);
-      final y = centerY + radius * sin(angle);
+      // Mapear distancia estimada → radio del anillo (interpolado)
+      final ringRadius = _ringRadiusForDistance(dist);
+      final ringKey = ringRadius.toStringAsFixed(0);
+      ringGroups.putIfAbsent(ringKey, () => []);
+      ringGroups[ringKey]!.add(i);
+      nodeRingRadii[i] = ringRadius;
+    }
 
-      // Proximidad desde último RSSI
-      final lastRssi = node.rssiHistory.isNotEmpty ? node.rssiHistory.last : -100;
-      final proximity = rssiToProximity(lastRssi);
+    // Posicionar nodos en sus anillos con ángulo equiespaciado
+    final centerX = 1000.0;
+    final centerY = 1000.0;
+    for (final entry in ringGroups.entries) {
+      final indices = entry.value;
+      final radius = double.parse(entry.key);
+      for (var j = 0; j < indices.length; j++) {
+        final idx = indices[j];
+        final node = validNodeEntities[idx]!;
+        final angle = (2 * pi * j) / indices.length;
+        final x = (centerX + radius * cos(angle)).clamp(50.0, 1950.0);
+        final y = (centerY + radius * sin(angle)).clamp(50.0, 1950.0);
 
-      // PR2: userColor desde Node.color (formato hex string "#FF2196F3")
-      final int? userColor = node.color != null
-          ? int.tryParse(node.color!.replaceFirst('#', '0xFF'))
-          : null;
+        // Proximidad desde último RSSI
+        final lastRssi =
+            node.rssiHistory.isNotEmpty ? node.rssiHistory.last : -100;
+        final proximity = rssiToProximity(lastRssi);
 
-      graphNodes.add(GraphNode(
-        id: node.id,
-        x: x,
-        y: y,
-        proximity: proximity,
-        name: node.name,
-        suggestedName: node.suggestedName,
-        connectionCount: connectionCounts[node.id!] ?? 0,
-        isSelf: myDeviceUuid != null && node.bleAddress == myDeviceUuid,
-        connectable: node.connectable,
-        userColor: userColor,
-        estimatedDistance: node.estimatedDistance,
-      ));
+        // PR2: userColor desde Node.color
+        final int? nodeUserColor = node.color != null
+            ? int.tryParse(node.color!.replaceFirst('#', '0xFF'))
+            : null;
+
+        graphNodes.add(GraphNode(
+          id: node.id,
+          x: x,
+          y: y,
+          proximity: proximity,
+          name: node.name,
+          suggestedName: node.suggestedName,
+          connectionCount: connectionCounts[node.id!] ?? 0,
+          isSelf: myDeviceUuid != null && node.bleAddress == myDeviceUuid,
+          connectable: node.connectable,
+          userColor: nodeUserColor,
+          estimatedDistance: node.estimatedDistance,
+        ));
+      }
     }
 
     return LayoutResult(
@@ -117,6 +171,52 @@ class GraphRepositoryImpl implements GraphRepository {
       iterations: 0,
       converged: false,
     );
+  }
+
+  /// Mapea una distancia estimada en metros al radio del anillo
+  /// correspondiente para el layout inicial (REQ-GL-01).
+  ///
+  /// Rangos (compactados para mejor visualización en canvas 2000×2000):
+  /// | Distancia estimada | Radio del anillo |
+  /// |---|---|
+  /// | 0–1m | 80–300px |
+  /// | 1–5m | 300–600px |
+  /// | 5–15m | 600–1000px |
+  /// | >15m o sin RSSI | 1000–1400px |
+  ///
+  /// Usa [_interpolate] para mapeo lineal dentro de cada rango.
+  double _ringRadiusForDistance(double distanceMeters) {
+    if (distanceMeters <= 1.0) {
+      return _interpolate(distanceMeters, 0.0, 1.0, 80.0, 300.0);
+    }
+    if (distanceMeters <= 5.0) {
+      return _interpolate(distanceMeters, 1.0, 5.0, 300.0, 600.0);
+    }
+    if (distanceMeters <= 15.0) {
+      return _interpolate(distanceMeters, 5.0, 15.0, 600.0, 1000.0);
+    }
+    // >15m o sin datos RSSI → anillo exterior
+    return _interpolate(
+        distanceMeters.clamp(15.0, 30.0), 15.0, 30.0, 1000.0, 1400.0);
+  }
+
+  /// Interpolación lineal entre [inMin]→[outMin] y [inMax]→[outMax].
+  ///
+  /// QUÉ: mapea un valor [value] del rango de entrada al rango de salida.
+  /// Clampea [value] al rango [inMin, inMax] para evitar extrapolación.
+  ///
+  /// POR QUÉ: necesaria para mapear distancias continuas en metros a
+  /// radios de anillo continuos en píxeles para el layout inicial.
+  static double _interpolate(
+    double value,
+    double inMin,
+    double inMax,
+    double outMin,
+    double outMax,
+  ) {
+    final clamped = value.clamp(inMin, inMax);
+    final t = (clamped - inMin) / (inMax - inMin);
+    return outMin + t * (outMax - outMin);
   }
 
   /// Obtiene aristas directas desde la tabla [connections] para los nodos

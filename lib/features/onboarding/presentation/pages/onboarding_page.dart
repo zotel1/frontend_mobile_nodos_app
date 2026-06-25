@@ -112,16 +112,30 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
   /// Guarda el perfil del usuario y marca onboarding como completo.
   ///
-  /// QUÉ: despacha [UpdateUserNameEvent] y [UpdateUserColorEvent]
-  /// al [UserBloc], persiste el flag `onboarding_complete` en
-  /// SharedPreferences, y navega a la HomePage (`/`).
+  /// QUÉ: despacha [CreateUserProfile] para asegurar que la fila users
+  /// existe con los valores del onboarding. Luego actualiza nombre y color
+  /// (idempotente), persiste el flag `onboarding_complete`, y navega a Home.
   ///
-  /// POR QUÉ: el perfil debe existir antes de que la app comience
-  /// a anunciar la identidad del dispositivo vía BLE.
+  /// POR QUÉ: antes se despachaban UpdateUserNameEvent y UpdateUserColorEvent
+  /// directamente. Si la tabla users estaba vacía (primera ejecución sin
+  /// LoadProfile previo), las actualizaciones fallaban silenciosamente.
+  /// CreateUserProfile garantiza que la fila existe antes de los updates.
   Future<void> _saveAndStart() async {
     setState(() => _isLoading = true);
 
     final userBloc = context.read<UserBloc>();
+
+    // 1. Crear o asegurar el perfil con los valores del onboarding.
+    //    Si ya existe (LoadProfile de app.dart creó uno default),
+    //    sobreescribe nombre y color.
+    userBloc.add(CreateUserProfile(_nameController.text, _selectedColor));
+
+    // 2. Esperar a que el BLoC procese CreateUserProfile.
+    //    Usamos Future.delayed porque el BLoC procesa asíncronamente
+    //    y necesitamos que la fila users exista antes de los updates.
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+
+    // 3. Ahora la fila users SÍ existe — actualizar nombre y color.
     userBloc.add(UpdateUserNameEvent(_nameController.text));
     userBloc.add(UpdateUserColorEvent(_selectedColor));
 
@@ -260,7 +274,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   /// para su dispositivo. Al presionar "Comenzar", guarda el perfil
   /// y navega a la HomePage.
   Widget _buildProfileStep() {
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,

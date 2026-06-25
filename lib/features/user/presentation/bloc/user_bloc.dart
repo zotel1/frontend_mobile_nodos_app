@@ -42,6 +42,25 @@ class UpdateUserColorEvent extends UserEvent {
   List<Object> get props => [color];
 }
 
+/// Crea o asegura el perfil del usuario con los valores del onboarding.
+///
+/// QUÉ: se despacha desde OnboardingPage._saveAndStart() ANTES de los updates.
+/// Si el perfil ya existe (ej. LoadProfile de app.dart creó uno default),
+/// actualiza nombre y color en lugar de fallar.
+///
+/// POR QUÉ: sin este evento, UpdateUserNameEvent y UpdateUserColorEvent
+/// fallaban silenciosamente en primera ejecución porque la tabla users
+/// estaba vacía y los handlers esperaban una fila existente.
+class CreateUserProfile extends UserEvent {
+  final String name;
+  final String color;
+
+  const CreateUserProfile(this.name, this.color);
+
+  @override
+  List<Object> get props => [name, color];
+}
+
 /// Cambia el modo de tema (sistema / claro / oscuro).
 ///
 /// Persiste en SharedPreferences bajo la clave 'theme_mode'
@@ -119,6 +138,7 @@ class UserBloc extends Bloc<UserEvent, UserState> {
        _prefs = prefs,
        super(const UserInitial()) {
     on<LoadProfile>(_onLoadProfile);
+    on<CreateUserProfile>(_onCreateProfile);
     on<UpdateUserNameEvent>(_onUpdateName);
     on<UpdateUserColorEvent>(_onUpdateColor);
     on<UpdateThemeMode>(_onUpdateThemeMode);
@@ -230,6 +250,67 @@ class UserBloc extends Bloc<UserEvent, UserState> {
       (failure) => emit(UserError(failure.message)),
       (user) => emit(UserLoaded(user, themeMode: themeMode)),
     );
+  }
+
+  /// Crea o asegura el perfil del usuario con los valores del onboarding.
+  ///
+  /// QUÉ: se llama desde OnboardingPage._saveAndStart(). Intenta crear
+  /// un User con los datos del onboarding. Si el perfil ya existe
+  /// (LoadProfile de app.dart lo creó con defaults), actualiza nombre
+  /// y color para no perder los valores del usuario.
+  ///
+  /// POR QUÉ: en primera ejecución, LoadProfile crea un perfil default
+  /// ("Mi dispositivo", #2196F3). Este handler sobrescribe esos valores
+  /// con los que el usuario eligió en el onboarding, o crea el perfil
+  /// desde cero si LoadProfile aún no terminó.
+  ///
+  /// Después de crear/actualizar, recarga el perfil completo desde
+  /// la DB para emitir UserLoaded con los datos persistidos.
+  Future<void> _onCreateProfile(
+      CreateUserProfile event, Emitter<UserState> emit) async {
+    // Capturar themeMode actual para preservarlo
+    final currentThemeMode = state is UserLoaded
+        ? (state as UserLoaded).themeMode
+        : AppThemeMode.system;
+
+    emit(const UserLoading());
+
+    try {
+      // PR4: Reusar UUID persistido o generar uno nuevo
+      var uuid = _prefs.getString('device_uuid');
+      if (uuid == null || uuid.isEmpty) {
+        uuid = generateUuidV4();
+        await _prefs.setString('device_uuid', uuid);
+      }
+
+      // Verificar si ya existe un perfil (LoadProfile pudo crearlo antes)
+      final existing = await _userRepository.getUserProfile();
+
+      if (existing != null) {
+        // Perfil ya existe: actualizar con los valores del onboarding
+        await _userRepository.updateName(event.name);
+        await _userRepository.updateColor(event.color);
+      } else {
+        // Perfil no existe: crear desde cero
+        final user = User(
+          uuid: uuid,
+          name: event.name,
+          color: event.color,
+          deviceType: 'android',
+          createdAt: DateTime.now(),
+        );
+        await _userRepository.createUser(user);
+      }
+
+      // Recargar perfil para obtener datos persistidos (con id asignado)
+      final reloadResult = await getProfile(const NoParams());
+      reloadResult.fold(
+        (failure) => emit(UserError(failure.message)),
+        (user) => emit(UserLoaded(user, themeMode: currentThemeMode)),
+      );
+    } catch (e) {
+      emit(UserError('Error al crear perfil: $e'));
+    }
   }
 
   /// Lee el modo de tema desde SharedPreferences.

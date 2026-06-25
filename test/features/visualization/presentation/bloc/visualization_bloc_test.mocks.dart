@@ -51,12 +51,18 @@ class MockBuildGraph extends _i1.Mock implements _i4.BuildGraph {
   _i5.Future<_i2.Either<_i6.Failure, _i7.LayoutResult>> call(
     int? scanSessionId, {
     String? myDeviceUuid,
+    String? userName,
+    String? userColor,
   }) =>
       (super.noSuchMethod(
             Invocation.method(
               #call,
               [scanSessionId],
-              {#myDeviceUuid: myDeviceUuid},
+              {
+                #myDeviceUuid: myDeviceUuid,
+                #userName: userName,
+                #userColor: userColor,
+              },
             ),
             returnValue:
                 _i5.Future<_i2.Either<_i6.Failure, _i7.LayoutResult>>.value(
@@ -65,7 +71,11 @@ class MockBuildGraph extends _i1.Mock implements _i4.BuildGraph {
                     Invocation.method(
                       #call,
                       [scanSessionId],
-                      {#myDeviceUuid: myDeviceUuid},
+                      {
+                        #myDeviceUuid: myDeviceUuid,
+                        #userName: userName,
+                        #userColor: userColor,
+                      },
                     ),
                   ),
                 ),
@@ -76,7 +86,11 @@ class MockBuildGraph extends _i1.Mock implements _i4.BuildGraph {
                     Invocation.method(
                       #call,
                       [scanSessionId],
-                      {#myDeviceUuid: myDeviceUuid},
+                      {
+                        #myDeviceUuid: myDeviceUuid,
+                        #userName: userName,
+                        #userColor: userColor,
+                      },
                     ),
                   ),
                 ),

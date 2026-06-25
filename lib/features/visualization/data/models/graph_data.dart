@@ -28,6 +28,7 @@ Map<String, dynamic> layoutResultToParams(
     'x': node.x,
     'y': node.y,
     'z': node.z,
+    'isSelf': node.isSelf, // REQ-GL-02: self-node identity para FR
   }).toList();
 
   final edgesMap = result.edges.map((edge) => {

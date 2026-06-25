@@ -18,13 +18,17 @@ class BuildGraph {
   ///
   /// [myDeviceUuid] opcional identifica el dispositivo propio para
   /// marcar el self-node con isSelf=true en el grafo.
+  /// [userName] y [userColor] opcionales para el self-node sintético
+  /// (REQ-SN-01) — se pasan al repositorio para inyectar el nodo propio.
   /// Retorna [Right] con el LayoutResult si la construcción es exitosa,
   /// o [Left] con un Failure si ocurre un error inesperado.
   Future<Either<Failure, LayoutResult>> call(int scanSessionId,
-      {String? myDeviceUuid}) async {
+      {String? myDeviceUuid, String? userName, String? userColor}) async {
     try {
       final result = await _repository.buildGraph(scanSessionId,
-          myDeviceUuid: myDeviceUuid);
+          myDeviceUuid: myDeviceUuid,
+          userName: userName,
+          userColor: userColor);
       return Right(result);
     } catch (e) {
       return Left(UnexpectedFailure(e.toString()));

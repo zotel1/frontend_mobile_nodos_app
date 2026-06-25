@@ -41,12 +41,18 @@ class MockGraphRepository extends _i1.Mock implements _i3.GraphRepository {
   _i4.Future<_i2.LayoutResult> buildGraph(
     int? scanSessionId, {
     String? myDeviceUuid,
+    String? userName,
+    String? userColor,
   }) =>
       (super.noSuchMethod(
             Invocation.method(
               #buildGraph,
               [scanSessionId],
-              {#myDeviceUuid: myDeviceUuid},
+              {
+                #myDeviceUuid: myDeviceUuid,
+                #userName: userName,
+                #userColor: userColor,
+              },
             ),
             returnValue: _i4.Future<_i2.LayoutResult>.value(
               _FakeLayoutResult_0(
@@ -54,7 +60,11 @@ class MockGraphRepository extends _i1.Mock implements _i3.GraphRepository {
                 Invocation.method(
                   #buildGraph,
                   [scanSessionId],
-                  {#myDeviceUuid: myDeviceUuid},
+                  {
+                    #myDeviceUuid: myDeviceUuid,
+                    #userName: userName,
+                    #userColor: userColor,
+                  },
                 ),
               ),
             ),
@@ -64,7 +74,11 @@ class MockGraphRepository extends _i1.Mock implements _i3.GraphRepository {
                 Invocation.method(
                   #buildGraph,
                   [scanSessionId],
-                  {#myDeviceUuid: myDeviceUuid},
+                  {
+                    #myDeviceUuid: myDeviceUuid,
+                    #userName: userName,
+                    #userColor: userColor,
+                  },
                 ),
               ),
             ),

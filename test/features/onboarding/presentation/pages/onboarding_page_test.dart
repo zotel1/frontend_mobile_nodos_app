@@ -251,9 +251,15 @@ void main() {
       // Tocar Comenzar
       await tester.tap(find.text('Comenzar'));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 500));
+      // La espera de 500ms en _saveAndStart() + SharedPreferences + navegación
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(); // Procesar frame posterior a context.go('/')
 
       // Verificar que se despacharon eventos al UserBloc
+      verify(mockUserBloc.add(argThat(
+        predicate((e) => e is CreateUserProfile &&
+            e.name == 'Nodo' && e.color == '#2196F3'),
+      ))).called(1);
       verify(mockUserBloc.add(argThat(
         predicate((e) => e is UpdateUserNameEvent && e.name == 'Nodo'),
       ))).called(1);
@@ -296,9 +302,13 @@ void main() {
       // Tocar Comenzar
       await tester.tap(find.text('Comenzar'));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 500));
+      // La espera de 500ms en _saveAndStart() + SharedPreferences
+      await tester.pump(const Duration(milliseconds: 600));
 
-      // Verificar que se usó el nombre ingresado
+      // Verificar que se usó el nombre ingresado (CreateUserProfile + Update)
+      verify(mockUserBloc.add(argThat(
+        predicate((e) => e is CreateUserProfile && e.name == 'Mi Nodo'),
+      ))).called(1);
       verify(mockUserBloc.add(argThat(
         predicate((e) => e is UpdateUserNameEvent && e.name == 'Mi Nodo'),
       ))).called(1);
