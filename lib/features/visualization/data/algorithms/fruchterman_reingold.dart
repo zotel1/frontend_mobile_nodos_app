@@ -126,6 +126,18 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
     adjacency[toId]?.add(fromId);
   }
 
+  // ── Identificar índice del self-node (REQ-SN-02) ──
+  // El self-node debe permanecer anclado en su posición inicial
+  // (centro del canvas). Se excluye de los 3 bucles de fuerza
+  // para que no sea desplazado por repulsión ni atracción.
+  int selfNodeIdx = -1;
+  for (var i = 0; i < nodes.length; i++) {
+    if (nodes[i]['isSelf'] == true) {
+      selfNodeIdx = i;
+      break;
+    }
+  }
+
   // ── Buscar índice de nodo por id ──
   int indexOfId(int id) {
     for (var i = 0; i < nodes.length; i++) {
@@ -157,6 +169,11 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
     // T5.2: Distancia ahora incluye dz en modo 3D.
     for (var i = 0; i < nodes.length; i++) {
       for (var j = i + 1; j < nodes.length; j++) {
+        // REQ-SN-02: self-node no repele ni es repelido
+        // El self-node permanece anclado al centro; excluirlo evita que
+        // desplace nodos externos hacia afuera artificialmente.
+        if (i == selfNodeIdx || j == selfNodeIdx) continue;
+
         final dx = (nodes[i]['x'] as num).toDouble() -
             (nodes[j]['x'] as num).toDouble();
         final dy = (nodes[i]['y'] as num).toDouble() -
@@ -201,6 +218,10 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
       final toIdx = indexOfId((edge['toId'] as num).toInt());
       if (fromIdx < 0 || toIdx < 0) continue;
 
+      // REQ-SN-02: aristas con el self-node no generan fuerza atractiva.
+      // El self-node no debe ser atraído hacia ningún otro nodo.
+      if (fromIdx == selfNodeIdx || toIdx == selfNodeIdx) continue;
+
       final dx = (nodes[fromIdx]['x'] as num).toDouble() -
           (nodes[toIdx]['x'] as num).toDouble();
       final dy = (nodes[fromIdx]['y'] as num).toDouble() -
@@ -240,6 +261,10 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
     // T5.2: El desplazamiento máximo ahora incluye la componente Z.
     var maxDisplacement = 0.0;
     for (var i = 0; i < nodes.length; i++) {
+      // REQ-SN-02: self-node no se desplaza — permanece anclado
+      // en su posición inicial (centro del canvas, 1000,1000,0).
+      if (i == selfNodeIdx) continue;
+
       var disp2D = displacementX[i] * displacementX[i] +
           displacementY[i] * displacementY[i];
 

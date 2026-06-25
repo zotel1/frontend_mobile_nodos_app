@@ -42,7 +42,24 @@ class NodeDriftDataSource implements NodeLocalDataSource {
             ..where((t) => t.id.equals(existing.id)))
           .write(companion);
     } else {
-      await _db.into(_db.nodes).insert(_toCompanion(node, isInsert: true));
+      // Insert con fallback a update. Si dos hilos concurrentes llegan
+      // a este else al mismo tiempo, el segundo INSERT viola la UNIQUE
+      // constraint de ble_address. En ese caso, hacemos update.
+      try {
+        await _db.into(_db.nodes).insert(_toCompanion(node, isInsert: true));
+      } catch (_) {
+        final raced = await (_db.select(_db.nodes)
+              ..where((t) => t.bleAddress.equals(node.bleAddress)))
+            .getSingleOrNull();
+        if (raced != null) {
+          final fallback = _toCompanion(node, isInsert: false).copyWith(
+            suggestedName: Value(raced.suggestedName ?? node.suggestedName),
+          );
+          await (_db.update(_db.nodes)
+                ..where((t) => t.id.equals(raced.id)))
+            .write(fallback);
+        }
+      }
     }
   }
 

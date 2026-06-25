@@ -60,6 +60,23 @@ class _GraphView3DState extends State<GraphView3D> {
     _loadContent();
   }
 
+  /// Reinyecta datos cuando el layout cambia después de la primera build.
+  ///
+  /// QUÉ: compara el layout actual con el anterior y, si cambió,
+  /// vuelve a serializar e inyectar los datos en el WebView.
+  ///
+  /// POR QUÉ: sin didUpdateWidget, el grafo 3D solo se renderizaba
+  /// en la primera build. Si el layout cambiaba después (nuevo scan,
+  /// recálculo FR con más nodos), el WebView seguía mostrando
+  /// los datos viejos.
+  @override
+  void didUpdateWidget(covariant GraphView3D oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.layout != oldWidget.layout) {
+      _injectData();
+    }
+  }
+
   /// Crea y configura el WebViewController con los canales JavaScript
   /// para recibir eventos de tap en nodos y logs de consola.
   WebViewController _createController() {
@@ -105,6 +122,10 @@ class _GraphView3DState extends State<GraphView3D> {
         debugPrint('[3D WebView] ${message.message}');
       },
     );
+
+    // Habilitar JavaScript en el WebView (Android lo tiene OFF por defecto).
+    // Sin esto, three.min.js nunca se ejecuta y el 3D queda en blanco.
+    controller.setJavaScriptMode(JavaScriptMode.unrestricted);
 
     return controller;
   }
@@ -294,6 +315,11 @@ Map<String, dynamic> layoutResultToJson(LayoutResult layout) {
       'color': '#${n.color.toRadixString(16).padLeft(8, '0').substring(2)}',
       'label': n.label,
       'isSelf': n.isSelf,
+      // REQ-VR-01: color del perfil para el anillo del self-node en 3D.
+      // Se convierte de ARGB int (0xFFE91E63) a hex string sin alpha ("#E91E63").
+      'userColor': n.userColor != null
+          ? '#${n.userColor!.toRadixString(16).padLeft(8, '0').substring(2)}'
+          : null,
     }).toList(),
     'edges': layout.edges.map((e) => {
       'fromId': e.fromId,

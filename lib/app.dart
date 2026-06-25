@@ -124,30 +124,68 @@ class NodosApp extends StatelessWidget {
         // ScanSessionBloc: gestiona el ciclo de vida de sesiones de escaneo.
         BlocProvider<ScanSessionBloc>(create: (_) => sl<ScanSessionBloc>()),
       ],
-      child: BlocBuilder<UserBloc, UserState>(
-        builder: (context, state) {
-          // Lee el themeMode del estado del UserBloc y mapea
-          // AppThemeMode (dominio) → ThemeMode (Flutter Material).
-          final appThemeMode = (state is UserLoaded)
-              ? state.themeMode
-              : AppThemeMode.system;
+      child: const _NodosAppBody(),
+    );
+  }
+}
 
-          final themeMode = switch (appThemeMode) {
-            AppThemeMode.light => ThemeMode.light,
-            AppThemeMode.dark => ThemeMode.dark,
-            AppThemeMode.system => ThemeMode.system,
-          };
+/// Widget interno que vive dentro del árbol de [MultiBlocProvider].
+///
+/// QUÉ: despacha [LoadProfile] al [UserBloc] en startup para garantizar
+/// que el perfil del usuario esté cargado ANTES de que cualquier pantalla
+/// intente operaciones dependientes del perfil (BLE advertising, grafo, etc.).
+///
+/// POR QUÉ: antes LoadProfile solo se despachaba en SettingsPage.initState,
+/// dejando la app en UserInitial o UserError indefinidamente si el usuario
+/// nunca abría Settings. Esto causaba que el self-node nunca se marcara
+/// (myDeviceUuid era null) y que BLE advertising no se iniciara.
+///
+/// El [addPostFrameCallback] asegura que el [UserBloc] ya fue creado
+/// por [BlocProvider] antes de despachar el evento.
+class _NodosAppBody extends StatefulWidget {
+  const _NodosAppBody();
 
-          return MaterialApp.router(
-            title: 'Nodos',
-            theme: AppTheme.light,
-            // Tema oscuro: misma semilla de color, solo cambia el brillo.
-            darkTheme: AppTheme.dark,
-            themeMode: themeMode,
-            routerConfig: _router,
-          );
-        },
-      ),
+  @override
+  State<_NodosAppBody> createState() => _NodosAppBodyState();
+}
+
+class _NodosAppBodyState extends State<_NodosAppBody> {
+  @override
+  void initState() {
+    super.initState();
+    // Despachar LoadProfile en el primer frame para que el UserBloc
+    // cargue (o cree) el perfil antes de cualquier operación.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<UserBloc>().add(const LoadProfile());
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<UserBloc, UserState>(
+      builder: (context, state) {
+        // Lee el themeMode del estado del UserBloc y mapea
+        // AppThemeMode (dominio) → ThemeMode (Flutter Material).
+        final appThemeMode = (state is UserLoaded)
+            ? state.themeMode
+            : AppThemeMode.system;
+
+        final themeMode = switch (appThemeMode) {
+          AppThemeMode.light => ThemeMode.light,
+          AppThemeMode.dark => ThemeMode.dark,
+          AppThemeMode.system => ThemeMode.system,
+        };
+
+        return MaterialApp.router(
+          title: 'Nodos',
+          theme: AppTheme.light,
+          // Tema oscuro: misma semilla de color, solo cambia el brillo.
+          darkTheme: AppTheme.dark,
+          themeMode: themeMode,
+          routerConfig: _router,
+        );
+      },
     );
   }
 }

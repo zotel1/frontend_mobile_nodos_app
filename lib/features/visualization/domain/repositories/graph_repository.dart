@@ -15,8 +15,12 @@ abstract class GraphRepository {
   /// [myDeviceUuid] permite identificar el nodo que representa al
   /// dispositivo del usuario. Si la dirección BLE de algún nodo coincide
   /// con este UUID, se marca con `isSelf = true` para renderizado especial.
+  ///
+  /// [userName] y [userColor] se usan para inyectar un self-node sintético
+  /// (REQ-SN-01) con la identidad del perfil del usuario, incluso cuando
+  /// no hay nodos externos detectados.
   Future<LayoutResult> buildGraph(int scanSessionId,
-      {String? myDeviceUuid});
+      {String? myDeviceUuid, String? userName, String? userColor});
 
   /// Obtiene las aristas para una sesión específica.
   ///

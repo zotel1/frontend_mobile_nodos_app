@@ -34,12 +34,21 @@ class GraphView extends StatefulWidget {
   });
 
   @override
-  State<GraphView> createState() => _GraphViewState();
+  State<GraphView> createState() => GraphViewState();
 }
 
-class _GraphViewState extends State<GraphView> {
+/// Estado de [GraphView] que mantiene el [TransformationController]
+/// para navegación con zoom/pan y detección de taps sobre nodos.
+///
+/// Expuesto como clase pública para que el caller pueda acceder
+/// al [transformController] y mapear coordenadas del canvas 2000×2000
+/// a coordenadas globales de pantalla para posicionar el tooltip.
+class GraphViewState extends State<GraphView> {
   /// Controlador de transformación para leer la matriz de zoom/pan
   /// y mapear coordenadas de tap al espacio del canvas.
+  /// Expuesto para que HomePage pueda calcular la posición global
+  /// correcta del tooltip aplicando la matriz del InteractiveViewer.
+  TransformationController get transformController => _transformController;
   final TransformationController _transformController =
       TransformationController();
 
