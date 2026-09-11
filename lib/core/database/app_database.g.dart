@@ -3,401 +3,6 @@
 part of 'app_database.dart';
 
 // ignore_for_file: type=lint
-class $UsersTable extends Users with TableInfo<$UsersTable, User> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  $UsersTable(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _idMeta = const VerificationMeta('id');
-  @override
-  late final GeneratedColumn<int> id = GeneratedColumn<int>(
-    'id',
-    aliasedName,
-    false,
-    hasAutoIncrement: true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'PRIMARY KEY AUTOINCREMENT',
-    ),
-  );
-  static const VerificationMeta _uuidMeta = const VerificationMeta('uuid');
-  @override
-  late final GeneratedColumn<String> uuid = GeneratedColumn<String>(
-    'uuid',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
-  );
-  static const VerificationMeta _nameMeta = const VerificationMeta('name');
-  @override
-  late final GeneratedColumn<String> name = GeneratedColumn<String>(
-    'name',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _colorMeta = const VerificationMeta('color');
-  @override
-  late final GeneratedColumn<String> color = GeneratedColumn<String>(
-    'color',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _deviceTypeMeta = const VerificationMeta(
-    'deviceType',
-  );
-  @override
-  late final GeneratedColumn<String> deviceType = GeneratedColumn<String>(
-    'device_type',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _createdAtMeta = const VerificationMeta(
-    'createdAt',
-  );
-  @override
-  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
-    'created_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: true,
-  );
-  @override
-  List<GeneratedColumn> get $columns => [
-    id,
-    uuid,
-    name,
-    color,
-    deviceType,
-    createdAt,
-  ];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'users';
-  @override
-  VerificationContext validateIntegrity(
-    Insertable<User> instance, {
-    bool isInserting = false,
-  }) {
-    final context = VerificationContext();
-    final data = instance.toColumns(true);
-    if (data.containsKey('id')) {
-      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
-    }
-    if (data.containsKey('uuid')) {
-      context.handle(
-        _uuidMeta,
-        uuid.isAcceptableOrUnknown(data['uuid']!, _uuidMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_uuidMeta);
-    }
-    if (data.containsKey('name')) {
-      context.handle(
-        _nameMeta,
-        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_nameMeta);
-    }
-    if (data.containsKey('color')) {
-      context.handle(
-        _colorMeta,
-        color.isAcceptableOrUnknown(data['color']!, _colorMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_colorMeta);
-    }
-    if (data.containsKey('device_type')) {
-      context.handle(
-        _deviceTypeMeta,
-        deviceType.isAcceptableOrUnknown(data['device_type']!, _deviceTypeMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_deviceTypeMeta);
-    }
-    if (data.containsKey('created_at')) {
-      context.handle(
-        _createdAtMeta,
-        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_createdAtMeta);
-    }
-    return context;
-  }
-
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  User map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return User(
-      id: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}id'],
-      )!,
-      uuid: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}uuid'],
-      )!,
-      name: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}name'],
-      )!,
-      color: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}color'],
-      )!,
-      deviceType: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}device_type'],
-      )!,
-      createdAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.dateTime,
-        data['${effectivePrefix}created_at'],
-      )!,
-    );
-  }
-
-  @override
-  $UsersTable createAlias(String alias) {
-    return $UsersTable(attachedDatabase, alias);
-  }
-}
-
-class User extends DataClass implements Insertable<User> {
-  final int id;
-  final String uuid;
-  final String name;
-  final String color;
-  final String deviceType;
-  final DateTime createdAt;
-  const User({
-    required this.id,
-    required this.uuid,
-    required this.name,
-    required this.color,
-    required this.deviceType,
-    required this.createdAt,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['id'] = Variable<int>(id);
-    map['uuid'] = Variable<String>(uuid);
-    map['name'] = Variable<String>(name);
-    map['color'] = Variable<String>(color);
-    map['device_type'] = Variable<String>(deviceType);
-    map['created_at'] = Variable<DateTime>(createdAt);
-    return map;
-  }
-
-  UsersCompanion toCompanion(bool nullToAbsent) {
-    return UsersCompanion(
-      id: Value(id),
-      uuid: Value(uuid),
-      name: Value(name),
-      color: Value(color),
-      deviceType: Value(deviceType),
-      createdAt: Value(createdAt),
-    );
-  }
-
-  factory User.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return User(
-      id: serializer.fromJson<int>(json['id']),
-      uuid: serializer.fromJson<String>(json['uuid']),
-      name: serializer.fromJson<String>(json['name']),
-      color: serializer.fromJson<String>(json['color']),
-      deviceType: serializer.fromJson<String>(json['deviceType']),
-      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'id': serializer.toJson<int>(id),
-      'uuid': serializer.toJson<String>(uuid),
-      'name': serializer.toJson<String>(name),
-      'color': serializer.toJson<String>(color),
-      'deviceType': serializer.toJson<String>(deviceType),
-      'createdAt': serializer.toJson<DateTime>(createdAt),
-    };
-  }
-
-  User copyWith({
-    int? id,
-    String? uuid,
-    String? name,
-    String? color,
-    String? deviceType,
-    DateTime? createdAt,
-  }) => User(
-    id: id ?? this.id,
-    uuid: uuid ?? this.uuid,
-    name: name ?? this.name,
-    color: color ?? this.color,
-    deviceType: deviceType ?? this.deviceType,
-    createdAt: createdAt ?? this.createdAt,
-  );
-  User copyWithCompanion(UsersCompanion data) {
-    return User(
-      id: data.id.present ? data.id.value : this.id,
-      uuid: data.uuid.present ? data.uuid.value : this.uuid,
-      name: data.name.present ? data.name.value : this.name,
-      color: data.color.present ? data.color.value : this.color,
-      deviceType: data.deviceType.present
-          ? data.deviceType.value
-          : this.deviceType,
-      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('User(')
-          ..write('id: $id, ')
-          ..write('uuid: $uuid, ')
-          ..write('name: $name, ')
-          ..write('color: $color, ')
-          ..write('deviceType: $deviceType, ')
-          ..write('createdAt: $createdAt')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(id, uuid, name, color, deviceType, createdAt);
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is User &&
-          other.id == this.id &&
-          other.uuid == this.uuid &&
-          other.name == this.name &&
-          other.color == this.color &&
-          other.deviceType == this.deviceType &&
-          other.createdAt == this.createdAt);
-}
-
-class UsersCompanion extends UpdateCompanion<User> {
-  final Value<int> id;
-  final Value<String> uuid;
-  final Value<String> name;
-  final Value<String> color;
-  final Value<String> deviceType;
-  final Value<DateTime> createdAt;
-  const UsersCompanion({
-    this.id = const Value.absent(),
-    this.uuid = const Value.absent(),
-    this.name = const Value.absent(),
-    this.color = const Value.absent(),
-    this.deviceType = const Value.absent(),
-    this.createdAt = const Value.absent(),
-  });
-  UsersCompanion.insert({
-    this.id = const Value.absent(),
-    required String uuid,
-    required String name,
-    required String color,
-    required String deviceType,
-    required DateTime createdAt,
-  }) : uuid = Value(uuid),
-       name = Value(name),
-       color = Value(color),
-       deviceType = Value(deviceType),
-       createdAt = Value(createdAt);
-  static Insertable<User> custom({
-    Expression<int>? id,
-    Expression<String>? uuid,
-    Expression<String>? name,
-    Expression<String>? color,
-    Expression<String>? deviceType,
-    Expression<DateTime>? createdAt,
-  }) {
-    return RawValuesInsertable({
-      if (id != null) 'id': id,
-      if (uuid != null) 'uuid': uuid,
-      if (name != null) 'name': name,
-      if (color != null) 'color': color,
-      if (deviceType != null) 'device_type': deviceType,
-      if (createdAt != null) 'created_at': createdAt,
-    });
-  }
-
-  UsersCompanion copyWith({
-    Value<int>? id,
-    Value<String>? uuid,
-    Value<String>? name,
-    Value<String>? color,
-    Value<String>? deviceType,
-    Value<DateTime>? createdAt,
-  }) {
-    return UsersCompanion(
-      id: id ?? this.id,
-      uuid: uuid ?? this.uuid,
-      name: name ?? this.name,
-      color: color ?? this.color,
-      deviceType: deviceType ?? this.deviceType,
-      createdAt: createdAt ?? this.createdAt,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<int>(id.value);
-    }
-    if (uuid.present) {
-      map['uuid'] = Variable<String>(uuid.value);
-    }
-    if (name.present) {
-      map['name'] = Variable<String>(name.value);
-    }
-    if (color.present) {
-      map['color'] = Variable<String>(color.value);
-    }
-    if (deviceType.present) {
-      map['device_type'] = Variable<String>(deviceType.value);
-    }
-    if (createdAt.present) {
-      map['created_at'] = Variable<DateTime>(createdAt.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('UsersCompanion(')
-          ..write('id: $id, ')
-          ..write('uuid: $uuid, ')
-          ..write('name: $name, ')
-          ..write('color: $color, ')
-          ..write('deviceType: $deviceType, ')
-          ..write('createdAt: $createdAt')
-          ..write(')'))
-        .toString();
-  }
-}
-
 class $NodesTable extends Nodes with TableInfo<$NodesTable, NodeRow> {
   @override
   final GeneratedDatabase attachedDatabase;
@@ -416,6 +21,18 @@ class $NodesTable extends Nodes with TableInfo<$NodesTable, NodeRow> {
       'PRIMARY KEY AUTOINCREMENT',
     ),
   );
+  static const VerificationMeta _deviceUuidMeta = const VerificationMeta(
+    'deviceUuid',
+  );
+  @override
+  late final GeneratedColumn<String> deviceUuid = GeneratedColumn<String>(
+    'device_uuid',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
+  );
   static const VerificationMeta _bleAddressMeta = const VerificationMeta(
     'bleAddress',
   );
@@ -423,10 +40,23 @@ class $NodesTable extends Nodes with TableInfo<$NodesTable, NodeRow> {
   late final GeneratedColumn<String> bleAddress = GeneratedColumn<String>(
     'ble_address',
     aliasedName,
-    false,
+    true,
     type: DriftSqlType.string,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
     defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
+  );
+  static const VerificationMeta _isSelfMeta = const VerificationMeta('isSelf');
+  @override
+  late final GeneratedColumn<bool> isSelf = GeneratedColumn<bool>(
+    'is_self',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_self" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
   );
   static const VerificationMeta _nameMeta = const VerificationMeta('name');
   @override
@@ -553,7 +183,9 @@ class $NodesTable extends Nodes with TableInfo<$NodesTable, NodeRow> {
   @override
   List<GeneratedColumn> get $columns => [
     id,
+    deviceUuid,
     bleAddress,
+    isSelf,
     name,
     color,
     firstSeen,
@@ -581,13 +213,23 @@ class $NodesTable extends Nodes with TableInfo<$NodesTable, NodeRow> {
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
     }
+    if (data.containsKey('device_uuid')) {
+      context.handle(
+        _deviceUuidMeta,
+        deviceUuid.isAcceptableOrUnknown(data['device_uuid']!, _deviceUuidMeta),
+      );
+    }
     if (data.containsKey('ble_address')) {
       context.handle(
         _bleAddressMeta,
         bleAddress.isAcceptableOrUnknown(data['ble_address']!, _bleAddressMeta),
       );
-    } else if (isInserting) {
-      context.missing(_bleAddressMeta);
+    }
+    if (data.containsKey('is_self')) {
+      context.handle(
+        _isSelfMeta,
+        isSelf.isAcceptableOrUnknown(data['is_self']!, _isSelfMeta),
+      );
     }
     if (data.containsKey('name')) {
       context.handle(
@@ -687,9 +329,17 @@ class $NodesTable extends Nodes with TableInfo<$NodesTable, NodeRow> {
         DriftSqlType.int,
         data['${effectivePrefix}id'],
       )!,
+      deviceUuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}device_uuid'],
+      ),
       bleAddress: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}ble_address'],
+      ),
+      isSelf: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_self'],
       )!,
       name: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
@@ -746,7 +396,20 @@ class $NodesTable extends Nodes with TableInfo<$NodesTable, NodeRow> {
 
 class NodeRow extends DataClass implements Insertable<NodeRow> {
   final int id;
-  final String bleAddress;
+
+  /// Identidad estable del protocolo Nodos.
+  ///
+  /// Nullable para dispositivos BLE genéricos que no ejecutan Nodos.
+  final String? deviceUuid;
+
+  /// Identificador BLE observado localmente (remoteId).
+  ///
+  /// Nullable porque el nodo propio existe aunque no se descubra
+  /// a sí mismo mediante escaneo.
+  final String? bleAddress;
+
+  /// Verdadero únicamente para el nodo que representa este dispositivo.
+  final bool isSelf;
   final String? name;
   final String? color;
   final DateTime firstSeen;
@@ -760,7 +423,9 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
   final double? estimatedDistance;
   const NodeRow({
     required this.id,
-    required this.bleAddress,
+    this.deviceUuid,
+    this.bleAddress,
+    required this.isSelf,
     this.name,
     this.color,
     required this.firstSeen,
@@ -777,7 +442,13 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
-    map['ble_address'] = Variable<String>(bleAddress);
+    if (!nullToAbsent || deviceUuid != null) {
+      map['device_uuid'] = Variable<String>(deviceUuid);
+    }
+    if (!nullToAbsent || bleAddress != null) {
+      map['ble_address'] = Variable<String>(bleAddress);
+    }
+    map['is_self'] = Variable<bool>(isSelf);
     if (!nullToAbsent || name != null) {
       map['name'] = Variable<String>(name);
     }
@@ -811,7 +482,13 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
   NodesCompanion toCompanion(bool nullToAbsent) {
     return NodesCompanion(
       id: Value(id),
-      bleAddress: Value(bleAddress),
+      deviceUuid: deviceUuid == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deviceUuid),
+      bleAddress: bleAddress == null && nullToAbsent
+          ? const Value.absent()
+          : Value(bleAddress),
+      isSelf: Value(isSelf),
       name: name == null && nullToAbsent ? const Value.absent() : Value(name),
       color: color == null && nullToAbsent
           ? const Value.absent()
@@ -847,7 +524,9 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return NodeRow(
       id: serializer.fromJson<int>(json['id']),
-      bleAddress: serializer.fromJson<String>(json['bleAddress']),
+      deviceUuid: serializer.fromJson<String?>(json['deviceUuid']),
+      bleAddress: serializer.fromJson<String?>(json['bleAddress']),
+      isSelf: serializer.fromJson<bool>(json['isSelf']),
       name: serializer.fromJson<String?>(json['name']),
       color: serializer.fromJson<String?>(json['color']),
       firstSeen: serializer.fromJson<DateTime>(json['firstSeen']),
@@ -868,7 +547,9 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
-      'bleAddress': serializer.toJson<String>(bleAddress),
+      'deviceUuid': serializer.toJson<String?>(deviceUuid),
+      'bleAddress': serializer.toJson<String?>(bleAddress),
+      'isSelf': serializer.toJson<bool>(isSelf),
       'name': serializer.toJson<String?>(name),
       'color': serializer.toJson<String?>(color),
       'firstSeen': serializer.toJson<DateTime>(firstSeen),
@@ -885,7 +566,9 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
 
   NodeRow copyWith({
     int? id,
-    String? bleAddress,
+    Value<String?> deviceUuid = const Value.absent(),
+    Value<String?> bleAddress = const Value.absent(),
+    bool? isSelf,
     Value<String?> name = const Value.absent(),
     Value<String?> color = const Value.absent(),
     DateTime? firstSeen,
@@ -899,7 +582,9 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
     Value<double?> estimatedDistance = const Value.absent(),
   }) => NodeRow(
     id: id ?? this.id,
-    bleAddress: bleAddress ?? this.bleAddress,
+    deviceUuid: deviceUuid.present ? deviceUuid.value : this.deviceUuid,
+    bleAddress: bleAddress.present ? bleAddress.value : this.bleAddress,
+    isSelf: isSelf ?? this.isSelf,
     name: name.present ? name.value : this.name,
     color: color.present ? color.value : this.color,
     firstSeen: firstSeen ?? this.firstSeen,
@@ -921,9 +606,13 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
   NodeRow copyWithCompanion(NodesCompanion data) {
     return NodeRow(
       id: data.id.present ? data.id.value : this.id,
+      deviceUuid: data.deviceUuid.present
+          ? data.deviceUuid.value
+          : this.deviceUuid,
       bleAddress: data.bleAddress.present
           ? data.bleAddress.value
           : this.bleAddress,
+      isSelf: data.isSelf.present ? data.isSelf.value : this.isSelf,
       name: data.name.present ? data.name.value : this.name,
       color: data.color.present ? data.color.value : this.color,
       firstSeen: data.firstSeen.present ? data.firstSeen.value : this.firstSeen,
@@ -954,7 +643,9 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
   String toString() {
     return (StringBuffer('NodeRow(')
           ..write('id: $id, ')
+          ..write('deviceUuid: $deviceUuid, ')
           ..write('bleAddress: $bleAddress, ')
+          ..write('isSelf: $isSelf, ')
           ..write('name: $name, ')
           ..write('color: $color, ')
           ..write('firstSeen: $firstSeen, ')
@@ -973,7 +664,9 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
   @override
   int get hashCode => Object.hash(
     id,
+    deviceUuid,
     bleAddress,
+    isSelf,
     name,
     color,
     firstSeen,
@@ -991,7 +684,9 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
       identical(this, other) ||
       (other is NodeRow &&
           other.id == this.id &&
+          other.deviceUuid == this.deviceUuid &&
           other.bleAddress == this.bleAddress &&
+          other.isSelf == this.isSelf &&
           other.name == this.name &&
           other.color == this.color &&
           other.firstSeen == this.firstSeen &&
@@ -1007,7 +702,9 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
 
 class NodesCompanion extends UpdateCompanion<NodeRow> {
   final Value<int> id;
-  final Value<String> bleAddress;
+  final Value<String?> deviceUuid;
+  final Value<String?> bleAddress;
+  final Value<bool> isSelf;
   final Value<String?> name;
   final Value<String?> color;
   final Value<DateTime> firstSeen;
@@ -1021,7 +718,9 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
   final Value<double?> estimatedDistance;
   const NodesCompanion({
     this.id = const Value.absent(),
+    this.deviceUuid = const Value.absent(),
     this.bleAddress = const Value.absent(),
+    this.isSelf = const Value.absent(),
     this.name = const Value.absent(),
     this.color = const Value.absent(),
     this.firstSeen = const Value.absent(),
@@ -1036,7 +735,9 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
   });
   NodesCompanion.insert({
     this.id = const Value.absent(),
-    required String bleAddress,
+    this.deviceUuid = const Value.absent(),
+    this.bleAddress = const Value.absent(),
+    this.isSelf = const Value.absent(),
     this.name = const Value.absent(),
     this.color = const Value.absent(),
     required DateTime firstSeen,
@@ -1048,12 +749,13 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
     this.deviceType = const Value.absent(),
     this.connectable = const Value.absent(),
     this.estimatedDistance = const Value.absent(),
-  }) : bleAddress = Value(bleAddress),
-       firstSeen = Value(firstSeen),
+  }) : firstSeen = Value(firstSeen),
        lastSeen = Value(lastSeen);
   static Insertable<NodeRow> custom({
     Expression<int>? id,
+    Expression<String>? deviceUuid,
     Expression<String>? bleAddress,
+    Expression<bool>? isSelf,
     Expression<String>? name,
     Expression<String>? color,
     Expression<DateTime>? firstSeen,
@@ -1068,7 +770,9 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (deviceUuid != null) 'device_uuid': deviceUuid,
       if (bleAddress != null) 'ble_address': bleAddress,
+      if (isSelf != null) 'is_self': isSelf,
       if (name != null) 'name': name,
       if (color != null) 'color': color,
       if (firstSeen != null) 'first_seen': firstSeen,
@@ -1085,7 +789,9 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
 
   NodesCompanion copyWith({
     Value<int>? id,
-    Value<String>? bleAddress,
+    Value<String?>? deviceUuid,
+    Value<String?>? bleAddress,
+    Value<bool>? isSelf,
     Value<String?>? name,
     Value<String?>? color,
     Value<DateTime>? firstSeen,
@@ -1100,7 +806,9 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
   }) {
     return NodesCompanion(
       id: id ?? this.id,
+      deviceUuid: deviceUuid ?? this.deviceUuid,
       bleAddress: bleAddress ?? this.bleAddress,
+      isSelf: isSelf ?? this.isSelf,
       name: name ?? this.name,
       color: color ?? this.color,
       firstSeen: firstSeen ?? this.firstSeen,
@@ -1121,8 +829,14 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
     if (id.present) {
       map['id'] = Variable<int>(id.value);
     }
+    if (deviceUuid.present) {
+      map['device_uuid'] = Variable<String>(deviceUuid.value);
+    }
     if (bleAddress.present) {
       map['ble_address'] = Variable<String>(bleAddress.value);
+    }
+    if (isSelf.present) {
+      map['is_self'] = Variable<bool>(isSelf.value);
     }
     if (name.present) {
       map['name'] = Variable<String>(name.value);
@@ -1164,7 +878,9 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
   String toString() {
     return (StringBuffer('NodesCompanion(')
           ..write('id: $id, ')
+          ..write('deviceUuid: $deviceUuid, ')
           ..write('bleAddress: $bleAddress, ')
+          ..write('isSelf: $isSelf, ')
           ..write('name: $name, ')
           ..write('color: $color, ')
           ..write('firstSeen: $firstSeen, ')
@@ -1176,6 +892,467 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
           ..write('deviceType: $deviceType, ')
           ..write('connectable: $connectable, ')
           ..write('estimatedDistance: $estimatedDistance')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $UsersTable extends Users with TableInfo<$UsersTable, User> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $UsersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _uuidMeta = const VerificationMeta('uuid');
+  @override
+  late final GeneratedColumn<String> uuid = GeneratedColumn<String>(
+    'uuid',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _colorMeta = const VerificationMeta('color');
+  @override
+  late final GeneratedColumn<String> color = GeneratedColumn<String>(
+    'color',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deviceTypeMeta = const VerificationMeta(
+    'deviceType',
+  );
+  @override
+  late final GeneratedColumn<String> deviceType = GeneratedColumn<String>(
+    'device_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _localNodeIdMeta = const VerificationMeta(
+    'localNodeId',
+  );
+  @override
+  late final GeneratedColumn<int> localNodeId = GeneratedColumn<int>(
+    'local_node_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES nodes (id) ON DELETE SET NULL',
+    ),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    uuid,
+    name,
+    color,
+    deviceType,
+    createdAt,
+    localNodeId,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'users';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<User> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('uuid')) {
+      context.handle(
+        _uuidMeta,
+        uuid.isAcceptableOrUnknown(data['uuid']!, _uuidMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_uuidMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('color')) {
+      context.handle(
+        _colorMeta,
+        color.isAcceptableOrUnknown(data['color']!, _colorMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_colorMeta);
+    }
+    if (data.containsKey('device_type')) {
+      context.handle(
+        _deviceTypeMeta,
+        deviceType.isAcceptableOrUnknown(data['device_type']!, _deviceTypeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_deviceTypeMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('local_node_id')) {
+      context.handle(
+        _localNodeIdMeta,
+        localNodeId.isAcceptableOrUnknown(
+          data['local_node_id']!,
+          _localNodeIdMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  User map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return User(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      uuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}uuid'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      color: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}color'],
+      )!,
+      deviceType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}device_type'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      localNodeId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}local_node_id'],
+      ),
+    );
+  }
+
+  @override
+  $UsersTable createAlias(String alias) {
+    return $UsersTable(attachedDatabase, alias);
+  }
+}
+
+class User extends DataClass implements Insertable<User> {
+  final int id;
+  final String uuid;
+  final String name;
+  final String color;
+  final String deviceType;
+  final DateTime createdAt;
+
+  /// Referencia al nodo local persistente.
+  ///
+  /// Nullable para permitir:
+  /// - migración desde bases anteriores;
+  /// - creación inicial antes de EnsureLocalNode.
+  ///
+  /// ON DELETE SET NULL evita eliminar el perfil si accidentalmente
+  /// desaparece el Node.
+  final int? localNodeId;
+  const User({
+    required this.id,
+    required this.uuid,
+    required this.name,
+    required this.color,
+    required this.deviceType,
+    required this.createdAt,
+    this.localNodeId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['uuid'] = Variable<String>(uuid);
+    map['name'] = Variable<String>(name);
+    map['color'] = Variable<String>(color);
+    map['device_type'] = Variable<String>(deviceType);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || localNodeId != null) {
+      map['local_node_id'] = Variable<int>(localNodeId);
+    }
+    return map;
+  }
+
+  UsersCompanion toCompanion(bool nullToAbsent) {
+    return UsersCompanion(
+      id: Value(id),
+      uuid: Value(uuid),
+      name: Value(name),
+      color: Value(color),
+      deviceType: Value(deviceType),
+      createdAt: Value(createdAt),
+      localNodeId: localNodeId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(localNodeId),
+    );
+  }
+
+  factory User.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return User(
+      id: serializer.fromJson<int>(json['id']),
+      uuid: serializer.fromJson<String>(json['uuid']),
+      name: serializer.fromJson<String>(json['name']),
+      color: serializer.fromJson<String>(json['color']),
+      deviceType: serializer.fromJson<String>(json['deviceType']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      localNodeId: serializer.fromJson<int?>(json['localNodeId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'uuid': serializer.toJson<String>(uuid),
+      'name': serializer.toJson<String>(name),
+      'color': serializer.toJson<String>(color),
+      'deviceType': serializer.toJson<String>(deviceType),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'localNodeId': serializer.toJson<int?>(localNodeId),
+    };
+  }
+
+  User copyWith({
+    int? id,
+    String? uuid,
+    String? name,
+    String? color,
+    String? deviceType,
+    DateTime? createdAt,
+    Value<int?> localNodeId = const Value.absent(),
+  }) => User(
+    id: id ?? this.id,
+    uuid: uuid ?? this.uuid,
+    name: name ?? this.name,
+    color: color ?? this.color,
+    deviceType: deviceType ?? this.deviceType,
+    createdAt: createdAt ?? this.createdAt,
+    localNodeId: localNodeId.present ? localNodeId.value : this.localNodeId,
+  );
+  User copyWithCompanion(UsersCompanion data) {
+    return User(
+      id: data.id.present ? data.id.value : this.id,
+      uuid: data.uuid.present ? data.uuid.value : this.uuid,
+      name: data.name.present ? data.name.value : this.name,
+      color: data.color.present ? data.color.value : this.color,
+      deviceType: data.deviceType.present
+          ? data.deviceType.value
+          : this.deviceType,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      localNodeId: data.localNodeId.present
+          ? data.localNodeId.value
+          : this.localNodeId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('User(')
+          ..write('id: $id, ')
+          ..write('uuid: $uuid, ')
+          ..write('name: $name, ')
+          ..write('color: $color, ')
+          ..write('deviceType: $deviceType, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('localNodeId: $localNodeId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, uuid, name, color, deviceType, createdAt, localNodeId);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is User &&
+          other.id == this.id &&
+          other.uuid == this.uuid &&
+          other.name == this.name &&
+          other.color == this.color &&
+          other.deviceType == this.deviceType &&
+          other.createdAt == this.createdAt &&
+          other.localNodeId == this.localNodeId);
+}
+
+class UsersCompanion extends UpdateCompanion<User> {
+  final Value<int> id;
+  final Value<String> uuid;
+  final Value<String> name;
+  final Value<String> color;
+  final Value<String> deviceType;
+  final Value<DateTime> createdAt;
+  final Value<int?> localNodeId;
+  const UsersCompanion({
+    this.id = const Value.absent(),
+    this.uuid = const Value.absent(),
+    this.name = const Value.absent(),
+    this.color = const Value.absent(),
+    this.deviceType = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.localNodeId = const Value.absent(),
+  });
+  UsersCompanion.insert({
+    this.id = const Value.absent(),
+    required String uuid,
+    required String name,
+    required String color,
+    required String deviceType,
+    required DateTime createdAt,
+    this.localNodeId = const Value.absent(),
+  }) : uuid = Value(uuid),
+       name = Value(name),
+       color = Value(color),
+       deviceType = Value(deviceType),
+       createdAt = Value(createdAt);
+  static Insertable<User> custom({
+    Expression<int>? id,
+    Expression<String>? uuid,
+    Expression<String>? name,
+    Expression<String>? color,
+    Expression<String>? deviceType,
+    Expression<DateTime>? createdAt,
+    Expression<int>? localNodeId,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (uuid != null) 'uuid': uuid,
+      if (name != null) 'name': name,
+      if (color != null) 'color': color,
+      if (deviceType != null) 'device_type': deviceType,
+      if (createdAt != null) 'created_at': createdAt,
+      if (localNodeId != null) 'local_node_id': localNodeId,
+    });
+  }
+
+  UsersCompanion copyWith({
+    Value<int>? id,
+    Value<String>? uuid,
+    Value<String>? name,
+    Value<String>? color,
+    Value<String>? deviceType,
+    Value<DateTime>? createdAt,
+    Value<int?>? localNodeId,
+  }) {
+    return UsersCompanion(
+      id: id ?? this.id,
+      uuid: uuid ?? this.uuid,
+      name: name ?? this.name,
+      color: color ?? this.color,
+      deviceType: deviceType ?? this.deviceType,
+      createdAt: createdAt ?? this.createdAt,
+      localNodeId: localNodeId ?? this.localNodeId,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (uuid.present) {
+      map['uuid'] = Variable<String>(uuid.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (color.present) {
+      map['color'] = Variable<String>(color.value);
+    }
+    if (deviceType.present) {
+      map['device_type'] = Variable<String>(deviceType.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (localNodeId.present) {
+      map['local_node_id'] = Variable<int>(localNodeId.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('UsersCompanion(')
+          ..write('id: $id, ')
+          ..write('uuid: $uuid, ')
+          ..write('name: $name, ')
+          ..write('color: $color, ')
+          ..write('deviceType: $deviceType, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('localNodeId: $localNodeId')
           ..write(')'))
         .toString();
   }
@@ -2099,8 +2276,8 @@ class ScanSessionNodesCompanion extends UpdateCompanion<ScanSessionNode> {
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
-  late final $UsersTable users = $UsersTable(this);
   late final $NodesTable nodes = $NodesTable(this);
+  late final $UsersTable users = $UsersTable(this);
   late final $ConnectionsTable connections = $ConnectionsTable(this);
   late final $ScanSessionsTable scanSessions = $ScanSessionsTable(this);
   late final $ScanSessionNodesTable scanSessionNodes = $ScanSessionNodesTable(
@@ -2111,14 +2288,21 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => [
-    users,
     nodes,
+    users,
     connections,
     scanSessions,
     scanSessionNodes,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'nodes',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('users', kind: UpdateKind.update)],
+    ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
         'nodes',
@@ -2153,218 +2337,12 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       const DriftDatabaseOptions(storeDateTimeAsText: true);
 }
 
-typedef $$UsersTableCreateCompanionBuilder =
-    UsersCompanion Function({
-      Value<int> id,
-      required String uuid,
-      required String name,
-      required String color,
-      required String deviceType,
-      required DateTime createdAt,
-    });
-typedef $$UsersTableUpdateCompanionBuilder =
-    UsersCompanion Function({
-      Value<int> id,
-      Value<String> uuid,
-      Value<String> name,
-      Value<String> color,
-      Value<String> deviceType,
-      Value<DateTime> createdAt,
-    });
-
-class $$UsersTableFilterComposer extends Composer<_$AppDatabase, $UsersTable> {
-  $$UsersTableFilterComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnFilters<int> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get uuid => $composableBuilder(
-    column: $table.uuid,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get name => $composableBuilder(
-    column: $table.name,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get color => $composableBuilder(
-    column: $table.color,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get deviceType => $composableBuilder(
-    column: $table.deviceType,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<DateTime> get createdAt => $composableBuilder(
-    column: $table.createdAt,
-    builder: (column) => ColumnFilters(column),
-  );
-}
-
-class $$UsersTableOrderingComposer
-    extends Composer<_$AppDatabase, $UsersTable> {
-  $$UsersTableOrderingComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnOrderings<int> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get uuid => $composableBuilder(
-    column: $table.uuid,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get name => $composableBuilder(
-    column: $table.name,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get color => $composableBuilder(
-    column: $table.color,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get deviceType => $composableBuilder(
-    column: $table.deviceType,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
-    column: $table.createdAt,
-    builder: (column) => ColumnOrderings(column),
-  );
-}
-
-class $$UsersTableAnnotationComposer
-    extends Composer<_$AppDatabase, $UsersTable> {
-  $$UsersTableAnnotationComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  GeneratedColumn<int> get id =>
-      $composableBuilder(column: $table.id, builder: (column) => column);
-
-  GeneratedColumn<String> get uuid =>
-      $composableBuilder(column: $table.uuid, builder: (column) => column);
-
-  GeneratedColumn<String> get name =>
-      $composableBuilder(column: $table.name, builder: (column) => column);
-
-  GeneratedColumn<String> get color =>
-      $composableBuilder(column: $table.color, builder: (column) => column);
-
-  GeneratedColumn<String> get deviceType => $composableBuilder(
-    column: $table.deviceType,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<DateTime> get createdAt =>
-      $composableBuilder(column: $table.createdAt, builder: (column) => column);
-}
-
-class $$UsersTableTableManager
-    extends
-        RootTableManager<
-          _$AppDatabase,
-          $UsersTable,
-          User,
-          $$UsersTableFilterComposer,
-          $$UsersTableOrderingComposer,
-          $$UsersTableAnnotationComposer,
-          $$UsersTableCreateCompanionBuilder,
-          $$UsersTableUpdateCompanionBuilder,
-          (User, BaseReferences<_$AppDatabase, $UsersTable, User>),
-          User,
-          PrefetchHooks Function()
-        > {
-  $$UsersTableTableManager(_$AppDatabase db, $UsersTable table)
-    : super(
-        TableManagerState(
-          db: db,
-          table: table,
-          createFilteringComposer: () =>
-              $$UsersTableFilterComposer($db: db, $table: table),
-          createOrderingComposer: () =>
-              $$UsersTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer: () =>
-              $$UsersTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback:
-              ({
-                Value<int> id = const Value.absent(),
-                Value<String> uuid = const Value.absent(),
-                Value<String> name = const Value.absent(),
-                Value<String> color = const Value.absent(),
-                Value<String> deviceType = const Value.absent(),
-                Value<DateTime> createdAt = const Value.absent(),
-              }) => UsersCompanion(
-                id: id,
-                uuid: uuid,
-                name: name,
-                color: color,
-                deviceType: deviceType,
-                createdAt: createdAt,
-              ),
-          createCompanionCallback:
-              ({
-                Value<int> id = const Value.absent(),
-                required String uuid,
-                required String name,
-                required String color,
-                required String deviceType,
-                required DateTime createdAt,
-              }) => UsersCompanion.insert(
-                id: id,
-                uuid: uuid,
-                name: name,
-                color: color,
-                deviceType: deviceType,
-                createdAt: createdAt,
-              ),
-          withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
-              .toList(),
-          prefetchHooksCallback: null,
-        ),
-      );
-}
-
-typedef $$UsersTableProcessedTableManager =
-    ProcessedTableManager<
-      _$AppDatabase,
-      $UsersTable,
-      User,
-      $$UsersTableFilterComposer,
-      $$UsersTableOrderingComposer,
-      $$UsersTableAnnotationComposer,
-      $$UsersTableCreateCompanionBuilder,
-      $$UsersTableUpdateCompanionBuilder,
-      (User, BaseReferences<_$AppDatabase, $UsersTable, User>),
-      User,
-      PrefetchHooks Function()
-    >;
 typedef $$NodesTableCreateCompanionBuilder =
     NodesCompanion Function({
       Value<int> id,
-      required String bleAddress,
+      Value<String?> deviceUuid,
+      Value<String?> bleAddress,
+      Value<bool> isSelf,
       Value<String?> name,
       Value<String?> color,
       required DateTime firstSeen,
@@ -2380,7 +2358,9 @@ typedef $$NodesTableCreateCompanionBuilder =
 typedef $$NodesTableUpdateCompanionBuilder =
     NodesCompanion Function({
       Value<int> id,
-      Value<String> bleAddress,
+      Value<String?> deviceUuid,
+      Value<String?> bleAddress,
+      Value<bool> isSelf,
       Value<String?> name,
       Value<String?> color,
       Value<DateTime> firstSeen,
@@ -2397,6 +2377,25 @@ typedef $$NodesTableUpdateCompanionBuilder =
 final class $$NodesTableReferences
     extends BaseReferences<_$AppDatabase, $NodesTable, NodeRow> {
   $$NodesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$UsersTable, List<User>> _usersRefsTable(
+    _$AppDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.users,
+    aliasName: 'nodes__id__users__local_node_id',
+  );
+
+  $$UsersTableProcessedTableManager get usersRefs {
+    final manager = $$UsersTableTableManager(
+      $_db,
+      $_db.users,
+    ).filter((f) => f.localNodeId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_usersRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 
   static MultiTypedResultKey<$ScanSessionNodesTable, List<ScanSessionNode>>
   _scanSessionNodesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
@@ -2432,8 +2431,18 @@ class $$NodesTableFilterComposer extends Composer<_$AppDatabase, $NodesTable> {
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get deviceUuid => $composableBuilder(
+    column: $table.deviceUuid,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get bleAddress => $composableBuilder(
     column: $table.bleAddress,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isSelf => $composableBuilder(
+    column: $table.isSelf,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2492,6 +2501,31 @@ class $$NodesTableFilterComposer extends Composer<_$AppDatabase, $NodesTable> {
     builder: (column) => ColumnFilters(column),
   );
 
+  Expression<bool> usersRefs(
+    Expression<bool> Function($$UsersTableFilterComposer f) f,
+  ) {
+    final $$UsersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.users,
+      getReferencedColumn: (t) => t.localNodeId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$UsersTableFilterComposer(
+            $db: $db,
+            $table: $db.users,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
   Expression<bool> scanSessionNodesRefs(
     Expression<bool> Function($$ScanSessionNodesTableFilterComposer f) f,
   ) {
@@ -2532,8 +2566,18 @@ class $$NodesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get deviceUuid => $composableBuilder(
+    column: $table.deviceUuid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get bleAddress => $composableBuilder(
     column: $table.bleAddress,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isSelf => $composableBuilder(
+    column: $table.isSelf,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -2605,10 +2649,18 @@ class $$NodesTableAnnotationComposer
   GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
+  GeneratedColumn<String> get deviceUuid => $composableBuilder(
+    column: $table.deviceUuid,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get bleAddress => $composableBuilder(
     column: $table.bleAddress,
     builder: (column) => column,
   );
+
+  GeneratedColumn<bool> get isSelf =>
+      $composableBuilder(column: $table.isSelf, builder: (column) => column);
 
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
@@ -2655,6 +2707,31 @@ class $$NodesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  Expression<T> usersRefs<T extends Object>(
+    Expression<T> Function($$UsersTableAnnotationComposer a) f,
+  ) {
+    final $$UsersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.users,
+      getReferencedColumn: (t) => t.localNodeId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$UsersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.users,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
   Expression<T> scanSessionNodesRefs<T extends Object>(
     Expression<T> Function($$ScanSessionNodesTableAnnotationComposer a) f,
   ) {
@@ -2694,7 +2771,7 @@ class $$NodesTableTableManager
           $$NodesTableUpdateCompanionBuilder,
           (NodeRow, $$NodesTableReferences),
           NodeRow,
-          PrefetchHooks Function({bool scanSessionNodesRefs})
+          PrefetchHooks Function({bool usersRefs, bool scanSessionNodesRefs})
         > {
   $$NodesTableTableManager(_$AppDatabase db, $NodesTable table)
     : super(
@@ -2710,7 +2787,9 @@ class $$NodesTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
-                Value<String> bleAddress = const Value.absent(),
+                Value<String?> deviceUuid = const Value.absent(),
+                Value<String?> bleAddress = const Value.absent(),
+                Value<bool> isSelf = const Value.absent(),
                 Value<String?> name = const Value.absent(),
                 Value<String?> color = const Value.absent(),
                 Value<DateTime> firstSeen = const Value.absent(),
@@ -2724,7 +2803,9 @@ class $$NodesTableTableManager
                 Value<double?> estimatedDistance = const Value.absent(),
               }) => NodesCompanion(
                 id: id,
+                deviceUuid: deviceUuid,
                 bleAddress: bleAddress,
+                isSelf: isSelf,
                 name: name,
                 color: color,
                 firstSeen: firstSeen,
@@ -2740,7 +2821,9 @@ class $$NodesTableTableManager
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
-                required String bleAddress,
+                Value<String?> deviceUuid = const Value.absent(),
+                Value<String?> bleAddress = const Value.absent(),
+                Value<bool> isSelf = const Value.absent(),
                 Value<String?> name = const Value.absent(),
                 Value<String?> color = const Value.absent(),
                 required DateTime firstSeen,
@@ -2754,7 +2837,9 @@ class $$NodesTableTableManager
                 Value<double?> estimatedDistance = const Value.absent(),
               }) => NodesCompanion.insert(
                 id: id,
+                deviceUuid: deviceUuid,
                 bleAddress: bleAddress,
+                isSelf: isSelf,
                 name: name,
                 color: color,
                 firstSeen: firstSeen,
@@ -2773,37 +2858,55 @@ class $$NodesTableTableManager
                     (e.readTable(table), $$NodesTableReferences(db, table, e)),
               )
               .toList(),
-          prefetchHooksCallback: ({scanSessionNodesRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [
-                if (scanSessionNodesRefs) db.scanSessionNodes,
-              ],
-              addJoins: null,
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (scanSessionNodesRefs)
-                    await $_getPrefetchedData<
-                      NodeRow,
-                      $NodesTable,
-                      ScanSessionNode
-                    >(
-                      currentTable: table,
-                      referencedTable: $$NodesTableReferences
-                          ._scanSessionNodesRefsTable(db),
-                      managerFromTypedResult: (p0) => $$NodesTableReferences(
-                        db,
-                        table,
-                        p0,
-                      ).scanSessionNodesRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.nodeId == item.id),
-                      typedResults: items,
-                    ),
-                ];
+          prefetchHooksCallback:
+              ({usersRefs = false, scanSessionNodesRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (usersRefs) db.users,
+                    if (scanSessionNodesRefs) db.scanSessionNodes,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (usersRefs)
+                        await $_getPrefetchedData<NodeRow, $NodesTable, User>(
+                          currentTable: table,
+                          referencedTable: $$NodesTableReferences
+                              ._usersRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$NodesTableReferences(db, table, p0).usersRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.localNodeId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (scanSessionNodesRefs)
+                        await $_getPrefetchedData<
+                          NodeRow,
+                          $NodesTable,
+                          ScanSessionNode
+                        >(
+                          currentTable: table,
+                          referencedTable: $$NodesTableReferences
+                              ._scanSessionNodesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$NodesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).scanSessionNodesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.nodeId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -2820,7 +2923,355 @@ typedef $$NodesTableProcessedTableManager =
       $$NodesTableUpdateCompanionBuilder,
       (NodeRow, $$NodesTableReferences),
       NodeRow,
-      PrefetchHooks Function({bool scanSessionNodesRefs})
+      PrefetchHooks Function({bool usersRefs, bool scanSessionNodesRefs})
+    >;
+typedef $$UsersTableCreateCompanionBuilder =
+    UsersCompanion Function({
+      Value<int> id,
+      required String uuid,
+      required String name,
+      required String color,
+      required String deviceType,
+      required DateTime createdAt,
+      Value<int?> localNodeId,
+    });
+typedef $$UsersTableUpdateCompanionBuilder =
+    UsersCompanion Function({
+      Value<int> id,
+      Value<String> uuid,
+      Value<String> name,
+      Value<String> color,
+      Value<String> deviceType,
+      Value<DateTime> createdAt,
+      Value<int?> localNodeId,
+    });
+
+final class $$UsersTableReferences
+    extends BaseReferences<_$AppDatabase, $UsersTable, User> {
+  $$UsersTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $NodesTable _localNodeIdTable(_$AppDatabase db) =>
+      db.nodes.createAlias('users__local_node_id__nodes__id');
+
+  $$NodesTableProcessedTableManager? get localNodeId {
+    final $_column = $_itemColumn<int>('local_node_id');
+    if ($_column == null) return null;
+    final manager = $$NodesTableTableManager(
+      $_db,
+      $_db.nodes,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_localNodeIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$UsersTableFilterComposer extends Composer<_$AppDatabase, $UsersTable> {
+  $$UsersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get uuid => $composableBuilder(
+    column: $table.uuid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deviceType => $composableBuilder(
+    column: $table.deviceType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$NodesTableFilterComposer get localNodeId {
+    final $$NodesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.localNodeId,
+      referencedTable: $db.nodes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NodesTableFilterComposer(
+            $db: $db,
+            $table: $db.nodes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$UsersTableOrderingComposer
+    extends Composer<_$AppDatabase, $UsersTable> {
+  $$UsersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get uuid => $composableBuilder(
+    column: $table.uuid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get deviceType => $composableBuilder(
+    column: $table.deviceType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$NodesTableOrderingComposer get localNodeId {
+    final $$NodesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.localNodeId,
+      referencedTable: $db.nodes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NodesTableOrderingComposer(
+            $db: $db,
+            $table: $db.nodes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$UsersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $UsersTable> {
+  $$UsersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get uuid =>
+      $composableBuilder(column: $table.uuid, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get color =>
+      $composableBuilder(column: $table.color, builder: (column) => column);
+
+  GeneratedColumn<String> get deviceType => $composableBuilder(
+    column: $table.deviceType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$NodesTableAnnotationComposer get localNodeId {
+    final $$NodesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.localNodeId,
+      referencedTable: $db.nodes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NodesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.nodes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$UsersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $UsersTable,
+          User,
+          $$UsersTableFilterComposer,
+          $$UsersTableOrderingComposer,
+          $$UsersTableAnnotationComposer,
+          $$UsersTableCreateCompanionBuilder,
+          $$UsersTableUpdateCompanionBuilder,
+          (User, $$UsersTableReferences),
+          User,
+          PrefetchHooks Function({bool localNodeId})
+        > {
+  $$UsersTableTableManager(_$AppDatabase db, $UsersTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$UsersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$UsersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$UsersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> uuid = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> color = const Value.absent(),
+                Value<String> deviceType = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int?> localNodeId = const Value.absent(),
+              }) => UsersCompanion(
+                id: id,
+                uuid: uuid,
+                name: name,
+                color: color,
+                deviceType: deviceType,
+                createdAt: createdAt,
+                localNodeId: localNodeId,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String uuid,
+                required String name,
+                required String color,
+                required String deviceType,
+                required DateTime createdAt,
+                Value<int?> localNodeId = const Value.absent(),
+              }) => UsersCompanion.insert(
+                id: id,
+                uuid: uuid,
+                name: name,
+                color: color,
+                deviceType: deviceType,
+                createdAt: createdAt,
+                localNodeId: localNodeId,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) =>
+                    (e.readTable(table), $$UsersTableReferences(db, table, e)),
+              )
+              .toList(),
+          prefetchHooksCallback: ({localNodeId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (localNodeId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.localNodeId,
+                                referencedTable: $$UsersTableReferences
+                                    ._localNodeIdTable(db),
+                                referencedColumn: $$UsersTableReferences
+                                    ._localNodeIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$UsersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $UsersTable,
+      User,
+      $$UsersTableFilterComposer,
+      $$UsersTableOrderingComposer,
+      $$UsersTableAnnotationComposer,
+      $$UsersTableCreateCompanionBuilder,
+      $$UsersTableUpdateCompanionBuilder,
+      (User, $$UsersTableReferences),
+      User,
+      PrefetchHooks Function({bool localNodeId})
     >;
 typedef $$ConnectionsTableCreateCompanionBuilder =
     ConnectionsCompanion Function({
@@ -3875,10 +4326,10 @@ typedef $$ScanSessionNodesTableProcessedTableManager =
 class $AppDatabaseManager {
   final _$AppDatabase _db;
   $AppDatabaseManager(this._db);
-  $$UsersTableTableManager get users =>
-      $$UsersTableTableManager(_db, _db.users);
   $$NodesTableTableManager get nodes =>
       $$NodesTableTableManager(_db, _db.nodes);
+  $$UsersTableTableManager get users =>
+      $$UsersTableTableManager(_db, _db.users);
   $$ConnectionsTableTableManager get connections =>
       $$ConnectionsTableTableManager(_db, _db.connections);
   $$ScanSessionsTableTableManager get scanSessions =>

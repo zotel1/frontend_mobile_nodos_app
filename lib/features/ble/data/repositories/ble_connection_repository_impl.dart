@@ -18,8 +18,8 @@ class BleConnectionRepositoryImpl implements BleConnectionRepository {
   BleConnectionRepositoryImpl({
     required BleGattDataSource gatt,
     required AppDatabase db,
-  })  : _gatt = gatt,
-        _db = db;
+  }) : _gatt = gatt,
+       _db = db;
 
   @override
   Future<void> connect(String remoteId) async {
@@ -43,13 +43,17 @@ class BleConnectionRepositoryImpl implements BleConnectionRepository {
 
   @override
   Future<List<int>?> readCharacteristic(
-      String remoteId, String characteristicUuid) async {
+    String remoteId,
+    String characteristicUuid,
+  ) async {
     return _gatt.readCharacteristic(remoteId, characteristicUuid);
   }
 
   @override
   Future<void> saveConnection(int fromNodeId, int toNodeId) async {
-    await _db.into(_db.connections).insert(
+    await _db
+        .into(_db.connections)
+        .insert(
           ConnectionsCompanion.insert(
             fromNodeId: fromNodeId,
             toNodeId: toNodeId,

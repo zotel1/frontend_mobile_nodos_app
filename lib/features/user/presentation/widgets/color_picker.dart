@@ -22,8 +22,7 @@ class ColorPicker extends StatelessWidget {
   ];
 
   static final _parsedColors = {
-    for (final c in _colors)
-      c: Color(int.parse(c.replaceFirst('#', '0xFF'))),
+    for (final c in _colors) c: Color(int.parse(c.replaceFirst('#', '0xFF'))),
   };
 
   const ColorPicker({

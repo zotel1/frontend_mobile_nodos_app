@@ -114,8 +114,7 @@ class _HomePageState extends State<HomePage> {
   ///
   /// Guard: usa addPostFrameCallback para asegurar que el RenderBox
   /// del GraphView esté disponible después del build.
-  void _showNodeTooltip(
-      BuildContext context, LayoutResult layout, int nodeId) {
+  void _showNodeTooltip(BuildContext context, LayoutResult layout, int nodeId) {
     if (_tooltipNodeId == nodeId) return; // ya visible para este nodo
 
     final node = layout.nodes.firstWhere(
@@ -181,9 +180,9 @@ class _HomePageState extends State<HomePage> {
             final userState = context.read<UserBloc>().state;
             final myNodeId = userState is UserLoaded ? userState.user.id : null;
             if (myNodeId != null) {
-              context
-                  .read<BleConnectionBloc>()
-                  .add(ConnectToDevice(bleAddress, myNodeId: myNodeId));
+              context.read<BleConnectionBloc>().add(
+                ConnectToDevice(bleAddress, myNodeId: myNodeId),
+              );
             }
           }
           // Cerrar tooltip después de presionar Enlazar
@@ -315,10 +314,12 @@ class _HomePageState extends State<HomePage> {
                               ? userState.user.id
                               : null;
                           if (myNodeId != null) {
-                            context
-                                .read<BleConnectionBloc>()
-                                .add(ConnectToDevice(_lastRemoteId!,
-                                    myNodeId: myNodeId));
+                            context.read<BleConnectionBloc>().add(
+                              ConnectToDevice(
+                                _lastRemoteId!,
+                                myNodeId: myNodeId,
+                              ),
+                            );
                           }
                         }
                       },
@@ -335,19 +336,23 @@ class _HomePageState extends State<HomePage> {
             // T3.8: Identidad remota cargada — actualizar nodo automáticamente
             // Usa addPostFrameCallback para que _currentNodes esté poblado
             // por el BlocListener<NodeListBloc> antes de buscar el nodo.
-            case RemoteIdentityLoaded(:final remoteId, :final name, :final color):
+            case RemoteIdentityLoaded(
+              :final remoteId,
+              :final name,
+              :final color,
+            ):
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (!mounted) return;
                 final node = _currentNodes
                     .where((n) => n.bleAddress == remoteId)
                     .firstOrNull;
                 if (node != null && node.id != null) {
-                  context
-                      .read<NodeListBloc>()
-                      .add(UpdateNodeName(node.id!, name));
-                  context
-                      .read<NodeListBloc>()
-                      .add(UpdateNodeColor(node.id!, color));
+                  context.read<NodeListBloc>().add(
+                    UpdateNodeName(node.id!, name),
+                  );
+                  context.read<NodeListBloc>().add(
+                    UpdateNodeColor(node.id!, color),
+                  );
                 }
               });
             // T3.8: Identidad no disponible — abrir bottom sheet manual
@@ -374,169 +379,175 @@ class _HomePageState extends State<HomePage> {
           }
         },
         child: BlocListener<VisualizationBloc, VisualizationState>(
-        /// Escucha cambios en el VisualizationBloc para mostrar/ocultar el
-        /// NodeTooltip cuando cambia selectedNodeId.
-        ///
-        /// QUÉ hace: cuando GraphReady tiene selectedNodeId != null, busca
-        /// el nodo en el layout y muestra un tooltip flotante. Cuando
-        /// selectedNodeId es null, cierra cualquier tooltip activo.
-        ///
-        /// POR QUÉ: el tooltip es un efecto lateral (Overlay) que no debe
-        /// dispararse durante el build. El listener de BLoC es el lugar
-        /// correcto para side effects.
-        listener: (context, vizState) {
-          if (vizState is GraphReady) {
-            if (vizState.selectedNodeId != null) {
-              _showNodeTooltip(
-                  context, vizState.layout, vizState.selectedNodeId!);
-            } else {
-              _dismissTooltip();
+          /// Escucha cambios en el VisualizationBloc para mostrar/ocultar el
+          /// NodeTooltip cuando cambia selectedNodeId.
+          ///
+          /// QUÉ hace: cuando GraphReady tiene selectedNodeId != null, busca
+          /// el nodo en el layout y muestra un tooltip flotante. Cuando
+          /// selectedNodeId es null, cierra cualquier tooltip activo.
+          ///
+          /// POR QUÉ: el tooltip es un efecto lateral (Overlay) que no debe
+          /// dispararse durante el build. El listener de BLoC es el lugar
+          /// correcto para side effects.
+          listener: (context, vizState) {
+            if (vizState is GraphReady) {
+              if (vizState.selectedNodeId != null) {
+                _showNodeTooltip(
+                  context,
+                  vizState.layout,
+                  vizState.selectedNodeId!,
+                );
+              } else {
+                _dismissTooltip();
+              }
             }
-          }
-        },
-        child: BlocListener<BleBloc, BleState>(
-        /// Puente BLE → Node: convierte resultados de escaneo BLE en
-        /// entidades Node persistentes.
-        ///
-        /// QUÉ hace: escucha BleBloc y cuando emite BleScanning con
-        /// dispositivos detectados, despacha SyncBleDevices al NodeListBloc
-        /// para que persista cada BleDevice como un Node en Drift.
-        ///
-        /// POR QUÉ: sin este listener la app escanea dispositivos pero
-        /// nunca los muestra en la UI. El BlocListener<NodeListBloc> (abajo)
-        /// maneja los cambios de vista cuando los nodos ya están persistidos.
-        listener: (context, bleState) {
-          if (bleState is BleScanning && bleState.devices.isNotEmpty) {
-            context
-                .read<NodeListBloc>()
-                .add(SyncBleDevices(bleState.devices));
-            // T2.4: Registrar timestamp del último escaneo con dispositivos
-            _lastScanTime = DateTime.now();
-            // PR1: StartSession se movió al listener de NodeListBloc
-            // para secuenciar correctamente SyncBleDevices → StartSession
-            // → AddNodesToSession → BuildGraphRequested (R3).
-          }
-          // Mostrar diálogo cuando BT está apagado.
-          // El guard _dialogVisible previene stacking de múltiples diálogos.
-          // T3.8: También despacha ClearNodes para limpiar el contador (R5.17).
-          if (bleState is BluetoothOff) {
-            if (!_dialogVisible) {
-              _dialogVisible = true;
-              showDialog<void>(
-                context: context,
-                barrierDismissible: false,
-                builder: (ctx) => BluetoothOffDialog(
-                  onGoToSettings: () {
-                    _dialogVisible = false;
-                    const AndroidIntent(action: 'android.settings.BLUETOOTH_SETTINGS').launch();
-                  },
-                  onCancel: () {
-                    _dialogVisible = false;
-                  },
-                ),
-              );
-            }
-            // Limpiar nodos cuando BT se apaga
-            context.read<NodeListBloc>().add(const ClearNodes());
-            // Finalizar sesión activa
-            final sessionBloc = context.read<ScanSessionBloc>();
-            final sessionState = sessionBloc.state;
-            if (sessionState is SessionActive) {
-              sessionBloc.add(EndSession(sessionState.sessionId));
-            }
-          }
-          // Si BT vuelve a estar disponible, reseteamos el guard.
-          if (bleState is BleStopped || bleState is BleScanning) {
-            _dialogVisible = false;
-          }
-          // Finalizar sesión cuando el escaneo se detiene
-          if (bleState is BleStopped) {
-            final sessionBloc = context.read<ScanSessionBloc>();
-            final sessionState = sessionBloc.state;
-            if (sessionState is SessionActive) {
-              sessionBloc.add(EndSession(sessionState.sessionId));
-            }
-          }
-        },
-        child: BlocListener<NodeListBloc, NodeListState>(
-        // Dispara la construcción del grafo cuando la lista cambia.
-        // Usa listener (no builder) para side effects — no dispara
-        // reconstrucciones innecesarias.
-        listener: (context, nodeListState) {
-          if (nodeListState is NodeListLoaded) {
-            // T3.8: Guardar la lista actual de nodos para mapeo GraphNode.id → bleAddress
-            _currentNodes = nodeListState.nodes;
-            // PR1: Secuenciar eventos — StartSession primero si no hay sesión,
-            // luego AddNodesToSession + BuildGraphRequested cuando la sesión
-            // esté activa (R3). Esto evita la race condition donde StartSession
-            // y SyncBleDevices se despachaban en paralelo desde listeners distintos.
-            final sessionBloc = context.read<ScanSessionBloc>();
-            final sessionState = sessionBloc.state;
-            if (sessionState is! SessionActive) {
-              // Iniciar sesión si no hay una activa.
-              // Los nodos se agregarán en el próximo ciclo cuando SessionActive
-              // sea emitido y NodeListLoaded vuelva a dispararse.
-              sessionBloc.add(const StartSession());
-            } else {
-              // Sesión ya activa: agregar nodos detectados y construir grafo.
-              if (nodeListState.nodes.isNotEmpty) {
-                final nodeIds = nodeListState.nodes
-                    .map((n) => n.id)
-                    .whereType<int>()
-                    .toList();
-                if (nodeIds.isNotEmpty) {
-                  sessionBloc.add(
-                      AddNodesToSession(sessionState.sessionId, nodeIds));
+          },
+          child: BlocListener<BleBloc, BleState>(
+            /// Puente BLE → Node: convierte resultados de escaneo BLE en
+            /// entidades Node persistentes.
+            ///
+            /// QUÉ hace: escucha BleBloc y cuando emite BleScanning con
+            /// dispositivos detectados, despacha SyncBleDevices al NodeListBloc
+            /// para que persista cada BleDevice como un Node en Drift.
+            ///
+            /// POR QUÉ: sin este listener la app escanea dispositivos pero
+            /// nunca los muestra en la UI. El BlocListener<NodeListBloc> (abajo)
+            /// maneja los cambios de vista cuando los nodos ya están persistidos.
+            listener: (context, bleState) {
+              if (bleState is BleScanning && bleState.devices.isNotEmpty) {
+                context.read<NodeListBloc>().add(
+                  SyncBleDevices(bleState.devices),
+                );
+                // T2.4: Registrar timestamp del último escaneo con dispositivos
+                _lastScanTime = DateTime.now();
+                // PR1: StartSession se movió al listener de NodeListBloc
+                // para secuenciar correctamente SyncBleDevices → StartSession
+                // → AddNodesToSession → BuildGraphRequested (R3).
+              }
+              // Mostrar diálogo cuando BT está apagado.
+              // El guard _dialogVisible previene stacking de múltiples diálogos.
+              // T3.8: También despacha ClearNodes para limpiar el contador (R5.17).
+              if (bleState is BluetoothOff) {
+                if (!_dialogVisible) {
+                  _dialogVisible = true;
+                  showDialog<void>(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (ctx) => BluetoothOffDialog(
+                      onGoToSettings: () {
+                        _dialogVisible = false;
+                        const AndroidIntent(
+                          action: 'android.settings.BLUETOOTH_SETTINGS',
+                        ).launch();
+                      },
+                      onCancel: () {
+                        _dialogVisible = false;
+                      },
+                    ),
+                  );
+                }
+                // Limpiar nodos cuando BT se apaga
+                context.read<NodeListBloc>().add(const ClearNodes());
+                // Finalizar sesión activa
+                final sessionBloc = context.read<ScanSessionBloc>();
+                final sessionState = sessionBloc.state;
+                if (sessionState is SessionActive) {
+                  sessionBloc.add(EndSession(sessionState.sessionId));
                 }
               }
-            }
-            _updateViewMode(nodeListState.nodes, context);
-          }
-        },
-          child: BlocListener<ScanSessionBloc, ScanSessionState>(
-            listener: (context, sessionState) {
-              if (sessionState is SessionActive) {
-                debugPrint(
-                    'Sesión ${sessionState.sessionId} activa — ${sessionState.nodeCount} nodos');
-              } else if (sessionState is SessionEnded) {
-                debugPrint('Sesión finalizada');
-              } else if (sessionState is SessionError) {
-                debugPrint('Error de sesión: ${sessionState.message}');
+              // Si BT vuelve a estar disponible, reseteamos el guard.
+              if (bleState is BleStopped || bleState is BleScanning) {
+                _dialogVisible = false;
+              }
+              // Finalizar sesión cuando el escaneo se detiene
+              if (bleState is BleStopped) {
+                final sessionBloc = context.read<ScanSessionBloc>();
+                final sessionState = sessionBloc.state;
+                if (sessionState is SessionActive) {
+                  sessionBloc.add(EndSession(sessionState.sessionId));
+                }
               }
             },
-            child: BlocBuilder<BleBloc, BleState>(
-              builder: (context, bleState) {
-                return Column(
-                  children: [
-                    if (bleState is BluetoothOff)
-                      BluetoothOffBanner(
-                        onGoToSettings: () {
-                          const AndroidIntent(
-                                  action:
-                                      'android.settings.BLUETOOTH_SETTINGS')
-                              .launch();
-                        },
-                      ),
-                    // T2.4: Info bar — conteo de nodos y hora último escaneo
-                    BlocBuilder<NodeListBloc, NodeListState>(
-                      builder: (context, nodeState) {
-                        if (nodeState is NodeListLoaded) {
-                        return _buildInfoBar(nodeState.nodes.length);
+            child: BlocListener<NodeListBloc, NodeListState>(
+              // Dispara la construcción del grafo cuando la lista cambia.
+              // Usa listener (no builder) para side effects — no dispara
+              // reconstrucciones innecesarias.
+              listener: (context, nodeListState) {
+                if (nodeListState is NodeListLoaded) {
+                  // T3.8: Guardar la lista actual de nodos para mapeo GraphNode.id → bleAddress
+                  _currentNodes = nodeListState.nodes;
+                  // PR1: Secuenciar eventos — StartSession primero si no hay sesión,
+                  // luego AddNodesToSession + BuildGraphRequested cuando la sesión
+                  // esté activa (R3). Esto evita la race condition donde StartSession
+                  // y SyncBleDevices se despachaban en paralelo desde listeners distintos.
+                  final sessionBloc = context.read<ScanSessionBloc>();
+                  final sessionState = sessionBloc.state;
+                  if (sessionState is! SessionActive) {
+                    // Iniciar sesión si no hay una activa.
+                    // Los nodos se agregarán en el próximo ciclo cuando SessionActive
+                    // sea emitido y NodeListLoaded vuelva a dispararse.
+                    sessionBloc.add(const StartSession());
+                  } else {
+                    // Sesión ya activa: agregar nodos detectados y construir grafo.
+                    if (nodeListState.nodes.isNotEmpty) {
+                      final nodeIds = nodeListState.nodes
+                          .map((n) => n.id)
+                          .whereType<int>()
+                          .toList();
+                      if (nodeIds.isNotEmpty) {
+                        sessionBloc.add(
+                          AddNodesToSession(sessionState.sessionId, nodeIds),
+                        );
                       }
-                      return const SizedBox.shrink();
-                    },
-                  ),
-                  // T5.6: Toolbar de grafo con toggle 2D/3D (solo visible en modo grafo)
-              if (_showingGraph) _buildGraphToolbar(),
-              Expanded(child: _buildContent()),
-                ],
-              );
-            },
+                    }
+                  }
+                  _updateViewMode(nodeListState.nodes, context);
+                }
+              },
+              child: BlocListener<ScanSessionBloc, ScanSessionState>(
+                listener: (context, sessionState) {
+                  if (sessionState is SessionActive) {
+                    debugPrint(
+                      'Sesión ${sessionState.sessionId} activa — ${sessionState.nodeCount} nodos',
+                    );
+                  } else if (sessionState is SessionEnded) {
+                    debugPrint('Sesión finalizada');
+                  } else if (sessionState is SessionError) {
+                    debugPrint('Error de sesión: ${sessionState.message}');
+                  }
+                },
+                child: BlocBuilder<BleBloc, BleState>(
+                  builder: (context, bleState) {
+                    return Column(
+                      children: [
+                        if (bleState is BluetoothOff)
+                          BluetoothOffBanner(
+                            onGoToSettings: () {
+                              const AndroidIntent(
+                                action: 'android.settings.BLUETOOTH_SETTINGS',
+                              ).launch();
+                            },
+                          ),
+                        // T2.4: Info bar — conteo de nodos y hora último escaneo
+                        BlocBuilder<NodeListBloc, NodeListState>(
+                          builder: (context, nodeState) {
+                            if (nodeState is NodeListLoaded) {
+                              return _buildInfoBar(nodeState.nodes.length);
+                            }
+                            return const SizedBox.shrink();
+                          },
+                        ),
+                        // T5.6: Toolbar de grafo con toggle 2D/3D (solo visible en modo grafo)
+                        if (_showingGraph) _buildGraphToolbar(),
+                        Expanded(child: _buildContent()),
+                      ],
+                    );
+                  },
+                ),
+              ),
             ),
           ),
-      ),
-      ),
-      ),
+        ),
       ), // cierra BlocListener<BleConnectionBloc>
     );
   }
@@ -558,24 +569,28 @@ class _HomePageState extends State<HomePage> {
       // PR7: pasar myDeviceUuid desde UserBloc para que el self-node
       // se marque con isSelf=true en el grafo.
       // REQ-SN-01: pasar userName y userColor del perfil para el
-      // self-node sintético y el anillo distintivo (REQ-VR-01).
+      // self-node persistente y el anillo distintivo (REQ-VR-01).
       final sessionState = context.read<ScanSessionBloc>().state;
       if (sessionState is SessionActive) {
         final userBloc = context.read<UserBloc>();
         final userState = userBloc.state;
         final String? myUuid = userBloc.myDeviceUuid;
-        final String? userName =
-            userState is UserLoaded ? userState.user.name : null;
-        final String? userColor =
-            userState is UserLoaded ? userState.user.color : null;
+        final String? userName = userState is UserLoaded
+            ? userState.user.name
+            : null;
+        final String? userColor = userState is UserLoaded
+            ? userState.user.color
+            : null;
 
-        context.read<VisualizationBloc>().add(BuildGraphRequested(
-          scanSessionId: sessionState.sessionId,
-          nodes: nodes,
-          myDeviceUuid: myUuid,
-          userName: userName,
-          userColor: userColor,
-        ));
+        context.read<VisualizationBloc>().add(
+          BuildGraphRequested(
+            scanSessionId: sessionState.sessionId,
+            nodes: nodes,
+            myDeviceUuid: myUuid,
+            userName: userName,
+            userColor: userColor,
+          ),
+        );
       }
     } else if (_showingGraph) {
       setState(() => _showingGraph = false);
@@ -597,7 +612,9 @@ class _HomePageState extends State<HomePage> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+      color: Theme.of(
+        context,
+      ).colorScheme.primaryContainer.withValues(alpha: 0.3),
       child: Text(
         '$nodeCount nodos detectados${timeText != null ? ' · $timeText' : ''}',
         style: TextStyle(
@@ -635,26 +652,25 @@ class _HomePageState extends State<HomePage> {
           // en lugar de SizedBox.shrink (pantalla en blanco).
           // QUÉ: informa que la app está buscando nodos activamente.
           NodeListInitial() => const Center(
-              child: Text(
-                'Buscando nodos cercanos...',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
+            child: Text(
+              'Buscando nodos cercanos...',
+              style: TextStyle(fontSize: 16, color: Colors.grey),
             ),
-          NodeListLoading() =>
-            const Center(child: CircularProgressIndicator()),
+          ),
+          NodeListLoading() => const Center(child: CircularProgressIndicator()),
           NodeListEmpty() => const Center(
-              child: Text(
-                'No se encontraron nodos',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
+            child: Text(
+              'No se encontraron nodos',
+              style: TextStyle(fontSize: 16, color: Colors.grey),
             ),
+          ),
           NodeListLoaded(:final nodes) => _buildAnimatedContent(nodes),
           NodeListError(:final message) => Center(
-              child: Text(
-                message,
-                style: const TextStyle(color: Colors.red, fontSize: 16),
-              ),
+            child: Text(
+              message,
+              style: const TextStyle(color: Colors.red, fontSize: 16),
             ),
+          ),
           _ => const SizedBox.shrink(),
         };
       },
@@ -678,10 +694,13 @@ class _HomePageState extends State<HomePage> {
       secondChild: BlocBuilder<VisualizationBloc, VisualizationState>(
         builder: (context, vizState) {
           return switch (vizState) {
-            VisualizationInitial() || GraphBuilding() =>
-              const Center(child: CircularProgressIndicator()),
-            GraphReady(:final layout, :final selectedNodeId,
-                :final barycenter) =>
+            VisualizationInitial() ||
+            GraphBuilding() => const Center(child: CircularProgressIndicator()),
+            GraphReady(
+              :final layout,
+              :final selectedNodeId,
+              :final barycenter,
+            ) =>
               // T2.8: Stack+Offstage mantiene ambos widgets en el árbol (R9, R10).
               // Ambos GraphView (2D) y GraphView3D (3D) se crean y se mantienen
               // vivos siempre. Offstage oculta el que no está activo pero NO lo
@@ -703,9 +722,9 @@ class _HomePageState extends State<HomePage> {
                           selectedNodeId: selectedNodeId,
                           barycenter: barycenter,
                           onNodeTapped: (nodeId) {
-                            context
-                                .read<VisualizationBloc>()
-                                .add(NodeSelected(nodeId));
+                            context.read<VisualizationBloc>().add(
+                              NodeSelected(nodeId),
+                            );
                           },
                         ),
                       ),
@@ -715,9 +734,9 @@ class _HomePageState extends State<HomePage> {
                         child: GraphView3D(
                           layout: layout,
                           onNodeTapped: (nodeId) {
-                            context
-                                .read<VisualizationBloc>()
-                                .add(NodeSelected(nodeId));
+                            context.read<VisualizationBloc>().add(
+                              NodeSelected(nodeId),
+                            );
                           },
                         ),
                       ),
@@ -726,11 +745,11 @@ class _HomePageState extends State<HomePage> {
                 },
               ),
             GraphError(:final message) => Center(
-                child: Text(
-                  message,
-                  style: const TextStyle(color: Colors.red, fontSize: 16),
-                ),
+              child: Text(
+                message,
+                style: const TextStyle(color: Colors.red, fontSize: 16),
               ),
+            ),
             _ => const SizedBox.shrink(),
           };
         },
@@ -751,7 +770,9 @@ class _HomePageState extends State<HomePage> {
       builder: (context, is3D, _) {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+          color: Theme.of(
+            context,
+          ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [

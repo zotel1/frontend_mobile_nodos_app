@@ -1,21 +1,22 @@
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
 
-/// Contrato de acceso a datos locales para la entidad Node.
-///
-/// Define las operaciones CRUD que cualquier implementación de
-/// persistencia local debe soportar (Drift, in-memory, etc.).
+/// Contrato de persistencia local de Node.
 abstract class NodeLocalDataSource {
   Stream<List<Node>> watchNodes();
+
   Future<Node?> getNodeById(int id);
+
+  Future<Node?> getNodeByBleAddress(String bleAddress);
+
+  Future<Node?> getNodeByDeviceUuid(String deviceUuid);
+
+  Future<Node?> getSelfNode();
+
   Future<void> upsertNode(Node node);
+
   Future<void> deleteNode(int id);
 
-  /// Elimina todos los nodos de la tabla.
-  /// Usado en el pipeline ClearNodes cuando se apaga Bluetooth (R5.17).
+  /// Actualmente elimina filas persistentes.
+  /// Su semántica será corregida en BUG-002.
   Future<void> deleteAllNodes();
-
-  /// Busca un nodo por su dirección BLE.
-  /// Retorna null si no existe. Usado para lookup en el flujo
-  /// de inserción de connections (mapear bleAddress → id).
-  Future<Node?> getNodeByBleAddress(String bleAddress);
 }

@@ -90,12 +90,12 @@ class HistoryLoaded extends HistoryState {
 
   @override
   List<Object?> get props => [
-        sessions,
-        stats,
-        filters,
-        detailNodes,
-        selectedSessionId,
-      ];
+    sessions,
+    stats,
+    filters,
+    detailNodes,
+    selectedSessionId,
+  ];
 }
 
 class HistoryError extends HistoryState {
@@ -114,10 +114,7 @@ class HistoryFilters extends Equatable {
   final DateRange dateRange;
   final String? nameQuery;
 
-  const HistoryFilters({
-    this.dateRange = DateRange.all,
-    this.nameQuery,
-  });
+  const HistoryFilters({this.dateRange = DateRange.all, this.nameQuery});
 
   HistoryFilters copyWith({DateRange? dateRange, String? nameQuery}) {
     return HistoryFilters(
@@ -164,7 +161,9 @@ class HistoryBloc extends Bloc<HistoryEvent, HistoryState> {
   }
 
   Future<void> _onLoadHistory(
-      LoadHistory event, Emitter<HistoryState> emit) async {
+    LoadHistory event,
+    Emitter<HistoryState> emit,
+  ) async {
     emit(const HistoryLoading());
 
     // Cargar sesiones y estadísticas en paralelo (ambas son queries
@@ -175,14 +174,16 @@ class HistoryBloc extends Bloc<HistoryEvent, HistoryState> {
     // Si cualquiera de las dos consultas falla, emitir error.
     if (sessionsResult.isLeft()) {
       sessionsResult.fold(
-        (failure) => emit(HistoryError('Error al cargar sesiones: ${failure.message}')),
+        (failure) =>
+            emit(HistoryError('Error al cargar sesiones: ${failure.message}')),
         (_) {},
       );
       return;
     }
     if (statsResult.isLeft()) {
       statsResult.fold(
-        (failure) => emit(HistoryError('Error al cargar sesiones: ${failure.message}')),
+        (failure) =>
+            emit(HistoryError('Error al cargar sesiones: ${failure.message}')),
         (_) {},
       );
       return;
@@ -198,15 +199,19 @@ class HistoryBloc extends Bloc<HistoryEvent, HistoryState> {
       ),
     );
 
-    emit(HistoryLoaded(
-      sessions: sessions,
-      stats: stats,
-      filters: const HistoryFilters(),
-    ));
+    emit(
+      HistoryLoaded(
+        sessions: sessions,
+        stats: stats,
+        filters: const HistoryFilters(),
+      ),
+    );
   }
 
   Future<void> _onSelectSession(
-      SelectSession event, Emitter<HistoryState> emit) async {
+    SelectSession event,
+    Emitter<HistoryState> emit,
+  ) async {
     final currentState = state;
     if (currentState is! HistoryLoaded) return;
 
@@ -224,36 +229,39 @@ class HistoryBloc extends Bloc<HistoryEvent, HistoryState> {
       GetSessionDetailParams(sessionId: event.sessionId),
     );
 
-    final detailNodes = result.fold(
-      (_) => <SessionNode>[],
-      (nodes) => nodes,
-    );
+    final detailNodes = result.fold((_) => <SessionNode>[], (nodes) => nodes);
 
-    emit(HistoryLoaded(
-      sessions: previousSessions,
-      stats: previousStats,
-      filters: previousFilters,
-      detailNodes: detailNodes,
-      selectedSessionId: event.sessionId,
-    ));
+    emit(
+      HistoryLoaded(
+        sessions: previousSessions,
+        stats: previousStats,
+        filters: previousFilters,
+        detailNodes: detailNodes,
+        selectedSessionId: event.sessionId,
+      ),
+    );
   }
 
   void _onFilterByDate(FilterByDate event, Emitter<HistoryState> emit) {
     final currentState = state;
     if (currentState is! HistoryLoaded) return;
 
-    emit(currentState.copyWith(
-      filters: currentState.filters.copyWith(dateRange: event.range),
-    ));
+    emit(
+      currentState.copyWith(
+        filters: currentState.filters.copyWith(dateRange: event.range),
+      ),
+    );
   }
 
   void _onFilterByName(FilterByName event, Emitter<HistoryState> emit) {
     final currentState = state;
     if (currentState is! HistoryLoaded) return;
 
-    emit(currentState.copyWith(
-      filters: currentState.filters.copyWith(nameQuery: event.query),
-    ));
+    emit(
+      currentState.copyWith(
+        filters: currentState.filters.copyWith(nameQuery: event.query),
+      ),
+    );
   }
 }
 
@@ -273,8 +281,9 @@ extension _HistoryLoadedCopy on HistoryLoaded {
       stats: stats ?? this.stats,
       filters: filters ?? this.filters,
       detailNodes: clearDetail ? [] : (detailNodes ?? this.detailNodes),
-      selectedSessionId:
-          clearDetail ? null : (selectedSessionId ?? this.selectedSessionId),
+      selectedSessionId: clearDetail
+          ? null
+          : (selectedSessionId ?? this.selectedSessionId),
     );
   }
 }

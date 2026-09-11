@@ -33,8 +33,7 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bl
 /// Esto evita depender de Timer, que ejecuta el callback fuera del
 /// ciclo de vida del event handler de BLoC, causando el error
 /// "emit was called after an event handler completed normally".
-class VisualizationBloc
-    extends Bloc<VisualizationEvent, VisualizationState> {
+class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
   final BuildGraph _buildGraph;
   final CalculateLayout _calculateLayout;
   final Duration _debounceDuration;
@@ -201,7 +200,9 @@ class VisualizationBloc
 
       // Paso 1: Construir grafo desde el repositorio.
       // PR2: pasar myDeviceUuid para marcar self-node en el grafo.
-      // REQ-SN-01: pasar userName y userColor para el self-node sintético.
+      
+      // ARCH-001: userName/userColor permanecen por compatibilidad.
+      // La identidad principal del self-node proviene ahora de Nodes.
       final buildResult = await _buildGraph(
         event.scanSessionId,
         myDeviceUuid: event.myDeviceUuid,
@@ -209,13 +210,10 @@ class VisualizationBloc
         userColor: event.userColor,
       );
 
-      final initialLayout = buildResult.fold<LayoutResult?>(
-        (failure) {
-          emit(GraphError(failure.message));
-          return null;
-        },
-        (layout) => layout,
-      );
+      final initialLayout = buildResult.fold<LayoutResult?>((failure) {
+        emit(GraphError(failure.message));
+        return null;
+      }, (layout) => layout);
 
       if (initialLayout == null) return;
 
@@ -239,22 +237,16 @@ class VisualizationBloc
         priorLayout: _lastLayout,
       );
 
-      calcResult.fold(
-        (failure) => emit(GraphError(failure.message)),
-        (layout) {
-          // Cachear layout para el próximo BuildGraphRequested
-          _lastLayout = layout;
+      calcResult.fold((failure) => emit(GraphError(failure.message)), (layout) {
+        // Cachear layout para el próximo BuildGraphRequested
+        _lastLayout = layout;
 
-          // PR2: Calcular barycenter del cluster para auto-centrado (R5.13).
-          // Promedio de posiciones (x,y) de todos los nodos.
-          _computeBarycenter(layout);
+        // PR2: Calcular barycenter del cluster para auto-centrado (R5.13).
+        // Promedio de posiciones (x,y) de todos los nodos.
+        _computeBarycenter(layout);
 
-          emit(GraphReady(
-            layout,
-            barycenter: _barycenter,
-          ));
-        },
-      );
+        emit(GraphReady(layout, barycenter: _barycenter));
+      });
     } finally {
       _isBuilding = false;
     }
@@ -266,17 +258,16 @@ class VisualizationBloc
   /// Solo procesa la selección si el estado actual es [GraphReady],
   /// ya que no tiene sentido seleccionar un nodo durante la carga
   /// o en estado de error.
-  void _onNodeSelected(
-    NodeSelected event,
-    Emitter<VisualizationState> emit,
-  ) {
+  void _onNodeSelected(NodeSelected event, Emitter<VisualizationState> emit) {
     final currentState = state;
     if (currentState is GraphReady) {
-      emit(GraphReady(
-        currentState.layout,
-        selectedNodeId: event.nodeId,
-        barycenter: currentState.barycenter,
-      ));
+      emit(
+        GraphReady(
+          currentState.layout,
+          selectedNodeId: event.nodeId,
+          barycenter: currentState.barycenter,
+        ),
+      );
     }
   }
 
@@ -290,8 +281,9 @@ class VisualizationBloc
   ) {
     final currentState = state;
     if (currentState is GraphReady) {
-      emit(GraphReady(currentState.layout,
-          barycenter: currentState.barycenter));
+      emit(
+        GraphReady(currentState.layout, barycenter: currentState.barycenter),
+      );
     }
   }
 
@@ -320,13 +312,15 @@ class VisualizationBloc
     // por el pipeline completo: debounce → build → layout.
     // PR7: preservar myDeviceUuid del evento original.
     // REQ-SN-01: preservar userName y userColor para el self-node.
-    add(BuildGraphRequested(
-      scanSessionId: event.lastSessionId,
-      nodes: event.lastNodes,
-      myDeviceUuid: event.myDeviceUuid,
-      userName: event.userName,
-      userColor: event.userColor,
-    ));
+    add(
+      BuildGraphRequested(
+        scanSessionId: event.lastSessionId,
+        nodes: event.lastNodes,
+        myDeviceUuid: event.myDeviceUuid,
+        userName: event.userName,
+        userColor: event.userColor,
+      ),
+    );
   }
 
   /// Calcula el barycenter (centro de referencia) del cluster de nodos.

@@ -57,10 +57,7 @@ class _HistoryContent extends StatelessWidget {
   final List<ScanSession> sessions;
   final HistoryFilters filters;
 
-  const _HistoryContent({
-    required this.sessions,
-    required this.filters,
-  });
+  const _HistoryContent({required this.sessions, required this.filters});
 
   @override
   Widget build(BuildContext context) {
@@ -103,8 +100,7 @@ class _HistoryContent extends StatelessWidget {
               hintText: 'Buscar por nombre de nodo...',
               prefixIcon: Icon(Icons.search),
               border: OutlineInputBorder(),
-              contentPadding:
-                  EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             ),
             onChanged: (query) {
               context.read<HistoryBloc>().add(FilterByName(query: query));
@@ -161,9 +157,9 @@ class _SessionCard extends StatelessWidget {
             : const Text('En curso'),
         trailing: Text(
           '${session.nodeCount} nodo${session.nodeCount == 1 ? '' : 's'}',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
         ),
       ),
     );

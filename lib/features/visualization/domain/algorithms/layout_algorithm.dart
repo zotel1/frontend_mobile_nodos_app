@@ -2,7 +2,7 @@
 ///
 /// Define el contrato que cualquier algoritmo de posicionamiento
 /// (Fruchterman-Reingold, Kamada-Kawai, Eades, etc.) debe cumplir.
-/// 
+///
 /// La capa de dominio depende de esta interfaz, no de implementaciones
 /// concretas. La capa de datos provee la implementación (ej. FR).
 ///

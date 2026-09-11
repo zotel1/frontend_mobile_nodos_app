@@ -18,21 +18,15 @@ class ScanSessionRepositoryImpl implements ScanSessionRepository {
   @override
   Future<int> startSession() async {
     final now = DateTime.now();
-    return _db.into(_db.scanSessions).insert(
-          ScanSessionsCompanion.insert(
-            startedAt: now,
-            nodesDetected: 0,
-          ),
-        );
+    return _db
+        .into(_db.scanSessions)
+        .insert(ScanSessionsCompanion.insert(startedAt: now, nodesDetected: 0));
   }
 
   @override
   Future<void> endSession(int sessionId) async {
-    await (_db.update(_db.scanSessions)
-          ..where((t) => t.id.equals(sessionId)))
-        .write(ScanSessionsCompanion(
-      endedAt: Value(DateTime.now()),
-    ));
+    await (_db.update(_db.scanSessions)..where((t) => t.id.equals(sessionId)))
+        .write(ScanSessionsCompanion(endedAt: Value(DateTime.now())));
   }
 
   @override
@@ -42,7 +36,9 @@ class ScanSessionRepositoryImpl implements ScanSessionRepository {
     // todas las escrituras hacen rollback automáticamente.
     await _db.transaction(() async {
       for (final nodeId in nodeIds) {
-        await _db.into(_db.scanSessionNodes).insert(
+        await _db
+            .into(_db.scanSessionNodes)
+            .insert(
               ScanSessionNodesCompanion.insert(
                 sessionId: sessionId,
                 nodeId: nodeId,
@@ -53,27 +49,30 @@ class ScanSessionRepositoryImpl implements ScanSessionRepository {
       }
 
       // Actualizar el contador de nodos en la sesión
-      final count = await (_db.select(_db.scanSessionNodes)
-            ..where((t) => t.sessionId.equals(sessionId)))
-          .get()
-          .then((rows) => rows.length);
+      final count =
+          await (_db.select(_db.scanSessionNodes)
+                ..where((t) => t.sessionId.equals(sessionId)))
+              .get()
+              .then((rows) => rows.length);
 
-      await (_db.update(_db.scanSessions)
-            ..where((t) => t.id.equals(sessionId)))
-          .write(ScanSessionsCompanion(
-        nodesDetected: Value(count),
-      ));
+      await (_db.update(_db.scanSessions)..where((t) => t.id.equals(sessionId)))
+          .write(ScanSessionsCompanion(nodesDetected: Value(count)));
     });
   }
 
   @override
   Future<int?> getActiveSession() async {
-    final session = await (_db.select(_db.scanSessions)
-          ..where((t) => t.endedAt.isNull())
-          ..orderBy(
-              [(t) => OrderingTerm(expression: t.startedAt, mode: OrderingMode.desc)])
-          ..limit(1))
-        .getSingleOrNull();
+    final session =
+        await (_db.select(_db.scanSessions)
+              ..where((t) => t.endedAt.isNull())
+              ..orderBy([
+                (t) => OrderingTerm(
+                  expression: t.startedAt,
+                  mode: OrderingMode.desc,
+                ),
+              ])
+              ..limit(1))
+            .getSingleOrNull();
     return session?.id;
   }
 }

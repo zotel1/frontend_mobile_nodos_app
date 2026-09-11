@@ -174,12 +174,13 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
   }
 
   Future<void> _onLoadNodes(
-      LoadNodes event, Emitter<NodeListState> emit) async {
+    LoadNodes event,
+    Emitter<NodeListState> emit,
+  ) async {
     _ensureSubscription();
   }
 
-  void _onNodeDetected(
-      NodeDetected event, Emitter<NodeListState> emit) {
+  void _onNodeDetected(NodeDetected event, Emitter<NodeListState> emit) {
     emit(NodeListLoaded([event.node]));
   }
 
@@ -187,7 +188,9 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
   /// se emiten automáticamente sin necesidad de cancelar y recrear
   /// la suscripción. Este handler es un no-op intencional.
   Future<void> _onRefreshNodes(
-      RefreshNodes event, Emitter<NodeListState> emit) async {}
+    RefreshNodes event,
+    Emitter<NodeListState> emit,
+  ) async {}
 
   /// Convierte dispositivos BLE detectados en entidades [Node] y las persiste.
   ///
@@ -227,21 +230,21 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
         if (updatedHistory.length > 20) {
           updatedHistory.removeAt(0);
         }
-          processed[device.deviceId] = Node(
-            id: existing.id,
-            bleAddress: existing.bleAddress,
-            name: existing.name,
-            color: existing.color,
-            firstSeen: existing.firstSeen,
-            lastSeen: DateTime.now(),
-            rssiHistory: updatedHistory,
-            suggestedName: existing.suggestedName,
-            deviceType: device.deviceType ?? existing.deviceType,
-            connectable: device.connectable,
-            estimatedDistance: device.rssi < 0
-                ? rssiToDistance(device.rssi, txPowerLevel: device.txPowerLevel)
-                : null,
-          );
+        processed[device.deviceId] = Node(
+          id: existing.id,
+          bleAddress: existing.bleAddress,
+          name: existing.name,
+          color: existing.color,
+          firstSeen: existing.firstSeen,
+          lastSeen: DateTime.now(),
+          rssiHistory: updatedHistory,
+          suggestedName: existing.suggestedName,
+          deviceType: device.deviceType ?? existing.deviceType,
+          connectable: device.connectable,
+          estimatedDistance: device.rssi < 0
+              ? rssiToDistance(device.rssi, txPowerLevel: device.txPowerLevel)
+              : null,
+        );
       } else {
         // Nuevo nodo (o primera aparición en este batch).
         // T1.6: mapear advName → suggestedName y deviceType.
@@ -253,15 +256,15 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
           firstSeen: DateTime.now(),
           lastSeen: DateTime.now(),
           rssiHistory: [device.rssi],
-              suggestedName: device.advName != null && device.advName!.isNotEmpty
-                  ? device.advName
-                  : null,
-              deviceType: device.deviceType,
-              connectable: device.connectable,
-              estimatedDistance: device.rssi < 0
-                  ? rssiToDistance(device.rssi, txPowerLevel: device.txPowerLevel)
-                  : null,
-            );
+          suggestedName: device.advName != null && device.advName!.isNotEmpty
+              ? device.advName
+              : null,
+          deviceType: device.deviceType,
+          connectable: device.connectable,
+          estimatedDistance: device.rssi < 0
+              ? rssiToDistance(device.rssi, txPowerLevel: device.txPowerLevel)
+              : null,
+        );
       }
     }
 
@@ -284,7 +287,9 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
   /// POR QUÉ: pipeline R5.17 — cuando BT se apaga, los nodos deben
   /// desaparecer de la UI y el contador debe llegar a 0.
   Future<void> _onClearNodes(
-      ClearNodes event, Emitter<NodeListState> emit) async {
+    ClearNodes event,
+    Emitter<NodeListState> emit,
+  ) async {
     await _nodeRepository.clearAllNodes();
     // El stream Drift .watch() emitirá automáticamente la lista vacía
     // sin necesidad de cancelar y recrear la suscripción.
@@ -296,7 +301,9 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
   /// el nombre, luego re-suscribe al stream Drift para emitir la
   /// lista actualizada con el nuevo nombre.
   Future<void> _onUpdateNodeName(
-      UpdateNodeName event, Emitter<NodeListState> emit) async {
+    UpdateNodeName event,
+    Emitter<NodeListState> emit,
+  ) async {
     await updateNodeMetadata(
       UpdateNodeMetadataParams(id: event.nodeId, name: event.name),
     );
@@ -309,7 +316,9 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
   /// el color, luego re-suscribe al stream Drift para emitir la
   /// lista actualizada con el nuevo color.
   Future<void> _onUpdateNodeColor(
-      UpdateNodeColor event, Emitter<NodeListState> emit) async {
+    UpdateNodeColor event,
+    Emitter<NodeListState> emit,
+  ) async {
     await updateNodeMetadata(
       UpdateNodeMetadataParams(id: event.nodeId, color: event.color),
     );
@@ -346,12 +355,13 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
   }
 
   void _onNodesUpdatedEmpty(
-      _NodesUpdatedEmpty event, Emitter<NodeListState> emit) {
+    _NodesUpdatedEmpty event,
+    Emitter<NodeListState> emit,
+  ) {
     emit(const NodeListEmpty());
   }
 
-  void _onNodesLoadError(
-      _NodesLoadError event, Emitter<NodeListState> emit) {
+  void _onNodesLoadError(_NodesLoadError event, Emitter<NodeListState> emit) {
     emit(NodeListError(event.message));
   }
 

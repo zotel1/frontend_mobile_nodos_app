@@ -53,47 +53,46 @@ class ScaffoldWithNavBar extends StatelessWidget {
     return BlocListener<UserBloc, UserState>(
       listener: (context, userState) {
         if (userState is UserLoaded) {
-          bleBloc.add(StartAdvertise(
-            userState.user.uuid,
-            userState.user.name,
-            userState.user.color,
-          ));
+          bleBloc.add(
+            StartAdvertise(
+              userState.user.uuid,
+              userState.user.name,
+              userState.user.color,
+            ),
+          );
         }
       },
       child: Scaffold(
         body: navigationShell,
         bottomNavigationBar: BottomNavigationBar(
-        currentIndex: navigationShell.currentIndex,
-        onTap: (index) {
-          // T2.5: Auto-scan lifecycle por tab
-          // Si el usuario entra a Home (índice 0), inicia el escaneo.
-          // Si sale de Home (currentIndex era 0), detiene el escaneo.
-          if (index == 0) {
-            bleBloc.add(const StartScan());
-          } else if (navigationShell.currentIndex == 0) {
-            bleBloc.add(const StopScan());
-          }
+          currentIndex: navigationShell.currentIndex,
+          onTap: (index) {
+            // T2.5: Auto-scan lifecycle por tab
+            // Si el usuario entra a Home (índice 0), inicia el escaneo.
+            // Si sale de Home (currentIndex era 0), detiene el escaneo.
+            if (index == 0) {
+              bleBloc.add(const StartScan());
+            } else if (navigationShell.currentIndex == 0) {
+              bleBloc.add(const StopScan());
+            }
 
-          navigationShell.goBranch(
-            index,
-            initialLocation: index == navigationShell.currentIndex,
-          );
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.history),
-            label: 'Historial',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart),
-            label: 'Stats',
-          ),
-        ],
-      ),
+            navigationShell.goBranch(
+              index,
+              initialLocation: index == navigationShell.currentIndex,
+            );
+          },
+          items: const [
+            BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.history),
+              label: 'Historial',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.bar_chart),
+              label: 'Stats',
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -110,14 +109,10 @@ class NodosApp extends StatelessWidget {
         BlocProvider<NodeListBloc>(create: (_) => sl<NodeListBloc>()),
         BlocProvider<UserBloc>(create: (_) => sl<UserBloc>()),
         // BleConnectionBloc: gestiona conexiones GATT punto a punto (Enlazar).
-        BlocProvider<BleConnectionBloc>(
-          create: (_) => sl<BleConnectionBloc>(),
-        ),
+        BlocProvider<BleConnectionBloc>(create: (_) => sl<BleConnectionBloc>()),
         // VisualizationBloc: construye y posiciona el grafo de nodos
         // cuando hay 5+ dispositivos BLE detectados.
-        BlocProvider<VisualizationBloc>(
-          create: (_) => sl<VisualizationBloc>(),
-        ),
+        BlocProvider<VisualizationBloc>(create: (_) => sl<VisualizationBloc>()),
         // HistoryBloc: orquesta el historial de sesiones y estadísticas.
         // Compartido entre HistoryTab y StatsTab via BlocProvider.
         BlocProvider<HistoryBloc>(create: (_) => sl<HistoryBloc>()),
@@ -214,10 +209,7 @@ final _router = GoRouter(
   },
   routes: [
     // PR3: Ruta de onboarding — primera ejecución.
-    GoRoute(
-      path: '/onboarding',
-      builder: (_, _) => const OnboardingPage(),
-    ),
+    GoRoute(path: '/onboarding', builder: (_, _) => const OnboardingPage()),
     // T1.9: BottomNavigationBar con 3 tabs usando IndexedStack.
     // Cada tab preserva su estado al cambiar entre ellas.
     StatefulShellRoute.indexedStack(
@@ -226,29 +218,18 @@ final _router = GoRouter(
       branches: [
         // Tab 0: Home — escaneo BLE y lista/grafo de nodos.
         StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/',
-              builder: (_, _) => const HomePage(),
-            ),
-          ],
+          routes: [GoRoute(path: '/', builder: (_, _) => const HomePage())],
         ),
         // Tab 1: Historial — sesiones pasadas y filtros.
         StatefulShellBranch(
           routes: [
-            GoRoute(
-              path: '/history',
-              builder: (_, _) => const HistoryTab(),
-            ),
+            GoRoute(path: '/history', builder: (_, _) => const HistoryTab()),
           ],
         ),
         // Tab 2: Stats — estadísticas agregadas.
         StatefulShellBranch(
           routes: [
-            GoRoute(
-              path: '/stats',
-              builder: (_, _) => const StatsTab(),
-            ),
+            GoRoute(path: '/stats', builder: (_, _) => const StatsTab()),
           ],
         ),
       ],
@@ -256,13 +237,9 @@ final _router = GoRouter(
     // Rutas accesibles desde cualquier tab (no forman parte del shell).
     GoRoute(
       path: '/node/:id',
-      builder: (_, state) => NodeDetailPage(
-        id: int.parse(state.pathParameters['id']!),
-      ),
+      builder: (_, state) =>
+          NodeDetailPage(id: int.parse(state.pathParameters['id']!)),
     ),
-    GoRoute(
-      path: '/settings',
-      builder: (_, _) => const SettingsPage(),
-    ),
+    GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
   ],
 );

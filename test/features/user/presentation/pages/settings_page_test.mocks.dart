@@ -3,9 +3,11 @@
 // Do not manually edit this file.
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
-import 'dart:async' as _i6;
+import 'dart:async' as _i7;
 
-import 'package:flutter_bloc/flutter_bloc.dart' as _i7;
+import 'package:flutter_bloc/flutter_bloc.dart' as _i8;
+import 'package:frontend_mobile_nodos_app/features/nodes/domain/usecases/ensure_local_node.dart'
+    as _i5;
 import 'package:frontend_mobile_nodos_app/features/user/domain/usecases/get_user_profile.dart'
     as _i2;
 import 'package:frontend_mobile_nodos_app/features/user/domain/usecases/update_user_color.dart'
@@ -13,7 +15,7 @@ import 'package:frontend_mobile_nodos_app/features/user/domain/usecases/update_u
 import 'package:frontend_mobile_nodos_app/features/user/domain/usecases/update_user_name.dart'
     as _i3;
 import 'package:frontend_mobile_nodos_app/features/user/presentation/bloc/user_bloc.dart'
-    as _i5;
+    as _i6;
 import 'package:mockito/mockito.dart' as _i1;
 
 // ignore_for_file: type=lint
@@ -49,15 +51,21 @@ class _FakeUpdateUserColor_2 extends _i1.SmartFake
     : super(parent, parentInvocation);
 }
 
-class _FakeUserState_3 extends _i1.SmartFake implements _i5.UserState {
-  _FakeUserState_3(Object parent, Invocation parentInvocation)
+class _FakeEnsureLocalNode_3 extends _i1.SmartFake
+    implements _i5.EnsureLocalNode {
+  _FakeEnsureLocalNode_3(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeUserState_4 extends _i1.SmartFake implements _i6.UserState {
+  _FakeUserState_4(Object parent, Invocation parentInvocation)
     : super(parent, parentInvocation);
 }
 
 /// A class which mocks [UserBloc].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockUserBloc extends _i1.Mock implements _i5.UserBloc {
+class MockUserBloc extends _i1.Mock implements _i6.UserBloc {
   @override
   _i2.GetUserProfile get getProfile =>
       (super.noSuchMethod(
@@ -104,6 +112,21 @@ class MockUserBloc extends _i1.Mock implements _i5.UserBloc {
           as _i4.UpdateUserColor);
 
   @override
+  _i5.EnsureLocalNode get ensureLocalNode =>
+      (super.noSuchMethod(
+            Invocation.getter(#ensureLocalNode),
+            returnValue: _FakeEnsureLocalNode_3(
+              this,
+              Invocation.getter(#ensureLocalNode),
+            ),
+            returnValueForMissingStub: _FakeEnsureLocalNode_3(
+              this,
+              Invocation.getter(#ensureLocalNode),
+            ),
+          )
+          as _i5.EnsureLocalNode);
+
+  @override
   bool get isClosed =>
       (super.noSuchMethod(
             Invocation.getter(#isClosed),
@@ -113,78 +136,78 @@ class MockUserBloc extends _i1.Mock implements _i5.UserBloc {
           as bool);
 
   @override
-  _i5.UserState get state =>
+  _i6.UserState get state =>
       (super.noSuchMethod(
             Invocation.getter(#state),
-            returnValue: _FakeUserState_3(this, Invocation.getter(#state)),
-            returnValueForMissingStub: _FakeUserState_3(
+            returnValue: _FakeUserState_4(this, Invocation.getter(#state)),
+            returnValueForMissingStub: _FakeUserState_4(
               this,
               Invocation.getter(#state),
             ),
           )
-          as _i5.UserState);
+          as _i6.UserState);
 
   @override
-  _i6.Stream<_i5.UserState> get stream =>
+  _i7.Stream<_i6.UserState> get stream =>
       (super.noSuchMethod(
             Invocation.getter(#stream),
-            returnValue: _i6.Stream<_i5.UserState>.empty(),
-            returnValueForMissingStub: _i6.Stream<_i5.UserState>.empty(),
+            returnValue: _i7.Stream<_i6.UserState>.empty(),
+            returnValueForMissingStub: _i7.Stream<_i6.UserState>.empty(),
           )
-          as _i6.Stream<_i5.UserState>);
+          as _i7.Stream<_i6.UserState>);
 
   @override
-  void add(_i5.UserEvent? event) => super.noSuchMethod(
+  void add(_i6.UserEvent? event) => super.noSuchMethod(
     Invocation.method(#add, [event]),
     returnValueForMissingStub: null,
   );
 
   @override
-  void onEvent(_i5.UserEvent? event) => super.noSuchMethod(
+  void onEvent(_i6.UserEvent? event) => super.noSuchMethod(
     Invocation.method(#onEvent, [event]),
     returnValueForMissingStub: null,
   );
 
   @override
-  void emit(_i5.UserState? state) => super.noSuchMethod(
+  void emit(_i6.UserState? state) => super.noSuchMethod(
     Invocation.method(#emit, [state]),
     returnValueForMissingStub: null,
   );
 
   @override
-  void on<E extends _i5.UserEvent>(
-    _i7.EventHandler<E, _i5.UserState>? handler, {
-    _i7.EventTransformer<E>? transformer,
+  void on<E extends _i6.UserEvent>(
+    _i8.EventHandler<E, _i6.UserState>? handler, {
+    _i8.EventTransformer<E>? transformer,
   }) => super.noSuchMethod(
     Invocation.method(#on, [handler], {#transformer: transformer}),
     returnValueForMissingStub: null,
   );
 
   @override
-  void onTransition(_i7.Transition<_i5.UserEvent, _i5.UserState>? transition) =>
+  void onTransition(_i8.Transition<_i6.UserEvent, _i6.UserState>? transition) =>
       super.noSuchMethod(
         Invocation.method(#onTransition, [transition]),
         returnValueForMissingStub: null,
       );
 
   @override
-  void onDone(_i5.UserEvent? event, [Object? error, StackTrace? stackTrace]) =>
+  void onDone(_i6.UserEvent? event, [Object? error, StackTrace? stackTrace]) =>
       super.noSuchMethod(
         Invocation.method(#onDone, [event, error, stackTrace]),
         returnValueForMissingStub: null,
       );
 
   @override
-  _i6.Future<void> close() =>
+  _i7.Future<void> close() =>
       (super.noSuchMethod(
             Invocation.method(#close, []),
-            returnValue: _i6.Future<void>.value(),
-            returnValueForMissingStub: _i6.Future<void>.value(),
+            returnValue: _i7.Future<void>.value(),
+            returnValueForMissingStub: _i7.Future<void>.value(),
           )
-          as _i6.Future<void>);
+          as _i7.Future<void>);
 
   @override
-  void onChange(_i7.Change<_i5.UserState>? change) => super.noSuchMethod(
+  void onChange(_i8.Change<_i6.UserState>? change) => super.noSuchMethod(
     Invocation.method(#onChange, [change]),
     returnValueForMissingStub: null,
   );

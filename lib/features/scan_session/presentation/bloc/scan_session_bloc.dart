@@ -115,8 +115,8 @@ class ScanSessionBloc extends Bloc<ScanSessionEvent, ScanSessionState> {
   final ScanSessionRepository _repository;
 
   ScanSessionBloc({required ScanSessionRepository repository})
-      : _repository = repository,
-        super(const SessionInitial()) {
+    : _repository = repository,
+      super(const SessionInitial()) {
     on<StartSession>(_onStartSession);
     on<EndSession>(_onEndSession);
     on<AddNodesToSession>(_onAddNodesToSession);
@@ -161,10 +161,12 @@ class ScanSessionBloc extends Bloc<ScanSessionEvent, ScanSessionState> {
 
       final currentState = state;
       if (currentState is SessionActive) {
-        emit(SessionActive(
-          sessionId: currentState.sessionId,
-          nodeCount: currentState.nodeCount + event.nodeIds.length,
-        ));
+        emit(
+          SessionActive(
+            sessionId: currentState.sessionId,
+            nodeCount: currentState.nodeCount + event.nodeIds.length,
+          ),
+        );
       }
     } catch (e) {
       emit(SessionError('Error al agregar nodos: $e'));

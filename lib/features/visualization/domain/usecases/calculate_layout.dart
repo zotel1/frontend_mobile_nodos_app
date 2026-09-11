@@ -52,7 +52,8 @@ class CalculateLayout {
       // su posición inicial del anillo (calculada en GraphRepositoryImpl).
       //
       // Determinar iteraciones: menos si hay cache de posiciones
-      final hasCache = priorLayout != null &&
+      final hasCache =
+          priorLayout != null &&
           priorLayout.nodes.any((n) => n.x != 0.0 || n.y != 0.0);
       final iterations = hasCache ? 30 : 100;
       final temperature = hasCache ? width / 20 : width / 10;
@@ -118,10 +119,7 @@ class CalculateLayout {
       return Right(result);
     } catch (e) {
       // Capturar errores del algoritmo (spawn fallido, excepción, etc.)
-      return Left(UnexpectedFailure(
-        'Error al calcular layout del grafo: $e',
-      ));
+      return Left(UnexpectedFailure('Error al calcular layout del grafo: $e'));
     }
   }
 }
-
