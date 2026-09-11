@@ -86,10 +86,7 @@ class BleConnectionError extends BleConnectionState {
   final String message;
   final bool retryable;
 
-  const BleConnectionError({
-    required this.message,
-    required this.retryable,
-  });
+  const BleConnectionError({required this.message, required this.retryable});
 
   @override
   List<Object?> get props => [message, retryable];
@@ -155,8 +152,7 @@ class RemoteIdentityUnavailable extends BleConnectionState {
 ///
 /// Depende de [BleConnectionRepository] para operaciones GATT y persistencia,
 /// y de [NodeRepository] para lookup de nodeId por bleAddress.
-class BleConnectionBloc
-    extends Bloc<BleConnectionEvent, BleConnectionState> {
+class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
   final BleConnectionRepository _connectionRepo;
   final NodeRepository _nodeRepository;
   StreamSubscription<bool>? _stateSubscription;
@@ -164,9 +160,9 @@ class BleConnectionBloc
   BleConnectionBloc({
     required BleConnectionRepository connectionRepository,
     required NodeRepository nodeRepository,
-  })  : _connectionRepo = connectionRepository,
-        _nodeRepository = nodeRepository,
-        super(const BleConnectionInitial()) {
+  }) : _connectionRepo = connectionRepository,
+       _nodeRepository = nodeRepository,
+       super(const BleConnectionInitial()) {
     on<ConnectToDevice>(_onConnect);
     on<DisconnectDevice>(_onDisconnect);
     on<_ConnectionStateChanged>(_onConnectionStateChanged);
@@ -187,10 +183,12 @@ class BleConnectionBloc
     try {
       final permission = await Permission.bluetoothConnect.request();
       if (!permission.isGranted) {
-        emit(const BleConnectionError(
-          message: 'Permiso BLUETOOTH_CONNECT requerido',
-          retryable: false,
-        ));
+        emit(
+          const BleConnectionError(
+            message: 'Permiso BLUETOOTH_CONNECT requerido',
+            retryable: false,
+          ),
+        );
         return;
       }
     } catch (_) {
@@ -207,14 +205,16 @@ class BleConnectionBloc
       _stateSubscription = _connectionRepo
           .connectionState(event.remoteId)
           .listen((connected) {
-        if (!isClosed) {
-          add(_ConnectionStateChanged(
-            remoteId: event.remoteId,
-            connected: connected,
-            myNodeId: event.myNodeId,
-          ));
-        }
-      });
+            if (!isClosed) {
+              add(
+                _ConnectionStateChanged(
+                  remoteId: event.remoteId,
+                  connected: connected,
+                  myNodeId: event.myNodeId,
+                ),
+              );
+            }
+          });
 
       // Emitir BleConnected — la lógica post-conexión ocurre
       // en _onConnectionStateChanged cuando el stream emita true.
@@ -242,8 +242,7 @@ class BleConnectionBloc
 
     // ── 1. Insertar fila en connections ──
     try {
-      final remoteNode =
-          await _nodeRepository.getNodeByBleAddress(remoteId);
+      final remoteNode = await _nodeRepository.getNodeByBleAddress(remoteId);
       if (remoteNode != null && remoteNode.id != null) {
         await _connectionRepo.saveConnection(event.myNodeId, remoteNode.id!);
         emit(ConnectionInserted(remoteId: remoteId));
@@ -267,11 +266,9 @@ class BleConnectionBloc
         final name = data['name'] as String? ?? 'Desconocido';
         final color = data['color'] as String? ?? '#2196F3';
 
-        emit(RemoteIdentityLoaded(
-          remoteId: remoteId,
-          name: name,
-          color: color,
-        ));
+        emit(
+          RemoteIdentityLoaded(remoteId: remoteId, name: name, color: color),
+        );
         return;
       }
     } catch (_) {

@@ -36,6 +36,12 @@ class SessionNode extends Equatable {
   });
 
   @override
-  List<Object?> get props =>
-      [id, sessionId, nodeId, rssi, nodeName, proximityLevel];
+  List<Object?> get props => [
+    id,
+    sessionId,
+    nodeId,
+    rssi,
+    nodeName,
+    proximityLevel,
+  ];
 }

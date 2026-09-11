@@ -213,10 +213,7 @@ class _TooltipContentState extends State<_TooltipContent> {
                   // ID del nodo
                   Text(
                     'ID: ${widget.node.id ?? "—"}',
-                    style: const TextStyle(
-                      color: Colors.grey,
-                      fontSize: 11,
-                    ),
+                    style: const TextStyle(color: Colors.grey, fontSize: 11),
                   ),
                   // T3.9: Label de distancia adaptativo (R5.15)
                   // ≥1m → "~2.3m", <1m → "~35cm"
@@ -224,10 +221,7 @@ class _TooltipContentState extends State<_TooltipContent> {
                     const SizedBox(height: 4),
                     Text(
                       _formatDistance(widget.node.estimatedDistance!),
-                      style: const TextStyle(
-                        color: Colors.grey,
-                        fontSize: 11,
-                      ),
+                      style: const TextStyle(color: Colors.grey, fontSize: 11),
                     ),
                   ],
                   // T3.6 + T3.10: Botón "Enlazar" — inicia conexión GATT.
@@ -238,8 +232,9 @@ class _TooltipContentState extends State<_TooltipContent> {
                       width: double.infinity,
                       height: 28,
                       child: ElevatedButton.icon(
-                        onPressed:
-                            widget.node.connectable ? widget.onEnlazar : null,
+                        onPressed: widget.node.connectable
+                            ? widget.onEnlazar
+                            : null,
                         icon: const Icon(Icons.link, size: 14),
                         label: const Text(
                           'Enlazar',

@@ -64,12 +64,10 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   int? get scanSessionId => _scanSessionId;
   int? _scanSessionId;
 
-  BleBloc({
-    required this.repository,
-    Duration? dutyCyclePeriod,
-  })  : _dutyCyclePeriod =
-            dutyCyclePeriod ?? dutyCycleScanDuration + dutyCyclePauseDuration,
-        super(const BleInitial()) {
+  BleBloc({required this.repository, Duration? dutyCyclePeriod})
+    : _dutyCyclePeriod =
+          dutyCyclePeriod ?? dutyCycleScanDuration + dutyCyclePauseDuration,
+      super(const BleInitial()) {
     on<StartScan>(_onStartScan);
     on<StopScan>(_onStopScan);
     on<StartAdvertise>(_onStartAdvertise);
@@ -89,14 +87,11 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     /// datos BLE) los dispositivos acumulados NUNCA se evictarían.
     /// Con 30s de intervalo, la UI se mantiene actualizada incluso
     /// en períodos sin actividad BLE.
-    _evictionTimer = Timer.periodic(
-      const Duration(seconds: 30),
-      (_) {
-        if (!isClosed) {
-          add(const EvictStaleDevices());
-        }
-      },
-    );
+    _evictionTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!isClosed) {
+        add(const EvictStaleDevices());
+      }
+    });
 
     /// Suscripción al estado real del adaptador Bluetooth.
     ///
@@ -121,9 +116,11 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     // QUÉ resuelve: el usuario sabe por qué no ve dispositivos en lugar
     // de quedarse con un BleScanning vacío sin feedback.
     if (state is BluetoothOff) {
-      emit(const BleError(
-        'Bluetooth está apagado. Enciéndelo desde Ajustes para escanear.',
-      ));
+      emit(
+        const BleError(
+          'Bluetooth está apagado. Enciéndelo desde Ajustes para escanear.',
+        ),
+      );
       return;
     }
 
@@ -189,23 +186,25 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   }
 
   Future<void> _onStartAdvertise(
-      StartAdvertise event, Emitter<BleState> emit) async {
-    await repository.startAdvertise(
-      event.deviceUuid,
-      event.name,
-      event.color,
-    );
+    StartAdvertise event,
+    Emitter<BleState> emit,
+  ) async {
+    await repository.startAdvertise(event.deviceUuid, event.name, event.color);
     emit(const BleAdvertising());
   }
 
   Future<void> _onStopAdvertise(
-      StopAdvertise event, Emitter<BleState> emit) async {
+    StopAdvertise event,
+    Emitter<BleState> emit,
+  ) async {
     await repository.stopAdvertise();
     emit(const BleStopped());
   }
 
   void _onBluetoothStateChanged(
-      BluetoothStateChanged event, Emitter<BleState> emit) {
+    BluetoothStateChanged event,
+    Emitter<BleState> emit,
+  ) {
     if (event.isOn) {
       emit(const BleStopped());
     } else {
@@ -269,11 +268,10 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   /// Delega la lógica pesada a [accumulateDevices] (función pura) y
   /// actualiza [_accumulatedDevices] + emite el resultado.
   void _onScanResultsUpdated(
-      _ScanResultsUpdated event, Emitter<BleState> emit) {
-    final accumulated = accumulateDevices(
-      _accumulatedDevices,
-      event.devices,
-    );
+    _ScanResultsUpdated event,
+    Emitter<BleState> emit,
+  ) {
+    final accumulated = accumulateDevices(_accumulatedDevices, event.devices);
 
     // Reconstruir el mapa desde la lista resultante
     _accumulatedDevices.clear();
@@ -288,8 +286,7 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   /// Disparado por el timer periódico cada 30s. Si después de la evicción
   /// la lista cambió (se removió al menos un dispositivo), emite el
   /// nuevo estado para que la UI se actualice.
-  void _onEvictStaleDevices(
-      EvictStaleDevices event, Emitter<BleState> emit) {
+  void _onEvictStaleDevices(EvictStaleDevices event, Emitter<BleState> emit) {
     if (_accumulatedDevices.isEmpty) return;
 
     final before = _accumulatedDevices.length;

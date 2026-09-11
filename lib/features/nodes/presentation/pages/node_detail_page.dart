@@ -30,7 +30,9 @@ class NodeDetailPage extends StatelessWidget {
 
         return Scaffold(
           appBar: AppBar(
-            title: Text(node?.name ?? node?.suggestedName ?? 'Detalle del nodo'),
+            title: Text(
+              node?.name ?? node?.suggestedName ?? 'Detalle del nodo',
+            ),
           ),
           body: node == null
               ? const Center(child: Text('Nodo no encontrado'))
@@ -52,8 +54,9 @@ class NodeDetailPage extends StatelessWidget {
     final proximity = node.rssiHistory.isNotEmpty
         ? rssiToProximity(node.rssiHistory.last)
         : ProximityLevel.far;
-    final lastRssi =
-        node.rssiHistory.isNotEmpty ? '${node.rssiHistory.last} dBm' : 'N/A';
+    final lastRssi = node.rssiHistory.isNotEmpty
+        ? '${node.rssiHistory.last} dBm'
+        : 'N/A';
 
     return ListView(
       padding: const EdgeInsets.all(24),
@@ -75,7 +78,7 @@ class NodeDetailPage extends StatelessWidget {
         ListTile(
           leading: const Icon(Icons.bluetooth),
           title: const Text('Dirección BLE'),
-          subtitle: Text(node.bleAddress),
+          subtitle: Text(node.bleAddress ?? 'No disponible'),
         ),
         // First Seen
         ListTile(
@@ -119,8 +122,10 @@ class NodeDetailPage extends StatelessWidget {
                 final rssi = node.rssiHistory[index];
                 final color = _rssiColor(rssi);
                 return Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: color.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
@@ -138,22 +143,36 @@ class NodeDetailPage extends StatelessWidget {
             ),
           ),
         ],
-        // T3.7: Botón "Enlazar" — inicia conexión GATT con este dispositivo
-        if (onEnlazar != null)
-          Padding(
-          padding: const EdgeInsets.only(top: 24),
-          child: SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-                onPressed: () => onEnlazar?.call(node.bleAddress),
-              icon: const Icon(Icons.link),
-              label: const Text('Enlazar'),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-            ),
+        // El self-node no tiene dirección BLE propia y nunca debe
+// intentar conectarse consigo mismo.
+//
+// También ocultamos el botón si el nodo no dispone de una
+// dirección BLE utilizable.
+if (onEnlazar != null &&
+    node.bleAddress != null &&
+    !node.isSelf)
+  Padding(
+    padding: const EdgeInsets.only(top: 24),
+    child: SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: () {
+          onEnlazar!.call(node.bleAddress!);
+        },
+        icon: const Icon(Icons.link),
+        label: const Text('Enlazar'),
+        style: ElevatedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(
+            vertical: 14,
           ),
         ),
+      ),
+    ),
+  ),
+
+
+          
+
       ],
     );
   }
@@ -162,14 +181,14 @@ class NodeDetailPage extends StatelessWidget {
       '${dt.day}/${dt.month}/${dt.year} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
 
   String _proximityLabel(ProximityLevel level) => switch (level) {
-        ProximityLevel.close => 'Cerca (< 3m)',
-        ProximityLevel.medium => 'Media (3-6m)',
-        ProximityLevel.far => 'Lejos (> 6m)',
-      };
+    ProximityLevel.close => 'Cerca (< 3m)',
+    ProximityLevel.medium => 'Media (3-6m)',
+    ProximityLevel.far => 'Lejos (> 6m)',
+  };
 
   Color _rssiColor(int rssi) => rssiToProximity(rssi) == ProximityLevel.close
       ? Colors.green
       : rssiToProximity(rssi) == ProximityLevel.medium
-          ? Colors.amber
-          : Colors.red;
+      ? Colors.amber
+      : Colors.red;
 }

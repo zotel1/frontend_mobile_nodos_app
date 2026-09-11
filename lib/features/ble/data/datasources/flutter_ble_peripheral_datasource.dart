@@ -29,7 +29,10 @@ class FlutterBlePeripheralDataSource implements BleAdvertiserDataSource {
   /// determinística y no requiere hardware.
   @visibleForTesting
   static Uint8List buildIdentityPayload(
-      String deviceUuid, String name, String color) {
+    String deviceUuid,
+    String name,
+    String color,
+  ) {
     final identityJson = jsonEncode({
       'uuid': deviceUuid,
       'name': name,
@@ -40,7 +43,10 @@ class FlutterBlePeripheralDataSource implements BleAdvertiserDataSource {
 
   @override
   Future<void> startAdvertise(
-      String deviceUuid, String name, String color) async {
+    String deviceUuid,
+    String name,
+    String color,
+  ) async {
     final manufacturerData = buildIdentityPayload(deviceUuid, name, color);
 
     final advertiseData = AdvertiseData(

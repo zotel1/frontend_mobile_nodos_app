@@ -14,9 +14,9 @@ class BleRepositoryImpl implements BleRepository {
     required BleScannerDataSource scanner,
     required BleAdvertiserDataSource advertiser,
     ScanSessionRepository? sessionRepository,
-  })  : _scanner = scanner,
-        _advertiser = advertiser,
-        _sessionRepository = sessionRepository;
+  }) : _scanner = scanner,
+       _advertiser = advertiser,
+       _sessionRepository = sessionRepository;
 
   @override
   Stream<List<BleDevice>> get scanResults => _scanner.scanResults;
@@ -30,9 +30,7 @@ class BleRepositoryImpl implements BleRepository {
   /// el UUID Nodos, por lo que el filtro previo resultaba en
   /// cero detecciones. El escaneo promiscuo detecta todo BLE.
   @override
-  Future<void> startScan() => _scanner.startScan(
-        serviceUuids: null,
-      );
+  Future<void> startScan() => _scanner.startScan(serviceUuids: null);
 
   @override
   Future<void> stopScan() => _scanner.stopScan();
@@ -43,8 +41,7 @@ class BleRepositoryImpl implements BleRepository {
   /// deviceUuid, name y color para que otros dispositivos Nodos
   /// detecten este dispositivo vía escaneo BLE.
   @override
-  Future<void> startAdvertise(
-          String deviceUuid, String name, String color) =>
+  Future<void> startAdvertise(String deviceUuid, String name, String color) =>
       _advertiser.startAdvertise(deviceUuid, name, color);
 
   @override

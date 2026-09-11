@@ -16,19 +16,25 @@ class BuildGraph {
 
   /// Construye el grafo para la sesión de escaneo [scanSessionId].
   ///
-  /// [myDeviceUuid] opcional identifica el dispositivo propio para
-  /// marcar el self-node con isSelf=true en el grafo.
-  /// [userName] y [userColor] opcionales para el self-node sintético
-  /// (REQ-SN-01) — se pasan al repositorio para inyectar el nodo propio.
-  /// Retorna [Right] con el LayoutResult si la construcción es exitosa,
-  /// o [Left] con un Failure si ocurre un error inesperado.
-  Future<Either<Failure, LayoutResult>> call(int scanSessionId,
-      {String? myDeviceUuid, String? userName, String? userColor}) async {
+  /// ARCH-001:
+  /// el self-node es una entidad Node persistente real y no utiliza id=-1.
+  ///
+  /// Los parámetros [myDeviceUuid], [userName] y [userColor] permanecen
+  /// temporalmente por compatibilidad mientras se completa la migración
+  /// de los consumidores del grafo.
+  Future<Either<Failure, LayoutResult>> call(
+    int scanSessionId, {
+    String? myDeviceUuid,
+    String? userName,
+    String? userColor,
+  }) async {
     try {
-      final result = await _repository.buildGraph(scanSessionId,
-          myDeviceUuid: myDeviceUuid,
-          userName: userName,
-          userColor: userColor);
+      final result = await _repository.buildGraph(
+        scanSessionId,
+        myDeviceUuid: myDeviceUuid,
+        userName: userName,
+        userColor: userColor,
+      );
       return Right(result);
     } catch (e) {
       return Left(UnexpectedFailure(e.toString()));

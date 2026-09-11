@@ -87,8 +87,7 @@ class GraphNode extends Equatable {
   ///
   /// Fórmula LinkedIn Maps: `(12 + degree*3).clamp(12, 50)`.
   /// Aislados (0 conexiones) = 12px, muy conectados = hasta 50px.
-  double get radius =>
-      (12.0 + connectionCount * 3.0).clamp(12.0, 50.0);
+  double get radius => (12.0 + connectionCount * 3.0).clamp(12.0, 50.0);
 
   /// Color de relleno según nivel de proximidad (ARGB int).
   /// Verde (close=0xFF4CAF50), ámbar (medium=0xFFFFC107), rojo (far=0xFFF44336).
@@ -96,18 +95,17 @@ class GraphNode extends Equatable {
   /// Retorna un int ARGB para mantener el dominio libre de dependencias
   /// de Flutter. La capa de presentación convierte con Color(node.color).
   int get color => switch (proximity) {
-        ProximityLevel.close => 0xFF4CAF50,
-        ProximityLevel.medium => 0xFFFFC107,
-        ProximityLevel.far => 0xFFF44336,
-      };
+    ProximityLevel.close => 0xFF4CAF50,
+    ProximityLevel.medium => 0xFFFFC107,
+    ProximityLevel.far => 0xFFF44336,
+  };
 
   /// Color efectivo para renderizar el nodo (ARGB int).
   ///
   /// Prioridad: si el usuario asignó [userColor], se usa ese color.
   /// Caso contrario, se usa el color derivado de proximidad [color].
   /// R5.6 — user-assigned colors must override proximity color.
-  int get displayColor =>
-      userColor ?? color;
+  int get displayColor => userColor ?? color;
 
   /// Indica si el nodo tiene identidad conocida (nombre asignado).
   ///
@@ -121,6 +119,18 @@ class GraphNode extends Equatable {
   String get label => name ?? suggestedName ?? 'Desconocido';
 
   @override
-  List<Object?> get props =>
-      [id, x, y, proximity, name, suggestedName, connectionCount, isSelf, connectable, z, userColor, estimatedDistance];
+  List<Object?> get props => [
+    id,
+    x,
+    y,
+    proximity,
+    name,
+    suggestedName,
+    connectionCount,
+    isSelf,
+    connectable,
+    z,
+    userColor,
+    estimatedDistance,
+  ];
 }

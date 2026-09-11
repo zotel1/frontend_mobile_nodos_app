@@ -24,7 +24,8 @@ abstract class VisualizationEvent extends Equatable {
 /// [nodes] provee contexto de cantidad de nodos disponibles.
 /// [myDeviceUuid] UUID del dispositivo propio, para marcar el self-node
 /// en el grafo (R5.13). Opcional — si es null, ningún nodo se marca isSelf.
-/// [userName] nombre del perfil para el self-node sintético (REQ-SN-01).
+/// [userName] y [userColor] se mantienen temporalmente por compatibilidad.
+/// El self-node real se obtiene desde persistencia mediante isSelf=true.
 /// [userColor] color hex del perfil para el anillo del self-node (REQ-VR-01).
 /// Agregado en PR2.
 class BuildGraphRequested extends VisualizationEvent {
@@ -43,8 +44,13 @@ class BuildGraphRequested extends VisualizationEvent {
   });
 
   @override
-  List<Object?> get props =>
-      [scanSessionId, nodes, myDeviceUuid, userName, userColor];
+  List<Object?> get props => [
+    scanSessionId,
+    nodes,
+    myDeviceUuid,
+    userName,
+    userColor,
+  ];
 }
 
 /// El usuario tocó un nodo en el grafo.
@@ -101,6 +107,11 @@ class RetryGraphBuild extends VisualizationEvent {
   });
 
   @override
-  List<Object?> get props =>
-      [lastSessionId, lastNodes, myDeviceUuid, userName, userColor];
+  List<Object?> get props => [
+    lastSessionId,
+    lastNodes,
+    myDeviceUuid,
+    userName,
+    userColor,
+  ];
 }

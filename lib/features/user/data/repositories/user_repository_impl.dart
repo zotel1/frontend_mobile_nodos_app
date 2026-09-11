@@ -19,4 +19,7 @@ class UserRepositoryImpl implements UserRepository {
 
   @override
   Future<void> createUser(domain.User user) => _dataSource.upsertUser(user);
+
+  @override
+  Future<void> setLocalNodeId(int nodeId) => _dataSource.setLocalNodeId(nodeId);
 }

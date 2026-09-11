@@ -14,11 +14,7 @@ class NodeTile extends StatelessWidget {
   final Node node;
   final VoidCallback? onTap;
 
-  const NodeTile({
-    super.key,
-    required this.node,
-    this.onTap,
-  });
+  const NodeTile({super.key, required this.node, this.onTap});
 
   int get _lastRssi =>
       node.rssiHistory.isNotEmpty ? node.rssiHistory.last : -100;
@@ -105,12 +101,12 @@ class _DeviceTypeBadge extends StatelessWidget {
   const _DeviceTypeBadge({required this.type});
 
   IconData get _icon => switch (type) {
-        'Reloj/Fitness' => Icons.watch,
-        'Batería' => Icons.battery_std,
-        'Teclado' => Icons.keyboard,
-        'Nodo' => Icons.sensors,
-        _ => Icons.devices,
-      };
+    'Reloj/Fitness' => Icons.watch,
+    'Batería' => Icons.battery_std,
+    'Teclado' => Icons.keyboard,
+    'Nodo' => Icons.sensors,
+    _ => Icons.devices,
+  };
 
   @override
   Widget build(BuildContext context) {

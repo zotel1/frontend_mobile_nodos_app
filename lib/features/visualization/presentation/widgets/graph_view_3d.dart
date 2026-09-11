@@ -24,11 +24,7 @@ class GraphView3D extends StatefulWidget {
   final LayoutResult layout;
   final void Function(int nodeId)? onNodeTapped;
 
-  const GraphView3D({
-    super.key,
-    required this.layout,
-    this.onNodeTapped,
-  });
+  const GraphView3D({super.key, required this.layout, this.onNodeTapped});
 
   @override
   State<GraphView3D> createState() => _GraphView3DState();
@@ -93,8 +89,7 @@ class _GraphView3DState extends State<GraphView3D> {
             _isLoading = false; // T2.5: salir del estado loading (R6)
           });
           if (_pendingData != null) {
-            _controller.runJavaScript(
-                'window.loadGraphData($_pendingData)');
+            _controller.runJavaScript('window.loadGraphData($_pendingData)');
             _pendingData = null;
           }
         },
@@ -306,25 +301,30 @@ class _GraphView3DState extends State<GraphView3D> {
 /// El `label` usa la prioridad: name > suggestedName > "Desconocido".
 Map<String, dynamic> layoutResultToJson(LayoutResult layout) {
   return {
-    'nodes': layout.nodes.map((n) => {
-      'id': n.id,
-      'x': n.x,
-      'y': n.y,
-      'z': n.z, // T5.5: coordenada Z calculada por FR 3D
-      'radius': n.radius,
-      'color': '#${n.color.toRadixString(16).padLeft(8, '0').substring(2)}',
-      'label': n.label,
-      'isSelf': n.isSelf,
-      // REQ-VR-01: color del perfil para el anillo del self-node en 3D.
-      // Se convierte de ARGB int (0xFFE91E63) a hex string sin alpha ("#E91E63").
-      'userColor': n.userColor != null
-          ? '#${n.userColor!.toRadixString(16).padLeft(8, '0').substring(2)}'
-          : null,
-    }).toList(),
-    'edges': layout.edges.map((e) => {
-      'fromId': e.fromId,
-      'toId': e.toId,
-      'thickness': e.thickness,
-    }).toList(),
+    'nodes': layout.nodes
+        .map(
+          (n) => {
+            'id': n.id,
+            'x': n.x,
+            'y': n.y,
+            'z': n.z, // T5.5: coordenada Z calculada por FR 3D
+            'radius': n.radius,
+            'color':
+                '#${n.color.toRadixString(16).padLeft(8, '0').substring(2)}',
+            'label': n.label,
+            'isSelf': n.isSelf,
+            // REQ-VR-01: color del perfil para el anillo del self-node en 3D.
+            // Se convierte de ARGB int (0xFFE91E63) a hex string sin alpha ("#E91E63").
+            'userColor': n.userColor != null
+                ? '#${n.userColor!.toRadixString(16).padLeft(8, '0').substring(2)}'
+                : null,
+          },
+        )
+        .toList(),
+    'edges': layout.edges
+        .map(
+          (e) => {'fromId': e.fromId, 'toId': e.toId, 'thickness': e.thickness},
+        )
+        .toList(),
   };
 }

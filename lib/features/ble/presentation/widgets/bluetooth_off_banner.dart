@@ -6,10 +6,7 @@ import 'package:flutter/material.dart';
 class BluetoothOffBanner extends StatelessWidget {
   final VoidCallback onGoToSettings;
 
-  const BluetoothOffBanner({
-    super.key,
-    required this.onGoToSettings,
-  });
+  const BluetoothOffBanner({super.key, required this.onGoToSettings});
 
   @override
   Widget build(BuildContext context) {

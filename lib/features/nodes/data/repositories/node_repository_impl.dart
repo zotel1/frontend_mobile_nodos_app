@@ -14,32 +14,30 @@ class NodeRepositoryImpl implements NodeRepository {
   Future<Node?> getNodeById(int id) => _dataSource.getNodeById(id);
 
   @override
+  Future<Node?> getNodeByBleAddress(String bleAddress) =>
+      _dataSource.getNodeByBleAddress(bleAddress);
+
+  @override
+  Future<Node?> getNodeByDeviceUuid(String deviceUuid) =>
+      _dataSource.getNodeByDeviceUuid(deviceUuid);
+
+  @override
+  Future<Node?> getSelfNode() => _dataSource.getSelfNode();
+
+  @override
   Future<void> upsertNode(Node node) => _dataSource.upsertNode(node);
 
   @override
   Future<void> updateNodeMetadata(int id, {String? name, String? color}) async {
     final existing = await _dataSource.getNodeById(id);
+
     if (existing == null) return;
-    final updated = Node(
-      id: existing.id,
-      bleAddress: existing.bleAddress,
-      name: name ?? existing.name,
-      color: color ?? existing.color,
-      firstSeen: existing.firstSeen,
-      lastSeen: existing.lastSeen,
-      rssiHistory: existing.rssiHistory,
-      suggestedName: existing.suggestedName,
-      deviceType: existing.deviceType,
-      connectable: existing.connectable,
-      estimatedDistance: existing.estimatedDistance,
-    );
+
+    final updated = existing.copyWith(name: name, color: color);
+
     await _dataSource.upsertNode(updated);
   }
 
   @override
   Future<void> clearAllNodes() => _dataSource.deleteAllNodes();
-
-  @override
-  Future<Node?> getNodeByBleAddress(String bleAddress) =>
-      _dataSource.getNodeByBleAddress(bleAddress);
 }

@@ -9,10 +9,7 @@ class BleServiceInfo {
   /// UUIDs de las características dentro de este servicio.
   final List<String> characteristicUuids;
 
-  const BleServiceInfo({
-    required this.uuid,
-    required this.characteristicUuids,
-  });
+  const BleServiceInfo({required this.uuid, required this.characteristicUuids});
 }
 
 /// Interfaz de abstracción para operaciones GATT (conexión punto a punto).
@@ -55,5 +52,7 @@ abstract class BleGattDataSource {
   /// característica no existe en los servicios descubiertos.
   /// Requiere que [discoverServices] se haya llamado primero.
   Future<List<int>?> readCharacteristic(
-      String remoteId, String characteristicUuid);
+    String remoteId,
+    String characteristicUuid,
+  );
 }

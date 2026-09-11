@@ -97,8 +97,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   ///
   /// POR QUÉ: permite al usuario activar BT sin salir de la app.
   void _openBluetoothSettings() {
-    const AndroidIntent(action: 'android.settings.BLUETOOTH_SETTINGS')
-        .launch();
+    const AndroidIntent(action: 'android.settings.BLUETOOTH_SETTINGS').launch();
   }
 
   /// Verifica si Bluetooth está encendido según el estado del BleBloc.
@@ -175,11 +174,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(
-            Icons.bluetooth_searching,
-            size: 64,
-            color: Colors.blue,
-          ),
+          const Icon(Icons.bluetooth_searching, size: 64, color: Colors.blue),
           const SizedBox(height: 24),
           const Text(
             'Nodos necesita permiso de Bluetooth para detectar dispositivos cercanos',
@@ -229,7 +224,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            _isBluetoothOn ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
+            _isBluetoothOn
+                ? Icons.bluetooth_connected
+                : Icons.bluetooth_disabled,
             size: 64,
             color: _isBluetoothOn ? Colors.blue : Colors.grey,
           ),
@@ -279,11 +276,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(
-            Icons.person,
-            size: 64,
-            color: Colors.blue,
-          ),
+          const Icon(Icons.person, size: 64, color: Colors.blue),
           const SizedBox(height: 24),
           const Text(
             'Configurá tu perfil',

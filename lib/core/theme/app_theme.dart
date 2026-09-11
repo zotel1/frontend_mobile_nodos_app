@@ -9,15 +9,13 @@ class AppTheme {
   static const Color _primarySeed = Color(0xFF2196F3); // Material Blue
 
   static ThemeData get light => ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: _primarySeed,
-          brightness: Brightness.light,
-        ),
-        appBarTheme: const AppBarTheme(
-          centerTitle: true,
-        ),
-      );
+    useMaterial3: true,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: _primarySeed,
+      brightness: Brightness.light,
+    ),
+    appBarTheme: const AppBarTheme(centerTitle: true),
+  );
 
   /// Tema oscuro adaptativo al sistema.
   ///
@@ -25,11 +23,11 @@ class AppTheme {
   /// para mantener la identidad visual Nodos.
   /// Solo cambia [Brightness.dark] para fondos oscuros y texto claro.
   static ThemeData get dark => ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: _primarySeed,
-          brightness: Brightness.dark,
-        ),
-        appBarTheme: const AppBarTheme(centerTitle: true),
-      );
+    useMaterial3: true,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: _primarySeed,
+      brightness: Brightness.dark,
+    ),
+    appBarTheme: const AppBarTheme(centerTitle: true),
+  );
 }

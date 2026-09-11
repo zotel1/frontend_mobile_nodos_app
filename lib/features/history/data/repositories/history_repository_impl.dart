@@ -44,7 +44,8 @@ class HistoryRepositoryImpl implements HistoryRepository {
 
   @override
   Future<Either<Failure, List<SessionNode>>> getSessionDetail(
-      int sessionId) async {
+    int sessionId,
+  ) async {
     try {
       final rows = await _dataSource.querySessionDetail(sessionId);
 
@@ -93,15 +94,16 @@ class HistoryRepositoryImpl implements HistoryRepository {
         mostFrequentNodeName = null;
       }
 
-      return Right(HistoryStats(
-        totalSessions: totalSessions,
-        uniqueNodes: uniqueNodes,
-        averageDuration: averageDuration,
-        mostFrequentNodeName: mostFrequentNodeName,
-      ));
+      return Right(
+        HistoryStats(
+          totalSessions: totalSessions,
+          uniqueNodes: uniqueNodes,
+          averageDuration: averageDuration,
+          mostFrequentNodeName: mostFrequentNodeName,
+        ),
+      );
     } catch (e) {
-      return Left(
-          UnexpectedFailure('Error al calcular estadísticas: $e'));
+      return Left(UnexpectedFailure('Error al calcular estadísticas: $e'));
     }
   }
 }

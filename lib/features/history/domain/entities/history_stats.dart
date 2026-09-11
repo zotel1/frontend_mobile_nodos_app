@@ -30,6 +30,10 @@ class HistoryStats extends Equatable {
   });
 
   @override
-  List<Object?> get props =>
-      [totalSessions, uniqueNodes, averageDuration, mostFrequentNodeName];
+  List<Object?> get props => [
+    totalSessions,
+    uniqueNodes,
+    averageDuration,
+    mostFrequentNodeName,
+  ];
 }

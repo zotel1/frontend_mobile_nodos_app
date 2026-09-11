@@ -47,17 +47,17 @@ class BleDevice extends Equatable {
 
   @override
   List<Object?> get props => [
-        deviceId,
-        deviceUuid,
-        rssi,
-        distance,
-        proximity,
-        timestamp,
-        advName,
-        platformName,
-        txPowerLevel,
-        connectable,
-        serviceUuids,
-        deviceType,
-      ];
+    deviceId,
+    deviceUuid,
+    rssi,
+    distance,
+    proximity,
+    timestamp,
+    advName,
+    platformName,
+    txPowerLevel,
+    connectable,
+    serviceUuids,
+    deviceType,
+  ];
 }

@@ -21,11 +21,12 @@ class FlutterBluePlusDataSource implements BleScannerDataSource {
 
   /// Production constructor — binds to [FlutterBluePlus] platform.
   FlutterBluePlusDataSource()
-      : _controller = StreamController<List<BleDevice>>.broadcast(),
-        _isTestMode = false {
+    : _controller = StreamController<List<BleDevice>>.broadcast(),
+      _isTestMode = false {
     _bindToPlatform();
-    _btStateStream = FlutterBluePlus.adapterState
-        .map((s) => s == BluetoothAdapterState.on);
+    _btStateStream = FlutterBluePlus.adapterState.map(
+      (s) => s == BluetoothAdapterState.on,
+    );
   }
 
   /// Test constructor — inject pre-built scan results and optional BT state.
@@ -33,9 +34,9 @@ class FlutterBluePlusDataSource implements BleScannerDataSource {
   FlutterBluePlusDataSource.test(
     Stream<List<BleDevice>> stream, {
     Stream<bool>? btStateStream,
-  })  : _controller = StreamController<List<BleDevice>>.broadcast(),
-        _isTestMode = true,
-        _btStateStream = btStateStream {
+  }) : _controller = StreamController<List<BleDevice>>.broadcast(),
+       _isTestMode = true,
+       _btStateStream = btStateStream {
     stream.listen((results) {
       if (results.isNotEmpty) {
         _controller.add(results);
@@ -81,9 +82,7 @@ class FlutterBluePlusDataSource implements BleScannerDataSource {
   static BleDevice mapScanResultToDevice(ScanResult r) {
     // Extraer service UUIDs como List<String> para el classifier
     final serviceUuidsStrings = r.advertisementData.serviceUuids.isNotEmpty
-        ? r.advertisementData.serviceUuids
-            .map((g) => g.toString())
-            .toList()
+        ? r.advertisementData.serviceUuids.map((g) => g.toString()).toList()
         : <String>[];
 
     // Extraer manufacturer ID del primer entry en manufacturerData
@@ -93,15 +92,19 @@ class FlutterBluePlusDataSource implements BleScannerDataSource {
 
     // F4: Clasificar el dispositivo usando los service UUIDs y
     // manufacturer ID. El classifier es estático y sync (~1μs).
-    final deviceType =
-        DeviceClassifier.classify(serviceUuidsStrings, manufacturerId);
+    final deviceType = DeviceClassifier.classify(
+      serviceUuidsStrings,
+      manufacturerId,
+    );
 
     return BleDevice(
       deviceId: r.device.remoteId.toString(),
       deviceUuid: null,
       rssi: r.rssi,
-      distance: rssiToDistance(r.rssi,
-          txPowerLevel: r.advertisementData.txPowerLevel),
+      distance: rssiToDistance(
+        r.rssi,
+        txPowerLevel: r.advertisementData.txPowerLevel,
+      ),
       proximity: rssiToProximity(r.rssi),
       timestamp: r.timeStamp,
       advName: r.advertisementData.advName,
@@ -124,8 +127,7 @@ class FlutterBluePlusDataSource implements BleScannerDataSource {
   /// POR QUÉ: permite a la capa de presentación reaccionar al estado real
   /// del hardware en lugar de asumir que siempre está activo.
   @override
-  Stream<bool> get bluetoothState =>
-      _btStateStream ?? Stream.value(true);
+  Stream<bool> get bluetoothState => _btStateStream ?? Stream.value(true);
 
   @override
   Future<void> startScan({List<String>? serviceUuids}) async {
