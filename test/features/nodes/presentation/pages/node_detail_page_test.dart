@@ -24,14 +24,16 @@ void main() {
     deviceType: 'Auriculares',
   );
 
-  testWidgets('T3.7: muestra botón Enlazar y el callback recibe bleAddress',
-      (tester) async {
+  testWidgets('T3.7: muestra botón Enlazar y el callback recibe bleAddress', (
+    tester,
+  ) async {
     final mockNodeListBloc = MockNodeListBloc();
     String? capturedBleAddress;
 
     when(mockNodeListBloc.state).thenReturn(NodeListLoaded([testNode]));
-    when(mockNodeListBloc.stream)
-        .thenAnswer((_) => Stream.value(NodeListLoaded([testNode])));
+    when(
+      mockNodeListBloc.stream,
+    ).thenAnswer((_) => Stream.value(NodeListLoaded([testNode])));
 
     await tester.pumpWidget(
       MaterialApp(
@@ -71,4 +73,51 @@ void main() {
     // Verificar que el callback recibió el bleAddress correcto
     expect(capturedBleAddress, equals('AA:BB:CC:DD:EE:FF'));
   });
+
+  testWidgets(
+    'BUG-004: NodeDetailPage sin callback externo debe permitir enlazar nodo conectable',
+    (tester) async {
+      final mockNodeListBloc = MockNodeListBloc();
+
+      when(mockNodeListBloc.state).thenReturn(NodeListLoaded([testNode]));
+
+      when(
+        mockNodeListBloc.stream,
+      ).thenAnswer((_) => Stream.value(NodeListLoaded([testNode])));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: BlocProvider<NodeListBloc>.value(
+            value: mockNodeListBloc,
+            child: const NodeDetailPage(id: 1),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // La página debe encontrar el nodo.
+      expect(find.text('Mi Dispositivo'), findsAtLeast(1));
+
+      // El botón está al final del ListView.
+      await tester.drag(find.byType(ListView), const Offset(0, -400));
+
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // BUG-004:
+      // actualmente falla porque NodeDetailPage depende
+      // de recibir onEnlazar desde afuera.
+      //
+      // La ruta /node/:id no lo proporciona, por lo que
+      // la funcionalidad desaparece en el uso real.
+      expect(
+        find.text('Enlazar'),
+        findsOneWidget,
+        reason:
+            'Un nodo BLE remoto debe poder enlazarse desde NodeDetailPage '
+            'aunque la ruta no inyecte un callback manual.',
+      );
+    },
+  );
 }
