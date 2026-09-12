@@ -55,13 +55,22 @@ class SyncBleDevices extends NodeListEvent {
   List<Object> get props => [devices];
 }
 
-/// Elimina todos los nodos de la base de datos y re-suscribe el stream.
+/// Limpia los nodos visibles de la sesión actual sin borrar persistencia.
 ///
-/// QUÉ resuelve: pipeline para limpiar el contador de nodos a 0
-/// cuando se apaga Bluetooth (R5.17). La re-suscripción al stream
-/// Drift emite una lista vacía → NodeListEmpty.
-/// POR QUÉ: sin este evento, los nodos persisten en BD aunque BT
-/// esté apagado, mostrando datos stale en la UI.
+/// QUÉ resuelve: cuando Bluetooth se apaga, la UI debe dejar de mostrar
+/// dispositivos cercanos y el contador debe volver a 0.
+///
+/// IMPORTANTE:
+/// Este evento NO elimina filas de la tabla nodes.
+///
+/// POR QUÉ:
+/// Los nodos forman parte de relaciones persistentes almacenadas en
+/// connections. Borrar nodes provocaría que las foreign keys con
+/// ON DELETE CASCADE eliminaran también conexiones permanentes.
+///
+/// BUG-002:
+/// ClearNodes representa una limpieza de estado de presentación,
+/// no una operación destructiva sobre SQLite.
 class ClearNodes extends NodeListEvent {
   const ClearNodes();
 }
@@ -279,20 +288,29 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
     _ensureSubscription();
   }
 
-  /// Elimina todos los nodos y re-suscribe el stream para emitir vacío.
+  /// Limpia el estado visible de nodos sin destruir datos persistentes.
   ///
-  /// QUÉ hace: llama a [NodeRepository.clearAllNodes()] para borrar
-  /// todas las filas de la tabla nodes, luego re-suscribe al stream
-  /// Drift que emitirá lista vacía → NodeListEmpty.
-  /// POR QUÉ: pipeline R5.17 — cuando BT se apaga, los nodos deben
-  /// desaparecer de la UI y el contador debe llegar a 0.
+  /// QUÉ hace:
+  /// 1. cancela el watcher Drift activo;
+  /// 2. elimina la referencia a la suscripción;
+  /// 3. emite NodeListEmpty.
+  ///
+  /// POR QUÉ se cancela el watcher:
+  /// si la suscripción siguiera activa, una actualización posterior de la BD
+  /// podría volver a emitir nodos mientras Bluetooth está apagado.
+  ///
+  /// POR QUÉ NO llama clearAllNodes():
+  /// nodes contiene entidades persistentes que pueden participar en
+  /// connections. Borrarlas destruiría relaciones permanentes mediante
+  /// ON DELETE CASCADE.
   Future<void> _onClearNodes(
     ClearNodes event,
     Emitter<NodeListState> emit,
   ) async {
-    await _nodeRepository.clearAllNodes();
-    // El stream Drift .watch() emitirá automáticamente la lista vacía
-    // sin necesidad de cancelar y recrear la suscripción.
+    await _nodesSubscription?.cancel();
+    _nodesSubscription = null;
+
+    emit(const NodeListEmpty());
   }
 
   /// Actualiza el nombre de un nodo y re-emite la lista desde el stream.
