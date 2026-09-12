@@ -41,6 +41,9 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bl
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_event.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_state.dart';
 
+import 'package:frontend_mobile_nodos_app/features/history/data/datasources/history_drift_datasource.dart';
+import 'package:frontend_mobile_nodos_app/features/history/data/repositories/history_repository_impl.dart';
+
 // ──────────────────────────────────────────────────────────────
 // Stub BLE Repository (hardware boundary — única sustitución)
 // ──────────────────────────────────────────────────────────────
@@ -345,6 +348,286 @@ void main() {
 
         await db.close();
       });
+    },
+  );
+
+  test(
+    'BUG-003 integration: ClearNodes preserva historial y asociaciones de sesión',
+    tags: ['integration'],
+    () async {
+      final db = AppDatabase.inMemory();
+
+      // ─────────────────────────────────────────────────────
+      // 1. Infraestructura real
+      // ─────────────────────────────────────────────────────
+
+      final nodeDs = NodeDriftDataSource(db);
+      final nodeRepo = NodeRepositoryImpl(nodeDs);
+
+      final nodeBloc = NodeListBloc(
+        observeNodes: ObserveNodes(nodeRepo),
+        updateNodeMetadata: UpdateNodeMetadata(nodeRepo),
+        nodeRepository: nodeRepo,
+      );
+
+      final scanRepo = ScanSessionRepositoryImpl(db);
+
+      final historyDataSource = HistoryDriftDataSource(db);
+      final historyRepo = HistoryRepositoryImpl(historyDataSource);
+
+      // ─────────────────────────────────────────────────────
+      // 2. Crear nodos persistentes
+      // ─────────────────────────────────────────────────────
+
+      final now = DateTime(2026, 9, 11, 20, 0);
+
+      await nodeRepo.upsertNode(
+        Node(
+          bleAddress: 'BUG003-NODE-A',
+          name: 'Nodo histórico A',
+          firstSeen: now,
+          lastSeen: now,
+          rssiHistory: const [-45],
+          connectable: true,
+        ),
+      );
+
+      await nodeRepo.upsertNode(
+        Node(
+          bleAddress: 'BUG003-NODE-B',
+          name: 'Nodo histórico B',
+          firstSeen: now,
+          lastSeen: now,
+          rssiHistory: const [-70],
+          connectable: true,
+        ),
+      );
+
+      final persistedNodes = await nodeRepo.observeNodes().first;
+
+      expect(persistedNodes, hasLength(2));
+
+      final nodeA = persistedNodes.firstWhere(
+        (node) => node.bleAddress == 'BUG003-NODE-A',
+      );
+
+      final nodeB = persistedNodes.firstWhere(
+        (node) => node.bleAddress == 'BUG003-NODE-B',
+      );
+
+      expect(nodeA.id, isNotNull);
+      expect(nodeB.id, isNotNull);
+
+      // ─────────────────────────────────────────────────────
+      // 3. Crear una sesión histórica real
+      // ─────────────────────────────────────────────────────
+
+      final sessionId = await scanRepo.startSession();
+
+      await scanRepo.addNodesToSession(sessionId, [nodeA.id!, nodeB.id!]);
+
+      await scanRepo.endSession(sessionId);
+
+      // Reemplazar RSSI placeholder -100 por valores históricos
+      // representativos para validar también getSessionDetail().
+      await (db.update(db.scanSessionNodes)..where(
+            (row) =>
+                row.sessionId.equals(sessionId) & row.nodeId.equals(nodeA.id!),
+          ))
+          .write(const ScanSessionNodesCompanion(rssi: Value(-45)));
+
+      await (db.update(db.scanSessionNodes)..where(
+            (row) =>
+                row.sessionId.equals(sessionId) & row.nodeId.equals(nodeB.id!),
+          ))
+          .write(const ScanSessionNodesCompanion(rssi: Value(-70)));
+
+      // ─────────────────────────────────────────────────────
+      // 4. Verificar historial ANTES de ClearNodes
+      // ─────────────────────────────────────────────────────
+
+      final sessionsBeforeResult = await historyRepo.getSessions();
+
+      final sessionsBefore = sessionsBeforeResult.fold(
+        (failure) => fail(
+          'No se pudo consultar historial antes de ClearNodes: '
+          '${failure.message}',
+        ),
+        (sessions) => sessions,
+      );
+
+      expect(sessionsBefore.any((session) => session.id == sessionId), isTrue);
+
+      final sessionBefore = sessionsBefore.firstWhere(
+        (session) => session.id == sessionId,
+      );
+
+      expect(sessionBefore.nodeCount, 2);
+
+      final detailBeforeResult = await historyRepo.getSessionDetail(sessionId);
+
+      final detailBefore = detailBeforeResult.fold(
+        (failure) => fail(
+          'No se pudo consultar detalle antes de ClearNodes: '
+          '${failure.message}',
+        ),
+        (nodes) => nodes,
+      );
+
+      expect(detailBefore, hasLength(2));
+
+      expect(
+        detailBefore.map((node) => node.nodeId),
+        containsAll([nodeA.id, nodeB.id]),
+      );
+
+      final statsBeforeResult = await historyRepo.getStats();
+
+      final statsBefore = statsBeforeResult.fold(
+        (failure) => fail(
+          'No se pudieron consultar estadísticas antes de ClearNodes: '
+          '${failure.message}',
+        ),
+        (stats) => stats,
+      );
+
+      expect(statsBefore.totalSessions, 1);
+      expect(statsBefore.uniqueNodes, 2);
+
+      // ─────────────────────────────────────────────────────
+      // 5. Cargar nodos en UI
+      // ─────────────────────────────────────────────────────
+
+      nodeBloc.add(const LoadNodes());
+
+      await nodeBloc.stream.firstWhere(
+        (state) => state is NodeListLoaded && state.nodes.length == 2,
+      );
+
+      expect(nodeBloc.state, isA<NodeListLoaded>());
+
+      // ─────────────────────────────────────────────────────
+      // 6. Simular apagado de Bluetooth
+      //
+      // HomePage despacha ClearNodes cuando BluetoothOff.
+      // BUG-003 exige que esto afecte solo la presentación,
+      // nunca el historial persistente.
+      // ─────────────────────────────────────────────────────
+
+      nodeBloc.add(const ClearNodes());
+
+      await nodeBloc.stream.firstWhere((state) => state is NodeListEmpty);
+
+      expect(
+        nodeBloc.state,
+        isA<NodeListEmpty>(),
+        reason: 'La UI debe ocultar nodos stale cuando Bluetooth se apaga',
+      );
+
+      // ─────────────────────────────────────────────────────
+      // 7. Verificar scan_session_nodes directamente
+      // ─────────────────────────────────────────────────────
+
+      final sessionNodeRows = await (db.select(
+        db.scanSessionNodes,
+      )..where((row) => row.sessionId.equals(sessionId))).get();
+
+      expect(
+        sessionNodeRows,
+        hasLength(2),
+        reason:
+            'BUG-003: ClearNodes no debe borrar asociaciones históricas '
+            'de scan_session_nodes',
+      );
+
+      expect(
+        sessionNodeRows.map((row) => row.nodeId),
+        containsAll([nodeA.id, nodeB.id]),
+      );
+
+      // ─────────────────────────────────────────────────────
+      // 8. Verificar historial DESPUÉS de ClearNodes
+      // ─────────────────────────────────────────────────────
+
+      final sessionsAfterResult = await historyRepo.getSessions();
+
+      final sessionsAfter = sessionsAfterResult.fold(
+        (failure) => fail(
+          'No se pudo consultar historial después de ClearNodes: '
+          '${failure.message}',
+        ),
+        (sessions) => sessions,
+      );
+
+      final sessionAfter = sessionsAfter.firstWhere(
+        (session) => session.id == sessionId,
+      );
+
+      expect(
+        sessionAfter.nodeCount,
+        2,
+        reason:
+            'El historial debe conservar el conteo de nodos '
+            'después de apagar Bluetooth',
+      );
+
+      final detailAfterResult = await historyRepo.getSessionDetail(sessionId);
+
+      final detailAfter = detailAfterResult.fold(
+        (failure) => fail(
+          'No se pudo consultar detalle después de ClearNodes: '
+          '${failure.message}',
+        ),
+        (nodes) => nodes,
+      );
+
+      expect(
+        detailAfter,
+        hasLength(2),
+        reason: 'El detalle de la sesión debe sobrevivir a ClearNodes',
+      );
+
+      final historicalNodeA = detailAfter.firstWhere(
+        (node) => node.nodeId == nodeA.id,
+      );
+
+      final historicalNodeB = detailAfter.firstWhere(
+        (node) => node.nodeId == nodeB.id,
+      );
+
+      expect(historicalNodeA.nodeName, 'Nodo histórico A');
+      expect(historicalNodeA.rssi, -45);
+
+      expect(historicalNodeB.nodeName, 'Nodo histórico B');
+      expect(historicalNodeB.rssi, -70);
+
+      // ─────────────────────────────────────────────────────
+      // 9. Verificar estadísticas históricas
+      // ─────────────────────────────────────────────────────
+
+      final statsAfterResult = await historyRepo.getStats();
+
+      final statsAfter = statsAfterResult.fold(
+        (failure) => fail(
+          'No se pudieron consultar estadísticas después de ClearNodes: '
+          '${failure.message}',
+        ),
+        (stats) => stats,
+      );
+
+      expect(statsAfter.totalSessions, statsBefore.totalSessions);
+
+      expect(statsAfter.uniqueNodes, statsBefore.uniqueNodes);
+
+      expect(statsAfter.totalSessions, 1);
+      expect(statsAfter.uniqueNodes, 2);
+
+      // ─────────────────────────────────────────────────────
+      // Cleanup
+      // ─────────────────────────────────────────────────────
+
+      await nodeBloc.close();
+      await db.close();
     },
   );
 
