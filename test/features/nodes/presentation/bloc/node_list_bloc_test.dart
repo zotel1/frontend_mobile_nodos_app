@@ -69,8 +69,9 @@ void main() {
       'emits [NodeListLoaded] when LoadNodes is added '
       'and stream emits nodes',
       build: () {
-        when(mockObserveNodes.call())
-            .thenAnswer((_) => Stream.value(testNodes));
+        when(
+          mockObserveNodes.call(),
+        ).thenAnswer((_) => Stream.value(testNodes));
         return NodeListBloc(
           observeNodes: mockObserveNodes,
           updateNodeMetadata: mockUpdateNodeMetadata,
@@ -91,8 +92,7 @@ void main() {
       'emits [NodeListEmpty] when LoadNodes is added '
       'and stream emits empty list',
       build: () {
-        when(mockObserveNodes.call())
-            .thenAnswer((_) => Stream.value([]));
+        when(mockObserveNodes.call()).thenAnswer((_) => Stream.value([]));
         return NodeListBloc(
           observeNodes: mockObserveNodes,
           updateNodeMetadata: mockUpdateNodeMetadata,
@@ -100,16 +100,15 @@ void main() {
         );
       },
       act: (bloc) => bloc.add(LoadNodes()),
-      expect: () => [
-        isA<NodeListEmpty>(),
-      ],
+      expect: () => [isA<NodeListEmpty>()],
     );
 
     blocTest<NodeListBloc, NodeListState>(
       'emits [NodeListError] when observeNodes stream throws',
       build: () {
-        when(mockObserveNodes.call()).thenAnswer(
-            (_) => Stream.error(Exception('DB error')));
+        when(
+          mockObserveNodes.call(),
+        ).thenAnswer((_) => Stream.error(Exception('DB error')));
         return NodeListBloc(
           observeNodes: mockObserveNodes,
           updateNodeMetadata: mockUpdateNodeMetadata,
@@ -147,8 +146,9 @@ void main() {
       'handles RefreshNodes as no-op — stream already reactive',
       seed: () => NodeListLoaded(testNodes),
       build: () {
-        when(mockObserveNodes.call())
-            .thenAnswer((_) => Stream.value(testNodes));
+        when(
+          mockObserveNodes.call(),
+        ).thenAnswer((_) => Stream.value(testNodes));
         return NodeListBloc(
           observeNodes: mockObserveNodes,
           updateNodeMetadata: mockUpdateNodeMetadata,
@@ -164,8 +164,7 @@ void main() {
       'handles RefreshNodes as no-op from empty state',
       seed: () => const NodeListEmpty(),
       build: () {
-        when(mockObserveNodes.call())
-            .thenAnswer((_) => Stream.value([]));
+        when(mockObserveNodes.call()).thenAnswer((_) => Stream.value([]));
         return NodeListBloc(
           observeNodes: mockObserveNodes,
           updateNodeMetadata: mockUpdateNodeMetadata,
@@ -189,26 +188,28 @@ void main() {
       'emits [NodeListLoaded] after SyncBleDevices when Drift stream emits nodes',
       build: () {
         // Configurar el mock de NodeRepository para upsertNode.
-        when(mockNodeRepository.upsertNode(any))
-            .thenAnswer((_) async {});
+        when(mockNodeRepository.upsertNode(any)).thenAnswer((_) async {});
         // Configurar ObserveNodes para emitir la lista de nodos.
-        when(mockObserveNodes.call())
-            .thenAnswer((_) => Stream.value(testNodes));
+        when(
+          mockObserveNodes.call(),
+        ).thenAnswer((_) => Stream.value(testNodes));
         return NodeListBloc(
           observeNodes: mockObserveNodes,
           updateNodeMetadata: mockUpdateNodeMetadata,
           nodeRepository: mockNodeRepository,
         );
       },
-      act: (bloc) => bloc.add(SyncBleDevices([
-        BleDevice(
-          deviceId: 'AA:BB:CC:DD:EE:FF',
-          rssi: -45,
-          distance: 1.0,
-          proximity: ProximityLevel.close,
-          timestamp: now,
-        ),
-      ])),
+      act: (bloc) => bloc.add(
+        SyncBleDevices([
+          BleDevice(
+            deviceId: 'AA:BB:CC:DD:EE:FF',
+            rssi: -45,
+            distance: 1.0,
+            proximity: ProximityLevel.close,
+            timestamp: now,
+          ),
+        ]),
+      ),
       // _ensureSubscription crea el watcher sin emitir loading.
       // El stream Drift emite reactivamente la lista actualizada.
       expect: () => [
@@ -229,10 +230,9 @@ void main() {
 
   group('ClearNodes', () {
     blocTest<NodeListBloc, NodeListState>(
-      'ClearNodes llama a clearAllNodes del repositorio',
+      'BUG-002: ClearNodes limpia la UI sin borrar nodos persistidos',
       seed: () => NodeListLoaded(testNodes),
       build: () {
-        when(mockNodeRepository.clearAllNodes()).thenAnswer((_) async {});
         return NodeListBloc(
           observeNodes: mockObserveNodes,
           updateNodeMetadata: mockUpdateNodeMetadata,
@@ -240,10 +240,9 @@ void main() {
         );
       },
       act: (bloc) => bloc.add(const ClearNodes()),
-      // El stream reactivo emitirá la lista vacía automáticamente.
-      expect: () => <NodeListState>[],
+      expect: () => [isA<NodeListEmpty>()],
       verify: (_) {
-        verify(mockNodeRepository.clearAllNodes()).called(1);
+        verifyNever(mockNodeRepository.clearAllNodes());
       },
     );
   });
@@ -253,8 +252,9 @@ void main() {
       'UpdateNodeName llama a updateNodeMetadata y el stream reacciona solo',
       build: () {
         // updateNodeMetadata devuelve Right(null).
-        when(mockUpdateNodeMetadata(any))
-            .thenAnswer((_) async => const Right(null));
+        when(
+          mockUpdateNodeMetadata(any),
+        ).thenAnswer((_) async => const Right(null));
         return NodeListBloc(
           observeNodes: mockObserveNodes,
           updateNodeMetadata: mockUpdateNodeMetadata,
@@ -265,12 +265,15 @@ void main() {
       // El stream reactivo emitirá la lista actualizada automáticamente.
       expect: () => <NodeListState>[],
       verify: (_) {
-        verify(mockUpdateNodeMetadata(
-          argThat(
-            predicate<UpdateNodeMetadataParams>((p) =>
-                p.id == 1 && p.name == 'Nuevo Nombre'),
+        verify(
+          mockUpdateNodeMetadata(
+            argThat(
+              predicate<UpdateNodeMetadataParams>(
+                (p) => p.id == 1 && p.name == 'Nuevo Nombre',
+              ),
+            ),
           ),
-        )).called(1);
+        ).called(1);
       },
     );
   });
@@ -279,8 +282,9 @@ void main() {
     blocTest<NodeListBloc, NodeListState>(
       'UpdateNodeColor llama a updateNodeMetadata y el stream reacciona solo',
       build: () {
-        when(mockUpdateNodeMetadata(any))
-            .thenAnswer((_) async => const Right(null));
+        when(
+          mockUpdateNodeMetadata(any),
+        ).thenAnswer((_) async => const Right(null));
         return NodeListBloc(
           observeNodes: mockObserveNodes,
           updateNodeMetadata: mockUpdateNodeMetadata,
@@ -291,12 +295,15 @@ void main() {
       // El stream reactivo emitirá la lista actualizada automáticamente.
       expect: () => <NodeListState>[],
       verify: (_) {
-        verify(mockUpdateNodeMetadata(
-          argThat(
-            predicate<UpdateNodeMetadataParams>((p) =>
-                p.id == 2 && p.color == '#FF0000'),
+        verify(
+          mockUpdateNodeMetadata(
+            argThat(
+              predicate<UpdateNodeMetadataParams>(
+                (p) => p.id == 2 && p.color == '#FF0000',
+              ),
+            ),
           ),
-        )).called(1);
+        ).called(1);
       },
     );
   });

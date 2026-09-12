@@ -1392,6 +1392,173 @@ void main() {
   );
 
   test(
+    'BUG-002 integration: ClearNodes vacía la UI sin borrar nodes ni connections',
+    tags: ['integration'],
+    () async {
+      final db = AppDatabase.inMemory();
+
+      // ─────────────────────────────────────────────────────
+      // 1. Repositorio real de nodos
+      // ─────────────────────────────────────────────────────
+
+      final nodeDs = NodeDriftDataSource(db);
+      final nodeRepo = NodeRepositoryImpl(nodeDs);
+
+      final observeNodes = ObserveNodes(nodeRepo);
+      final updateNodeMetadata = UpdateNodeMetadata(nodeRepo);
+
+      final nodeBloc = NodeListBloc(
+        observeNodes: observeNodes,
+        updateNodeMetadata: updateNodeMetadata,
+        nodeRepository: nodeRepo,
+      );
+
+      // ─────────────────────────────────────────────────────
+      // 2. Persistir dos nodos reales
+      // ─────────────────────────────────────────────────────
+
+      final now = DateTime.now();
+
+      await nodeRepo.upsertNode(
+        Node(
+          bleAddress: 'LOCAL-NODE-BUG002',
+          name: 'Mi dispositivo',
+          firstSeen: now,
+          lastSeen: now,
+          rssiHistory: const [],
+          isSelf: true,
+          connectable: false,
+        ),
+      );
+
+      await nodeRepo.upsertNode(
+        Node(
+          bleAddress: 'REMOTE-NODE-BUG002',
+          name: 'Reloj',
+          firstSeen: now,
+          lastSeen: now,
+          rssiHistory: const [-45],
+          isSelf: false,
+          connectable: true,
+        ),
+      );
+
+      final persistedNodesBefore = await nodeRepo.observeNodes().first;
+
+      expect(persistedNodesBefore, hasLength(2));
+
+      final selfNode = persistedNodesBefore.firstWhere((node) => node.isSelf);
+
+      final remoteNode = persistedNodesBefore.firstWhere(
+        (node) => !node.isSelf,
+      );
+
+      expect(selfNode.id, isNotNull);
+      expect(remoteNode.id, isNotNull);
+
+      // ─────────────────────────────────────────────────────
+      // 3. Crear conexión persistente
+      // ─────────────────────────────────────────────────────
+
+      await db
+          .into(db.connections)
+          .insert(
+            ConnectionsCompanion.insert(
+              fromNodeId: selfNode.id!,
+              toNodeId: remoteNode.id!,
+              createdAt: now,
+            ),
+            mode: InsertMode.insertOrIgnore,
+          );
+
+      final connectionsBefore = await db.select(db.connections).get();
+
+      expect(connectionsBefore, hasLength(1));
+
+      expect(connectionsBefore.single.fromNodeId, selfNode.id);
+
+      expect(connectionsBefore.single.toNodeId, remoteNode.id);
+
+      // ─────────────────────────────────────────────────────
+      // 4. Cargar nodos en el BLoC
+      // ─────────────────────────────────────────────────────
+
+      nodeBloc.add(const LoadNodes());
+
+      await nodeBloc.stream.firstWhere(
+        (state) => state is NodeListLoaded && state.nodes.length == 2,
+      );
+
+      expect(nodeBloc.state, isA<NodeListLoaded>());
+
+      // ─────────────────────────────────────────────────────
+      // 5. Ejecutar ClearNodes
+      //
+      // Esto representa la limpieza de presentación utilizada
+      // cuando Bluetooth se apaga.
+      // ─────────────────────────────────────────────────────
+
+      nodeBloc.add(const ClearNodes());
+
+      await nodeBloc.stream.firstWhere((state) => state is NodeListEmpty);
+
+      expect(
+        nodeBloc.state,
+        isA<NodeListEmpty>(),
+        reason: 'ClearNodes debe vaciar la representación visible',
+      );
+
+      // ─────────────────────────────────────────────────────
+      // 6. Verificar que nodes NO fueron borrados
+      // ─────────────────────────────────────────────────────
+
+      final persistedNodesAfter = await nodeRepo.observeNodes().first;
+
+      expect(
+        persistedNodesAfter,
+        hasLength(2),
+        reason: 'BUG-002: ClearNodes no debe ejecutar DELETE FROM nodes',
+      );
+
+      expect(
+        persistedNodesAfter.map((node) => node.id),
+        containsAll([selfNode.id, remoteNode.id]),
+      );
+
+      // ─────────────────────────────────────────────────────
+      // 7. Verificar que connections NO fue borrada
+      // ─────────────────────────────────────────────────────
+
+      final connectionsAfter = await db.select(db.connections).get();
+
+      expect(
+        connectionsAfter,
+        hasLength(1),
+        reason: 'La relación persistente debe sobrevivir a ClearNodes',
+      );
+
+      expect(connectionsAfter.single.fromNodeId, selfNode.id);
+
+      expect(connectionsAfter.single.toNodeId, remoteNode.id);
+
+      // ─────────────────────────────────────────────────────
+      // 8. Protección explícita contra la regresión original
+      // ─────────────────────────────────────────────────────
+
+      expect(connectionsAfter.single.fromNodeId, isNot(-1));
+
+      expect(connectionsAfter.single.toNodeId, isNot(-1));
+
+      // ─────────────────────────────────────────────────────
+      // Cleanup
+      // ─────────────────────────────────────────────────────
+
+      await nodeBloc.close();
+      await db.close();
+    },
+  );
+
+  test(
     'IT17: 3D representation — z-coordinates survive graph rebuild',
     tags: ['integration'],
     () async {
