@@ -2,29 +2,42 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
 
-/// Widget que renderiza el grafo de nodos en 3D usando Three.js
-/// dentro de un WebView.
+/// Vista interactiva 3D del grafo.
 ///
-/// Recibe un [LayoutResult] con nodos posicionados y aristas, serializa
-/// a JSON, y lo inyecta en el WebView mediante `runJavaScript`.
-/// La comunicación inversa (tap en nodo 3D → Dart) se realiza vía
-/// `JavaScriptChannel('onNodeTapped')`.
+/// Three.js se ejecuta dentro de un WebView y recibe una representación
+/// serializada del mismo [LayoutResult] utilizado por la vista 2D.
 ///
-/// FIX(PR2): La inyección de datos ahora espera a que la página
-/// termine de cargar (onPageFinished) para evitar pantalla en blanco.
-/// Si los datos llegan antes, se almacenan en [_pendingData] y se
-/// inyectan cuando el callback lo indique.
+/// La vista 3D conserva la misma semántica que la vista 2D:
 ///
-/// Parámetros:
-/// - [layout]: resultado del algoritmo FR con nodos y aristas
-/// - [onNodeTapped]: callback al tocar un nodo en 3D, recibe el nodeId
+/// - mismos nodos;
+/// - mismas conexiones;
+/// - mismos colores;
+/// - mismo self-node;
+/// - mismo nodo seleccionado;
+/// - mismos tamaños;
+///
+/// La única diferencia intencional es la representación espacial 3D.
 class GraphView3D extends StatefulWidget {
   final LayoutResult layout;
+
+  /// Nodo seleccionado actualmente.
+  ///
+  /// Se envía a Three.js para que la selección visual sea equivalente
+  /// a la implementada por GraphPainter en 2D.
+  final int? selectedNodeId;
+
+  /// Callback ejecutado cuando el usuario toca un nodo en Three.js.
   final void Function(int nodeId)? onNodeTapped;
 
-  const GraphView3D({super.key, required this.layout, this.onNodeTapped});
+  const GraphView3D({
+    super.key,
+    required this.layout,
+    this.selectedNodeId,
+    this.onNodeTapped,
+  });
 
   @override
   State<GraphView3D> createState() => _GraphView3DState();
@@ -33,18 +46,15 @@ class GraphView3D extends StatefulWidget {
 class _GraphView3DState extends State<GraphView3D> {
   late final WebViewController _controller;
 
-  /// Flag que indica si la página HTML ya terminó de cargar.
-  /// true → es seguro llamar a _injectData().
+  /// Indica que graph_3d.html terminó de cargarse.
   bool _pageLoaded = false;
 
-  /// Datos pendientes de inyectar si llegaron antes de
-  /// que la página terminara de cargar.
+  /// Último payload pendiente de enviar a Three.js.
+  ///
+  /// Si Flutter actualiza el layout o la selección antes de que el HTML
+  /// termine de cargar, conservamos únicamente el estado más reciente.
   String? _pendingData;
 
-  /// T2.5: Estados visuales del widget.
-  /// _isLoading: true mientras el WebView inicializa (R6).
-  /// _hasError: true si la carga del asset HTML falló (R8).
-  /// _errorMessage: mensaje descriptivo del error para debug.
   bool _isLoading = true;
   bool _hasError = false;
   String? _errorMessage;
@@ -52,65 +62,81 @@ class _GraphView3DState extends State<GraphView3D> {
   @override
   void initState() {
     super.initState();
+
     _controller = _createController();
     _loadContent();
   }
 
-  /// Reinyecta datos cuando el layout cambia después de la primera build.
+  /// Reinyecta el estado cuando cambia:
   ///
-  /// QUÉ: compara el layout actual con el anterior y, si cambió,
-  /// vuelve a serializar e inyectar los datos en el WebView.
+  /// - el layout;
+  /// - el nodo seleccionado.
   ///
-  /// POR QUÉ: sin didUpdateWidget, el grafo 3D solo se renderizaba
-  /// en la primera build. Si el layout cambiaba después (nuevo scan,
-  /// recálculo FR con más nodos), el WebView seguía mostrando
-  /// los datos viejos.
+  /// Esto es necesario para mantener paridad funcional 2D ↔ 3D.
   @override
   void didUpdateWidget(covariant GraphView3D oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.layout != oldWidget.layout) {
+
+    final layoutChanged = widget.layout != oldWidget.layout;
+
+    final selectionChanged = widget.selectedNodeId != oldWidget.selectedNodeId;
+
+    if (layoutChanged || selectionChanged) {
       _injectData();
     }
   }
 
-  /// Crea y configura el WebViewController con los canales JavaScript
-  /// para recibir eventos de tap en nodos y logs de consola.
+  /// Configura el WebView y los canales JavaScript.
   WebViewController _createController() {
     final controller = WebViewController();
 
-    /// Callback que se dispara cuando la página HTML termina de cargar.
-    /// Si hay datos pendientes de [_pendingData], se inyectan aquí.
+    controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+
     controller.setNavigationDelegate(
       NavigationDelegate(
         onPageFinished: (_) {
-          if (!mounted) return;
+          if (!mounted) {
+            return;
+          }
+
           setState(() {
             _pageLoaded = true;
-            _isLoading = false; // T2.5: salir del estado loading (R6)
+            _isLoading = false;
           });
-          if (_pendingData != null) {
-            _controller.runJavaScript('window.loadGraphData($_pendingData)');
-            _pendingData = null;
-          }
+
+          _flushPendingData();
+        },
+
+        onWebResourceError: (error) {
+          // Algunos WebResourceError pueden corresponder a recursos
+          // secundarios del documento. Solo registramos el problema para
+          // diagnóstico; la carga principal continúa controlándose también
+          // mediante el try/catch de _loadContent().
+          debugPrint(
+            '[3D WebView] Resource error: '
+            '${error.errorCode} ${error.description}',
+          );
         },
       ),
     );
 
-    // Canal de comunicación JS → Dart para detección de tap en nodos.
-    // graph_3d.js llama a onNodeTapped.postMessage(nodeId) al tocar una esfera.
+    // Three.js → Flutter.
     controller.addJavaScriptChannel(
       'onNodeTapped',
       onMessageReceived: (JavaScriptMessage message) {
+        if (!mounted) {
+          return;
+        }
+
         final nodeId = int.tryParse(message.message);
+
         if (nodeId != null) {
           widget.onNodeTapped?.call(nodeId);
         }
       },
     );
 
-    // Canal de logs de consola JS → Dart para depuración.
-    // Captura console.log/error/warn del WebView para diagnosticar
-    // errores en la escena Three.js sin necesidad de DevTools.
+    // Consola JS → Flutter.
     controller.addJavaScriptChannel(
       'onConsoleLog',
       onMessageReceived: (JavaScriptMessage message) {
@@ -118,26 +144,22 @@ class _GraphView3DState extends State<GraphView3D> {
       },
     );
 
-    // Habilitar JavaScript en el WebView (Android lo tiene OFF por defecto).
-    // Sin esto, three.min.js nunca se ejecuta y el 3D queda en blanco.
-    controller.setJavaScriptMode(JavaScriptMode.unrestricted);
-
     return controller;
   }
 
-  /// Carga el HTML del grafo 3D desde los assets e inyecta los datos.
-  /// Si la página ya cargó, inyecta directamente; si no, almacena en
-  /// [_pendingData] para que [onPageFinished] la inyecte.
-  ///
-  /// T2.5: Envolver en try/catch para capturar fallos de carga del asset.
-  /// Si el asset no existe o hay error de plataforma, se activa
-  /// [_hasError] y se muestra el estado de error (R8).
+  /// Carga el documento HTML que contiene la escena Three.js.
   Future<void> _loadContent() async {
     try {
       await _controller.loadFlutterAsset('assets/three_graph/graph_3d.html');
+
+      // Puede que onPageFinished todavía no haya ocurrido.
+      // En ese caso _injectData() guarda el payload como pendiente.
       _injectData();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
+
       setState(() {
         _hasError = true;
         _isLoading = false;
@@ -146,49 +168,77 @@ class _GraphView3DState extends State<GraphView3D> {
     }
   }
 
-  /// Serializa el [LayoutResult] a JSON y lo inyecta en el WebView
-  /// llamando a `window.loadGraphData(json)` en el contexto JavaScript.
+  /// Serializa el estado completo de visualización y lo envía a Three.js.
   ///
-  /// Si la página aún no terminó de cargar ([_pageLoaded] = false),
-  /// almacena el JSON en [_pendingData] para inyectarlo en
-  /// [onPageFinished].
+  /// No enviamos únicamente el layout: también incluimos selectedNodeId,
+  /// porque la selección forma parte del estado visual compartido entre
+  /// las vistas 2D y 3D.
   void _injectData() {
-    final json = jsonEncode(layoutResultToJson(widget.layout));
-    if (_pageLoaded) {
-      _controller.runJavaScript('window.loadGraphData($json)');
-    } else {
+    final payload = layoutResultToJson(
+      widget.layout,
+      selectedNodeId: widget.selectedNodeId,
+    );
+
+    final json = jsonEncode(payload);
+
+    if (!_pageLoaded) {
       _pendingData = json;
+      return;
+    }
+
+    _runGraphInjection(json);
+  }
+
+  /// Envía cualquier estado acumulado mientras cargaba el WebView.
+  void _flushPendingData() {
+    final data = _pendingData;
+
+    if (data == null) {
+      // Si por algún motivo todavía no existe payload pendiente,
+      // generar uno con el estado actual.
+      _injectData();
+      return;
+    }
+
+    _pendingData = null;
+
+    _runGraphInjection(data);
+  }
+
+  /// Ejecuta la función pública definida por graph_3d.js.
+  ///
+  /// Se mantiene aislada para centralizar el manejo de errores de
+  /// comunicación Flutter → JavaScript.
+  Future<void> _runGraphInjection(String json) async {
+    if (!_pageLoaded) {
+      _pendingData = json;
+      return;
+    }
+
+    try {
+      await _controller.runJavaScript('window.loadGraphData($json);');
+    } catch (e) {
+      debugPrint('[3D WebView] Error inyectando datos: $e');
     }
   }
 
-  /// Construye el widget según el estado actual:
-  ///
-  /// 1. **_isLoading = true**: muestra CircularProgressIndicator + "Cargando…" (R6)
-  /// 2. **_hasError = true**: muestra mensaje de error + texto "Error al cargar…" (R8)
-  /// 3. **layout.nodes.isEmpty y _pageLoaded**: muestra "No hay nodos…" (R7)
-  /// 4. **default**: WebViewWidget con Three.js
   @override
   Widget build(BuildContext context) {
-    // T2.6: Estado de error (R8) — prioridad más alta
     if (_hasError) {
       return _buildErrorState();
     }
 
-    // T2.6: Estado de carga (R6)
     if (_isLoading) {
       return _buildLoadingState();
     }
 
-    // T2.6: Estado vacío (R7) — sin nodos para visualizar
     if (widget.layout.nodes.isEmpty) {
       return _buildEmptyState();
     }
 
-    // T2.6: Estado normal — WebView con Three.js
     return WebViewWidget(controller: _controller);
   }
 
-  /// Construye el estado de carga: spinner + texto "Cargando…" (R6).
   Widget _buildLoadingState() {
     return const Center(
       child: Column(
@@ -205,7 +255,6 @@ class _GraphView3DState extends State<GraphView3D> {
     );
   }
 
-  /// Construye el estado vacío: texto informativo (R7).
   Widget _buildEmptyState() {
     return const Center(
       child: Text(
@@ -216,11 +265,10 @@ class _GraphView3DState extends State<GraphView3D> {
     );
   }
 
-  /// Construye el estado de error: mensaje descriptivo (R8).
   Widget _buildErrorState() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -249,82 +297,125 @@ class _GraphView3DState extends State<GraphView3D> {
     );
   }
 
-  /// T2.7: Libera recursos del WebView al destruir el widget (R10).
-  ///
-  /// QUÉ: remueve los canales JavaScript registrados para evitar
-  /// callbacks a un widget ya desmontado, y limpia el caché
-  /// del WebView para liberar memoria.
-  ///
-  /// POR QUÉ: sin dispose explícito, los JavaScriptChannel siguen
-  /// activos y pueden intentar llamar a setState() en un widget
-  /// ya destruido, causando memory leaks y excepciones.
   @override
   void dispose() {
-    // Remover canales JS para evitar callbacks a widget desmontado
     try {
       _controller.removeJavaScriptChannel('onNodeTapped');
     } catch (_) {
-      // Ignorar si el canal ya no existe
+      // El canal puede no estar disponible en ciertos entornos de test.
     }
+
     try {
       _controller.removeJavaScriptChannel('onConsoleLog');
     } catch (_) {
-      // Ignorar si el canal ya no existe
+      // El canal puede no estar disponible en ciertos entornos de test.
     }
 
-    // Limpiar caché del WebView para liberar memoria
     try {
       _controller.clearCache();
     } catch (_) {
-      // Ignorar errores de plataforma en tests
+      // Ignorar errores de plataforma durante dispose.
     }
 
     super.dispose();
   }
 }
 
-/// Serializa un [LayoutResult] al formato JSON esperado por graph_3d.js.
+/// Serializa [LayoutResult] al contrato utilizado por graph_3d.js.
 ///
-/// La función `window.loadGraphData(json)` en el WebView recibe este mapa
-/// para renderizar nodos (esferas) y aristas (líneas) en Three.js.
+/// La estructura mantiene la semántica necesaria para conseguir paridad
+/// funcional con GraphPainter.
 ///
-/// Estructura generada:
+/// Ejemplo:
+///
 /// ```json
 /// {
-///   "nodes": [{"id", "x", "y", "z", "radius", "color", "label", "isSelf"}],
-///   "edges": [{"fromId", "toId", "thickness"}]
+///   "selectedNodeId": 4,
+///   "nodes": [
+///     {
+///       "id": 4,
+///       "x": 1000,
+///       "y": 1000,
+///       "z": 500,
+///       "radius": 25,
+///       "color": "#E91E63",
+///       "label": "Mi dispositivo",
+///       "isSelf": true,
+///       "userColor": "#E91E63",
+///       "estimatedDistance": 0.5
+///     }
+///   ],
+///   "edges": [
+///     {
+///       "fromId": 4,
+///       "toId": 7,
+///       "thickness": 1,
+///       "edgeType": "direct"
+///     }
+///   ]
 /// }
 /// ```
-///
-/// El campo `z` usa 0 por defecto (PR4 — PR5 agregará coordenada Z real).
-/// El `color` se formatea como hex string `#RRGGBB`.
-/// El `label` usa la prioridad: name > suggestedName > "Desconocido".
-Map<String, dynamic> layoutResultToJson(LayoutResult layout) {
+Map<String, dynamic> layoutResultToJson(
+  LayoutResult layout, {
+  int? selectedNodeId,
+}) {
   return {
-    'nodes': layout.nodes
-        .map(
-          (n) => {
-            'id': n.id,
-            'x': n.x,
-            'y': n.y,
-            'z': n.z, // T5.5: coordenada Z calculada por FR 3D
-            'radius': n.radius,
-            'color':
-                '#${n.color.toRadixString(16).padLeft(8, '0').substring(2)}',
-            'label': n.label,
-            'isSelf': n.isSelf,
-            // REQ-VR-01: color del perfil para el anillo del self-node en 3D.
-            // Se convierte de ARGB int (0xFFE91E63) a hex string sin alpha ("#E91E63").
-            'userColor': n.userColor != null
-                ? '#${n.userColor!.toRadixString(16).padLeft(8, '0').substring(2)}'
-                : null,
-          },
-        )
-        .toList(),
-    'edges': layout.edges
-        .map(
-          (e) => {'fromId': e.fromId, 'toId': e.toId, 'thickness': e.thickness},
-        )
-        .toList(),
+    'selectedNodeId': selectedNodeId,
+
+    'nodes': layout.nodes.map((node) {
+      return {
+        'id': node.id,
+        'x': node.x,
+        'y': node.y,
+        'z': node.z,
+        'radius': node.radius,
+
+        // IMPORTANTE:
+        // 2D utiliza displayColor, por lo que 3D debe utilizar exactamente
+        // la misma fuente para conservar paridad visual.
+        'color': _colorToHex(node.displayColor),
+
+        'label': node.label,
+        'isSelf': node.isSelf,
+
+        // Color específico del perfil para identificar el self-node.
+        'userColor': node.userColor != null
+            ? _colorToHex(node.userColor!)
+            : null,
+
+        // Se envía ahora aunque el JS actual todavía no lo renderice.
+        // Nos permitirá implementar labels equivalentes en el siguiente
+        // cambio sin volver a modificar el contrato Flutter → Three.js.
+        'estimatedDistance': node.estimatedDistance,
+      };
+    }).toList(),
+
+    'edges': layout.edges.map((edge) {
+      return {
+        'fromId': edge.fromId,
+        'toId': edge.toId,
+        'thickness': edge.thickness,
+
+        // No acoplamos JavaScript al enum completo de Dart.
+        // El contrato externo recibe simplemente "direct" o "transitive".
+        'edgeType': edge.edgeType.name,
+      };
+    }).toList(),
   };
+}
+
+/// Convierte un color ARGB de Flutter:
+///
+///     0xFFE91E63
+///
+/// a:
+///
+///     #E91E63
+///
+/// El alpha se elimina porque Three.js recibe el color RGB por separado
+/// de cualquier configuración de opacidad del material.
+String _colorToHex(int argb) {
+  final rgb = argb & 0x00FFFFFF;
+
+  return '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
 }

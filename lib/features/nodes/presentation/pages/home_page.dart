@@ -679,6 +679,7 @@ class _HomePageState extends State<HomePage> {
                                   offstage: !is3D,
                                   child: GraphView3D(
                                     layout: layout,
+                                    selectedNodeId: selectedNodeId,
                                     onNodeTapped: (nodeId) {
                                       context.read<VisualizationBloc>().add(
                                         NodeSelected(nodeId),
