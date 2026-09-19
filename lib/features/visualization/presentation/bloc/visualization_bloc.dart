@@ -4,6 +4,7 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_node.dart';
 
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_edge.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
@@ -422,7 +423,7 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
       return;
     }
 
-    final nodesById = <int, dynamic>{};
+    final nodesById = <int, GraphNode>{};
 
     for (final node in layout.nodes) {
       final id = node.id;
@@ -534,7 +535,7 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
   ///   vínculo más suave.
   void _applySpringForces({
     required LayoutResult layout,
-    required Map<int, dynamic> nodesById,
+    required Map<int, GraphNode> nodesById,
     required Map<int, Offset> forces,
   }) {
     for (final edge in layout.edges) {
@@ -588,7 +589,7 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
   /// No intenta reemplazar Fruchterman-Reingold. Su único objetivo es
   /// impedir que nodos cercanos terminen visualmente uno encima del otro.
   void _applyRepulsion({
-    required Map<int, dynamic> nodesById,
+    required Map<int, GraphNode> nodesById,
     required Map<int, Offset> forces,
   }) {
     final entries = nodesById.entries.toList(growable: false);
@@ -629,7 +630,7 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
   }
 
   void _captureSpringRestLengths(LayoutResult layout) {
-    final nodesById = <int, dynamic>{};
+    final nodesById = <int, GraphNode>{};
 
     for (final node in layout.nodes) {
       final id = node.id;

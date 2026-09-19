@@ -8,34 +8,33 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/pa
 
 /// Vista interactiva 2D del grafo.
 ///
-/// Responsabilidades:
+/// Tiene dos modos de interacción:
 ///
-/// - renderizar el grafo mediante [GraphPainter];
-/// - permitir navegación por el canvas;
-/// - detectar toque simple sobre nodos;
-/// - detectar long-press + drag sobre nodos;
-/// - transformar coordenadas de pantalla al canvas lógico;
-/// - ofrecer zoom explícito mediante botones + y -;
-/// - conservar la transformación elegida por el usuario.
+/// NAVEGACIÓN:
+/// - arrastrar el fondo mueve el mapa;
+/// - pinch permite acercar/alejar;
+/// - los nodos no reciben interacciones;
+/// - los botones +/- permanecen ocultos.
 ///
-/// La posición real de los nodos NO se almacena aquí.
-/// GraphView únicamente informa las interacciones al exterior.
-/// El BLoC continúa siendo la fuente de verdad espacial.
+/// INTERACCIÓN:
+/// - el viewport queda bloqueado;
+/// - los nodos aceptan toque y long-press + drag;
+/// - los botones +/- permiten controlar el zoom;
+/// - posteriormente se agregará doble toque para detalles.
+///
+/// Cambiar de modo nunca modifica la transformación actual del viewport.
 class GraphView extends StatefulWidget {
   final LayoutResult layout;
   final int? selectedNodeId;
   final Offset? barycenter;
 
-  /// Toque simple:
-  /// mantiene el comportamiento actual de selección/menú.
+  /// Toque simple sobre un nodo.
   final void Function(int nodeId)? onNodeTapped;
 
   /// Inicio de long-press sobre un nodo.
   final void Function(int nodeId)? onNodeDragStarted;
 
-  /// Movimiento del nodo.
-  ///
-  /// [position] pertenece al canvas lógico 2000×2000.
+  /// Movimiento del nodo en coordenadas del canvas lógico.
   final void Function(int nodeId, Offset position)? onNodeDragUpdated;
 
   /// Fin del drag.
@@ -56,47 +55,47 @@ class GraphView extends StatefulWidget {
   State<GraphView> createState() => GraphViewState();
 }
 
-/// Estado de [GraphView].
-///
-/// Mantiene exclusivamente estado de interacción local:
-///
-/// - transformación del viewport;
-/// - nodo actualmente agarrado por el gesto;
-/// - centrado inicial.
-///
-/// Las posiciones persistentes siguen perteneciendo al BLoC.
+/// Modo de interacción actual del grafo.
+enum _GraphInteractionMode {
+  /// Mano abierta:
+  /// el usuario manipula el viewport.
+  navigation,
+
+  /// Mano cerrada:
+  /// el viewport queda fijo y el usuario manipula nodos.
+  nodes,
+}
+
 class GraphViewState extends State<GraphView> {
   static const Size _canvasSize = Size(2000, 2000);
 
   static const double _minScale = 0.05;
   static const double _maxScale = 5.0;
-
-  /// Factor utilizado por los botones +/-.
   static const double _zoomStep = 1.25;
 
   final TransformationController _transformController =
       TransformationController();
 
-  /// Nodo agarrado actualmente mediante long press.
+  /// Por defecto comenzamos en navegación.
+  _GraphInteractionMode _interactionMode = _GraphInteractionMode.navigation;
+
   int? _draggedNodeId;
 
-  /// Evita que InteractiveViewer desplace el mapa mientras arrastramos
-  /// manualmente un nodo.
   bool _isDraggingNode = false;
 
-  /// El centrado automático se realiza una sola vez.
   bool _hasCentered = false;
 
-  /// Expuesto para HomePage, que lo utiliza para convertir coordenadas
-  /// del canvas a coordenadas globales al posicionar tooltips.
   TransformationController get transformController => _transformController;
+
+  bool get _isNavigationMode =>
+      _interactionMode == _GraphInteractionMode.navigation;
+
+  bool get _isNodeMode => _interactionMode == _GraphInteractionMode.nodes;
 
   @override
   void didUpdateWidget(covariant GraphView oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // Si el nodo que estaba siendo arrastrado desapareció debido al scan,
-    // cancelamos la interacción local.
     final draggedId = _draggedNodeId;
 
     if (draggedId != null && !_containsNode(draggedId)) {
@@ -129,29 +128,32 @@ class GraphViewState extends State<GraphView> {
             GestureDetector(
               behavior: HitTestBehavior.opaque,
 
-              // ─────────────────────────────────────────────
-              // TOQUE SIMPLE
-              // ─────────────────────────────────────────────
-              onTapUp: (details) {
-                _handleTap(details.localPosition);
-              },
+              // Las interacciones con nodos solo existen en modo nodos.
+              onTapUp: _isNodeMode
+                  ? (details) {
+                      _handleTap(details.localPosition);
+                    }
+                  : null,
 
-              // ─────────────────────────────────────────────
-              // LONG PRESS + DRAG
-              // ─────────────────────────────────────────────
-              onLongPressStart: (details) {
-                _handleLongPressStart(details.localPosition);
-              },
+              onLongPressStart: _isNodeMode
+                  ? (details) {
+                      _handleLongPressStart(details.localPosition);
+                    }
+                  : null,
 
-              onLongPressMoveUpdate: (details) {
-                _handleLongPressMove(details.localPosition);
-              },
+              onLongPressMoveUpdate: _isNodeMode
+                  ? (details) {
+                      _handleLongPressMove(details.localPosition);
+                    }
+                  : null,
 
-              onLongPressEnd: (_) {
-                _handleLongPressEnd();
-              },
+              onLongPressEnd: _isNodeMode
+                  ? (_) {
+                      _handleLongPressEnd();
+                    }
+                  : null,
 
-              onLongPressCancel: _handleLongPressCancel,
+              onLongPressCancel: _isNodeMode ? _handleLongPressCancel : null,
 
               child: InteractiveViewer(
                 transformationController: _transformController,
@@ -160,13 +162,13 @@ class GraphViewState extends State<GraphView> {
                 boundaryMargin: const EdgeInsets.all(double.infinity),
                 constrained: false,
 
-                // Cuando un nodo está agarrado, el mismo movimiento del dedo
-                // debe pertenecer al nodo y no al viewport.
-                panEnabled: !_isDraggingNode,
-
-                // También bloqueamos zoom durante el drag para evitar que un
-                // segundo dedo cambie accidentalmente la transformación.
-                scaleEnabled: !_isDraggingNode,
+                // Mano abierta:
+                // el usuario puede desplazar y escalar el mapa.
+                //
+                // Mano cerrada:
+                // el viewport queda completamente fijo.
+                panEnabled: _isNavigationMode && !_isDraggingNode,
+                scaleEnabled: _isNavigationMode && !_isDraggingNode,
 
                 child: CustomPaint(
                   size: _canvasSize,
@@ -179,13 +181,28 @@ class GraphViewState extends State<GraphView> {
             ),
 
             // ─────────────────────────────────────────────
-            // ZOOM CONTROLS
+            // SELECTOR NAVEGACIÓN / NODOS
             // ─────────────────────────────────────────────
             Positioned(
-              right: 16,
+              left: 16,
               bottom: 20,
-              child: _ZoomControls(onZoomIn: zoomIn, onZoomOut: zoomOut),
+              child: _InteractionModeButton(
+                isNavigationMode: _isNavigationMode,
+                onPressed: _toggleInteractionMode,
+              ),
             ),
+
+            // ─────────────────────────────────────────────
+            // ZOOM + / -
+            // ─────────────────────────────────────────────
+            //
+            // Solo aparecen con la mano cerrada.
+            if (_isNodeMode)
+              Positioned(
+                right: 16,
+                bottom: 20,
+                child: _ZoomControls(onZoomIn: zoomIn, onZoomOut: zoomOut),
+              ),
           ],
         );
       },
@@ -193,19 +210,44 @@ class GraphViewState extends State<GraphView> {
   }
 
   // ─────────────────────────────────────────────────────────────
+  // INTERACTION MODE
+  // ─────────────────────────────────────────────────────────────
+
+  void _toggleInteractionMode() {
+    // Por seguridad, si existiera un drag activo lo finalizamos antes
+    // de cambiar de modo.
+    final draggedNodeId = _draggedNodeId;
+
+    if (draggedNodeId != null) {
+      widget.onNodeDragEnded?.call(draggedNodeId);
+    }
+
+    setState(() {
+      _draggedNodeId = null;
+      _isDraggingNode = false;
+
+      _interactionMode = _isNavigationMode
+          ? _GraphInteractionMode.nodes
+          : _GraphInteractionMode.navigation;
+    });
+
+    // IMPORTANTE:
+    // no modificamos _transformController.
+    //
+    // La cámara queda exactamente en la posición y escala elegidas
+    // por el usuario.
+  }
+
+  // ─────────────────────────────────────────────────────────────
   // TAP
   // ─────────────────────────────────────────────────────────────
 
-  /// Detecta un nodo bajo un toque simple.
   void _handleTap(Offset localPosition) {
-    // Un tap residual inmediatamente después de un drag no debe abrir
-    // accidentalmente el menú del nodo.
-    if (_isDraggingNode) {
+    if (!_isNodeMode || _isDraggingNode) {
       return;
     }
 
     final node = _findNodeAt(localPosition);
-
     final id = node?.id;
 
     if (id != null) {
@@ -218,12 +260,13 @@ class GraphViewState extends State<GraphView> {
   // ─────────────────────────────────────────────────────────────
 
   void _handleLongPressStart(Offset localPosition) {
-    final node = _findNodeAt(localPosition);
+    if (!_isNodeMode) {
+      return;
+    }
 
+    final node = _findNodeAt(localPosition);
     final nodeId = node?.id;
 
-    // Long press sobre el fondo:
-    // no inicia movimiento de nodos.
     if (nodeId == null) {
       return;
     }
@@ -237,6 +280,10 @@ class GraphViewState extends State<GraphView> {
   }
 
   void _handleLongPressMove(Offset localPosition) {
+    if (!_isNodeMode) {
+      return;
+    }
+
     final nodeId = _draggedNodeId;
 
     if (!_isDraggingNode || nodeId == null) {
@@ -278,11 +325,6 @@ class GraphViewState extends State<GraphView> {
   // HIT TEST
   // ─────────────────────────────────────────────────────────────
 
-  /// Busca el nodo más cercano al punto indicado.
-  ///
-  /// La tolerancia se expresa en píxeles visuales y luego se transforma
-  /// al espacio lógico según el zoom actual. Así los nodos continúan siendo
-  /// fáciles de tocar aunque el usuario haya alejado mucho el mapa.
   GraphNode? _findNodeAt(Offset localPosition) {
     final canvasPoint = _screenToCanvas(localPosition);
 
@@ -338,13 +380,19 @@ class GraphViewState extends State<GraphView> {
     return _transformController.value.getMaxScaleOnAxis();
   }
 
-  /// Aumenta el zoom manteniendo aproximadamente fijo el centro visible.
   void zoomIn() {
+    if (!_isNodeMode) {
+      return;
+    }
+
     _zoomBy(_zoomStep);
   }
 
-  /// Reduce el zoom manteniendo aproximadamente fijo el centro visible.
   void zoomOut() {
+    if (!_isNodeMode) {
+      return;
+    }
+
     _zoomBy(1 / _zoomStep);
   }
 
@@ -386,10 +434,6 @@ class GraphViewState extends State<GraphView> {
   // INITIAL VIEWPORT
   // ─────────────────────────────────────────────────────────────
 
-  /// Centra el viewport una única vez.
-  ///
-  /// Después de esta operación las actualizaciones BLE no modifican
-  /// transformación, zoom ni desplazamiento elegidos por el usuario.
   void _maybeCenterOnBarycenter() {
     if (_hasCentered || widget.barycenter == null) {
       return;
@@ -415,10 +459,47 @@ class GraphViewState extends State<GraphView> {
   }
 }
 
+/// Botón que alterna entre:
+///
+/// 🖐 navegación del viewport
+/// ✊ interacción con nodos
+class _InteractionModeButton extends StatelessWidget {
+  final bool isNavigationMode;
+  final VoidCallback onPressed;
+
+  const _InteractionModeButton({
+    required this.isNavigationMode,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      elevation: 4,
+      shape: const CircleBorder(),
+      color: colorScheme.surface.withAlpha(235),
+      child: IconButton(
+        tooltip: isNavigationMode
+            ? 'Bloquear mapa e interactuar con nodos'
+            : 'Mover y ampliar mapa',
+        onPressed: onPressed,
+
+        // Mano abierta = navegación.
+        // Puño = interacción con nodos.
+        icon: Icon(
+          isNavigationMode ? Icons.pan_tool_outlined : Icons.back_hand,
+        ),
+      ),
+    );
+  }
+}
+
 /// Controles explícitos de zoom.
 ///
-/// Se mantienen separados del GestureDetector principal para que pulsar
-/// +/- nunca pueda interpretarse como interacción con un nodo.
+/// Solo se muestran en modo interacción, cuando los gestos de navegación
+/// del InteractiveViewer están bloqueados.
 class _ZoomControls extends StatelessWidget {
   final VoidCallback onZoomIn;
   final VoidCallback onZoomOut;
