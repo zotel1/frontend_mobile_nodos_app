@@ -668,9 +668,40 @@ class _HomePageState extends State<HomePage> {
                                     layout: layout,
                                     selectedNodeId: selectedNodeId,
                                     barycenter: barycenter,
+
+                                    // Toque simple:
+                                    // conserva el menú/selección existente.
                                     onNodeTapped: (nodeId) {
                                       context.read<VisualizationBloc>().add(
                                         NodeSelected(nodeId),
+                                      );
+                                    },
+
+                                    // Long press:
+                                    // el nodo queda agarrado.
+                                    onNodeDragStarted: (nodeId) {
+                                      context.read<VisualizationBloc>().add(
+                                        NodeDragStarted(nodeId),
+                                      );
+                                    },
+
+                                    // Movimiento:
+                                    // GraphView ya convirtió la posición del dedo al canvas 2000×2000.
+                                    onNodeDragUpdated: (nodeId, position) {
+                                      context.read<VisualizationBloc>().add(
+                                        NodeDragUpdated(
+                                          nodeId: nodeId,
+                                          x: position.dx,
+                                          y: position.dy,
+                                        ),
+                                      );
+                                    },
+
+                                    // Soltar:
+                                    // conserva la nueva posición.
+                                    onNodeDragEnded: (nodeId) {
+                                      context.read<VisualizationBloc>().add(
+                                        NodeDragEnded(nodeId),
                                       );
                                     },
                                   ),
