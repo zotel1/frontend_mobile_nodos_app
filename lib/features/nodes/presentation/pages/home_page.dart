@@ -42,8 +42,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  /// Controla qué hijo del AnimatedCrossFade se muestra.
-  /// true = grafo (secondChild), false = lista (firstChild).
+  /// true = grafo, false = lista.
   bool _showingGraph = false;
 
   /// Controla si el grafo se renderiza en 3D o 2D.
@@ -77,7 +76,8 @@ class _HomePageState extends State<HomePage> {
   /// Se usa para el botón "Reintentar".
   String? _lastRemoteId;
 
-  /// Devuelve el ID persistente del Node que representa al dispositivo local.
+  /// Devuelve el ID persistente del Node que representa
+  /// al dispositivo local.
   ///
   /// IMPORTANTE:
   /// - User.id pertenece a la tabla users.
@@ -95,9 +95,15 @@ class _HomePageState extends State<HomePage> {
     return userState.user.localNodeId;
   }
 
-  /// Abre el tooltip para un nodo específico.
+  /// Abre el tooltip de acciones para un nodo específico.
+  ///
+  /// Este tooltip pertenece a la interacción de toque simple.
+  /// Es independiente de los detalles visuales activados mediante
+  /// doble toque.
   void _showNodeTooltip(BuildContext context, LayoutResult layout, int nodeId) {
-    if (_tooltipNodeId == nodeId) return;
+    if (_tooltipNodeId == nodeId) {
+      return;
+    }
 
     final node = layout.nodes.firstWhere(
       (n) => n.id == nodeId,
@@ -105,10 +111,12 @@ class _HomePageState extends State<HomePage> {
     );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       final is3D = _is3D.value;
-      final Size screenSize = MediaQuery.of(context).size;
+      final screenSize = MediaQuery.of(context).size;
 
       final Offset globalPosition;
 
@@ -118,7 +126,9 @@ class _HomePageState extends State<HomePage> {
         final renderBox =
             _graphViewKey.currentContext?.findRenderObject() as RenderBox?;
 
-        if (renderBox == null) return;
+        if (renderBox == null) {
+          return;
+        }
 
         final controller = _graphViewKey.currentState?.transformController;
 
@@ -163,11 +173,6 @@ class _HomePageState extends State<HomePage> {
               .firstOrNull;
 
           if (bleAddress != null && mounted) {
-            //final userState = context.read<UserBloc>().state;
-
-            //final myNodeId = userState is UserLoaded
-            //  ? userState.user.localNodeId
-            // : null;
             final myNodeId = _getLocalNodeId();
 
             if (myNodeId != null) {
@@ -207,7 +212,9 @@ class _HomePageState extends State<HomePage> {
     _bleBloc = context.read<BleBloc>();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       context.read<NodeListBloc>().add(const LoadNodes());
 
@@ -275,25 +282,10 @@ class _HomePageState extends State<HomePage> {
               final action = retryable
                   ? SnackBarAction(
                       label: 'Reintentar',
-
-                      // BUG-001:
-                      //
-                      // Al reintentar debemos utilizar exactamente
-                      // el mismo ID de Node local utilizado en el
-                      // enlace inicial.
-                      //
-                      // User.id NO representa un nodo.
-                      //
-                      // User.localNodeId → Nodes.id del self-node.
                       onPressed: () {
                         if (_lastRemoteId != null && mounted) {
-                          //  final userState = context.read<UserBloc>().state;
-
-                          // final myNodeId = userState is UserLoaded
-                          //   ? userState.user.localNodeId
-                          // : null;
-
                           final myNodeId = _getLocalNodeId();
+
                           if (myNodeId != null) {
                             context.read<BleConnectionBloc>().add(
                               ConnectToDevice(
@@ -323,7 +315,9 @@ class _HomePageState extends State<HomePage> {
               :final color,
             ):
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (!mounted) return;
+                if (!mounted) {
+                  return;
+                }
 
                 final node = _currentNodes
                     .where((n) => n.bleAddress == remoteId)
@@ -343,7 +337,9 @@ class _HomePageState extends State<HomePage> {
 
             case RemoteIdentityUnavailable(:final remoteId):
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (!mounted) return;
+                if (!mounted) {
+                  return;
+                }
 
                 final node = _currentNodes
                     .where((n) => n.bleAddress == remoteId)
@@ -650,9 +646,11 @@ class _HomePageState extends State<HomePage> {
                       VisualizationInitial() || GraphBuilding() => const Center(
                         child: CircularProgressIndicator(),
                       ),
+
                       GraphReady(
                         :final layout,
                         :final selectedNodeId,
+                        :final detailsNodeId,
                         :final barycenter,
                       ) =>
                         ValueListenableBuilder<bool>(
@@ -661,12 +659,16 @@ class _HomePageState extends State<HomePage> {
                             return Stack(
                               fit: StackFit.expand,
                               children: [
+                                // ───────────────────────────────
+                                // GRAFO 2D
+                                // ───────────────────────────────
                                 Offstage(
                                   offstage: is3D,
                                   child: GraphView(
                                     key: _graphViewKey,
                                     layout: layout,
                                     selectedNodeId: selectedNodeId,
+                                    detailsNodeId: detailsNodeId,
                                     barycenter: barycenter,
 
                                     // Toque simple:
@@ -674,6 +676,15 @@ class _HomePageState extends State<HomePage> {
                                     onNodeTapped: (nodeId) {
                                       context.read<VisualizationBloc>().add(
                                         NodeSelected(nodeId),
+                                      );
+                                    },
+
+                                    // Doble toque:
+                                    // muestra u oculta los detalles
+                                    // visuales del nodo.
+                                    onNodeDoubleTapped: (nodeId) {
+                                      context.read<VisualizationBloc>().add(
+                                        NodeDetailsToggled(nodeId),
                                       );
                                     },
 
@@ -686,7 +697,8 @@ class _HomePageState extends State<HomePage> {
                                     },
 
                                     // Movimiento:
-                                    // GraphView ya convirtió la posición del dedo al canvas 2000×2000.
+                                    // GraphView convierte la posición
+                                    // del dedo al canvas lógico 2000×2000.
                                     onNodeDragUpdated: (nodeId, position) {
                                       context.read<VisualizationBloc>().add(
                                         NodeDragUpdated(
@@ -698,7 +710,8 @@ class _HomePageState extends State<HomePage> {
                                     },
 
                                     // Soltar:
-                                    // conserva la nueva posición.
+                                    // la simulación física puede continuar
+                                    // relajando el grafo.
                                     onNodeDragEnded: (nodeId) {
                                       context.read<VisualizationBloc>().add(
                                         NodeDragEnded(nodeId),
@@ -706,6 +719,10 @@ class _HomePageState extends State<HomePage> {
                                     },
                                   ),
                                 ),
+
+                                // ───────────────────────────────
+                                // GRAFO 3D
+                                // ───────────────────────────────
                                 Offstage(
                                   offstage: !is3D,
                                   child: GraphView3D(
@@ -722,6 +739,7 @@ class _HomePageState extends State<HomePage> {
                             );
                           },
                         ),
+
                       GraphError(:final message) => Center(
                         child: Text(
                           message,
@@ -731,6 +749,7 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ),
                       ),
+
                       _ => const SizedBox.shrink(),
                     };
                   },

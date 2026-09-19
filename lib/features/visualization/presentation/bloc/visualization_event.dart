@@ -10,6 +10,7 @@ import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.da
 ///
 /// - construcción/actualización del grafo;
 /// - selección de nodos;
+/// - visualización de detalles;
 /// - movimiento interactivo de nodos;
 /// - reintento después de errores.
 abstract class VisualizationEvent extends Equatable {
@@ -67,6 +68,34 @@ class NodeDeselected extends VisualizationEvent {
   const NodeDeselected();
 }
 
+/// El usuario realizó doble toque sobre un nodo.
+///
+/// Si el nodo no tenía sus detalles visibles, los muestra.
+///
+/// Si el mismo nodo ya tenía sus detalles visibles, los oculta.
+///
+/// Si los detalles pertenecían a otro nodo, cambia directamente
+/// al nuevo nodo.
+class NodeDetailsToggled extends VisualizationEvent {
+  final int nodeId;
+
+  const NodeDetailsToggled(this.nodeId);
+
+  @override
+  List<Object?> get props => [nodeId];
+}
+
+/// Cierra cualquier detalle de nodo actualmente visible.
+///
+/// Es independiente de [NodeDeselected]:
+///
+/// - NodeDeselected controla la selección funcional de un toque;
+/// - NodeDetailsDismissed controla exclusivamente la información
+///   solicitada mediante doble toque.
+class NodeDetailsDismissed extends VisualizationEvent {
+  const NodeDetailsDismissed();
+}
+
 /// Comienza el movimiento manual de un nodo.
 ///
 /// Se dispara después de mantener presionado un nodo.
@@ -105,10 +134,8 @@ class NodeDragUpdated extends VisualizationEvent {
 
 /// Finaliza el movimiento manual de un nodo.
 ///
-/// En esta primera etapa simplemente libera el nodo.
-///
-/// Posteriormente este evento será el punto de entrada para iniciar
-/// la relajación física del sistema.
+/// El nodo deja de estar fijado al dedo y la simulación física
+/// puede continuar relajando el resto del grafo.
 class NodeDragEnded extends VisualizationEvent {
   final int nodeId;
 

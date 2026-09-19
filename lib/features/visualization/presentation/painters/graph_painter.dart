@@ -8,22 +8,32 @@ import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities
 
 /// Renderizador 2D del grafo.
 ///
-/// El painter mantiene la semántica del dominio:
+/// Mantiene la semántica visual del dominio:
 ///
 /// - color propio del nodo mediante [GraphNode.displayColor];
-/// - nodos conocidos y desconocidos visualmente diferenciados;
+/// - nodos conocidos y desconocidos diferenciados;
 /// - self-node identificado mediante el color de perfil;
 /// - aristas directas y transitivas diferenciadas;
-/// - distancia estimada;
-/// - nodo seleccionado;
+/// - selección mediante halo magenta;
+/// - detalles visibles únicamente para el nodo solicitado.
 ///
-/// El lenguaje visual está pensado para un explorador de grafos oscuro:
-/// nodos simples, aristas sutiles y selección claramente visible.
+/// El grafo permanece limpio por defecto.
+/// Los nombres y distancias no se muestran permanentemente.
 class GraphPainter extends CustomPainter {
   final LayoutResult layout;
+
+  /// Nodo seleccionado mediante toque simple.
+  ///
+  /// Se utiliza para la selección visual asociada al menú de acciones.
   final int? selectedNodeId;
 
-  GraphPainter({required this.layout, this.selectedNodeId});
+  /// Nodo cuyos detalles deben mostrarse.
+  ///
+  /// Es independiente de [selectedNodeId] y normalmente se modifica
+  /// mediante doble toque.
+  final int? detailsNodeId;
+
+  GraphPainter({required this.layout, this.selectedNodeId, this.detailsNodeId});
 
   static const Color _edgeColor = Color(0xFF7E8A9A);
   static const Color _transitiveEdgeColor = Color(0xFF667080);
@@ -36,6 +46,9 @@ class GraphPainter extends CustomPainter {
 
   static const Color _labelColor = Color(0xFFE9EDF5);
   static const Color _secondaryLabelColor = Color(0xFF9DA8B8);
+
+  static const Color _detailsBackgroundColor = Color(0xE61A1F29);
+  static const Color _detailsBorderColor = Color(0xFF596579);
 
   static const Color _selfFallbackColor = Color(0xFF42A5F5);
 
@@ -62,7 +75,10 @@ class GraphPainter extends CustomPainter {
     _drawNodes(canvas);
     _drawSelfNode(canvas);
     _drawSelection(canvas, nodeMap);
-    _drawLabels(canvas);
+
+    // Los detalles se dibujan al final para quedar por encima
+    // del resto del grafo.
+    _drawDetails(canvas, nodeMap);
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -180,9 +196,6 @@ class GraphPainter extends CustomPainter {
   }
 
   /// Calcula el punto de control de una Bezier cuadrática.
-  ///
-  /// Conservamos una ligera curvatura para evitar que el grafo se vea
-  /// excesivamente rígido, pero es más suave que la versión anterior.
   @visibleForTesting
   static Offset computeBezierControlPoint(Offset from, Offset to) {
     final dx = to.dx - from.dx;
@@ -196,8 +209,6 @@ class GraphPainter extends CustomPainter {
       return middle;
     }
 
-    // Antes se utilizaba 20 % de la longitud.
-    // 8 % produce una curva bastante más limpia.
     final curvature = min(distance * 0.08, 45.0);
 
     return Offset(
@@ -251,15 +262,9 @@ class GraphPainter extends CustomPainter {
   // PROXIMITY
   // ─────────────────────────────────────────────────────────────
 
-  /// Halo muy sutil relacionado con el color del nodo.
-  ///
-  /// La versión anterior utilizaba dos grandes círculos ×1.5 y ×2.
-  /// Visualmente competían con las conexiones y producían bastante ruido.
-  ///
-  /// Ahora existe un único halo discreto.
+  /// Halo sutil relacionado con el color del nodo.
   void _drawProximityRings(Canvas canvas) {
     for (final node in layout.nodes) {
-      // El halo específico del self-node se dibuja posteriormente.
       if (node.isSelf) {
         continue;
       }
@@ -345,14 +350,12 @@ class GraphPainter extends CustomPainter {
           ? Color(node.userColor!)
           : _selfFallbackColor;
 
-      // Halo exterior muy suave.
       final glowPaint = Paint()
         ..color = selfColor.withAlpha(42)
         ..style = PaintingStyle.fill;
 
       canvas.drawCircle(center, node.radius + 10, glowPaint);
 
-      // Aro de identidad.
       final ringPaint = Paint()
         ..color = selfColor.withAlpha(235)
         ..style = PaintingStyle.stroke
@@ -360,8 +363,6 @@ class GraphPainter extends CustomPainter {
 
       canvas.drawCircle(center, node.radius + 5, ringPaint);
 
-      // Pequeño punto superior para que el nodo local pueda reconocerse
-      // incluso cuando los colores de varios nodos son similares.
       final markerPaint = Paint()
         ..color = selfColor
         ..style = PaintingStyle.fill;
@@ -380,8 +381,7 @@ class GraphPainter extends CustomPainter {
 
   /// Selección independiente de la identidad del nodo.
   ///
-  /// Un nodo seleccionado recibe un halo magenta, siguiendo el lenguaje
-  /// visual que buscamos para las vistas 2D y 3D.
+  /// Un nodo seleccionado recibe un halo magenta.
   void _drawSelection(Canvas canvas, Map<int, GraphNode> nodeMap) {
     final id = selectedNodeId;
 
@@ -397,14 +397,12 @@ class GraphPainter extends CustomPainter {
 
     final center = Offset(node.x, node.y);
 
-    // Glow externo.
     final glowPaint = Paint()
       ..color = _selectionColor.withAlpha(48)
       ..style = PaintingStyle.fill;
 
     canvas.drawCircle(center, node.radius + 14, glowPaint);
 
-    // Anillo principal.
     final ringPaint = Paint()
       ..color = _selectionColor
       ..style = PaintingStyle.stroke
@@ -412,7 +410,6 @@ class GraphPainter extends CustomPainter {
 
     canvas.drawCircle(center, node.radius + 8, ringPaint);
 
-    // Segundo acento muy fino.
     final outerPaint = Paint()
       ..color = _selectionColor.withAlpha(115)
       ..style = PaintingStyle.stroke
@@ -422,47 +419,52 @@ class GraphPainter extends CustomPainter {
   }
 
   // ─────────────────────────────────────────────────────────────
-  // LABELS
+  // DETAILS
   // ─────────────────────────────────────────────────────────────
 
-  /// Renderiza nombre y distancia estimada.
+  /// Dibuja información únicamente para el nodo activado mediante
+  /// doble toque.
   ///
-  /// El nombre conserva mayor jerarquía que la distancia.
-  void _drawLabels(Canvas canvas) {
-    for (final node in layout.nodes) {
-      final namePainter = TextPainter(
-        text: TextSpan(
-          text: node.label,
-          style: TextStyle(
-            color: _labelColor,
-            fontSize: node.isSelf ? 12.5 : 12.0,
-            fontWeight: node.isSelf ? FontWeight.w600 : FontWeight.w500,
-            height: 1.1,
-          ),
+  /// Si [detailsNodeId] es null, el grafo no muestra etiquetas.
+  void _drawDetails(Canvas canvas, Map<int, GraphNode> nodeMap) {
+    final id = detailsNodeId;
+
+    if (id == null) {
+      return;
+    }
+
+    final node = nodeMap[id];
+
+    if (node == null) {
+      return;
+    }
+
+    final namePainter = TextPainter(
+      text: TextSpan(
+        text: node.label,
+        style: TextStyle(
+          color: _labelColor,
+          fontSize: node.isSelf ? 13.0 : 12.5,
+          fontWeight: FontWeight.w600,
+          height: 1.1,
         ),
-        textDirection: TextDirection.ltr,
-        textAlign: TextAlign.center,
-        maxLines: 1,
-        ellipsis: '…',
-      )..layout(maxWidth: 130);
+      ),
+      textDirection: TextDirection.ltr,
+      textAlign: TextAlign.center,
+      maxLines: 1,
+      ellipsis: '…',
+    )..layout(maxWidth: 150);
 
-      var y = node.y + node.radius + 8;
+    final estimatedDistance = node.estimatedDistance;
 
-      namePainter.paint(canvas, Offset(node.x - namePainter.width / 2, y));
+    TextPainter? distancePainter;
 
-      final estimatedDistance = node.estimatedDistance;
-
-      if (estimatedDistance == null) {
-        continue;
-      }
-
-      y += namePainter.height + 2;
-
+    if (estimatedDistance != null) {
       final distanceLabel = estimatedDistance >= 1.0
           ? '~${estimatedDistance.toStringAsFixed(1)}m'
           : '~${(estimatedDistance * 100).round()}cm';
 
-      final distancePainter = TextPainter(
+      distancePainter = TextPainter(
         text: TextSpan(
           text: distanceLabel,
           style: const TextStyle(
@@ -475,11 +477,55 @@ class GraphPainter extends CustomPainter {
         textDirection: TextDirection.ltr,
         textAlign: TextAlign.center,
         maxLines: 1,
-      )..layout(maxWidth: 100);
+      )..layout(maxWidth: 120);
+    }
+
+    const horizontalPadding = 10.0;
+    const verticalPadding = 7.0;
+    const lineSpacing = 3.0;
+
+    final contentWidth = max(namePainter.width, distancePainter?.width ?? 0.0);
+
+    final contentHeight =
+        namePainter.height +
+        (distancePainter != null ? lineSpacing + distancePainter.height : 0.0);
+
+    final boxWidth = contentWidth + horizontalPadding * 2;
+
+    final boxHeight = contentHeight + verticalPadding * 2;
+
+    final boxLeft = node.x - boxWidth / 2;
+
+    final boxTop = node.y + node.radius + 11.0;
+
+    final rect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(boxLeft, boxTop, boxWidth, boxHeight),
+      const Radius.circular(8),
+    );
+
+    final backgroundPaint = Paint()
+      ..color = _detailsBackgroundColor
+      ..style = PaintingStyle.fill;
+
+    canvas.drawRRect(rect, backgroundPaint);
+
+    final borderPaint = Paint()
+      ..color = _detailsBorderColor.withAlpha(190)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    canvas.drawRRect(rect, borderPaint);
+
+    var textY = boxTop + verticalPadding;
+
+    namePainter.paint(canvas, Offset(node.x - namePainter.width / 2, textY));
+
+    if (distancePainter != null) {
+      textY += namePainter.height + lineSpacing;
 
       distancePainter.paint(
         canvas,
-        Offset(node.x - distancePainter.width / 2, y),
+        Offset(node.x - distancePainter.width / 2, textY),
       );
     }
   }
@@ -561,14 +607,12 @@ class GraphPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant GraphPainter oldDelegate) {
     return oldDelegate.layout != layout ||
-        oldDelegate.selectedNodeId != selectedNodeId;
+        oldDelegate.selectedNodeId != selectedNodeId ||
+        oldDelegate.detailsNodeId != detailsNodeId;
   }
 }
 
 /// Geometría precalculada de una conexión.
-///
-/// Mantener estos valores agrupados simplifica el renderizado y evita
-/// repetir cálculos dentro de [_drawEdges].
 class _EdgeGeometry {
   final Offset start;
   final Offset control;

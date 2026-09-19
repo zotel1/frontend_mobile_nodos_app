@@ -18,18 +18,25 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/pa
 ///
 /// INTERACCIÓN:
 /// - el viewport queda bloqueado;
-/// - los nodos aceptan toque y long-press + drag;
-/// - los botones +/- permiten controlar el zoom;
-/// - posteriormente se agregará doble toque para detalles.
+/// - toque simple interactúa con el nodo;
+/// - doble toque solicita sus detalles;
+/// - long-press + drag mueve el nodo;
+/// - los botones +/- permiten controlar el zoom.
 ///
 /// Cambiar de modo nunca modifica la transformación actual del viewport.
 class GraphView extends StatefulWidget {
   final LayoutResult layout;
   final int? selectedNodeId;
+  final int? detailsNodeId;
   final Offset? barycenter;
 
   /// Toque simple sobre un nodo.
   final void Function(int nodeId)? onNodeTapped;
+
+  /// Doble toque sobre un nodo.
+  ///
+  /// Se utilizará para mostrar u ocultar información contextual.
+  final void Function(int nodeId)? onNodeDoubleTapped;
 
   /// Inicio de long-press sobre un nodo.
   final void Function(int nodeId)? onNodeDragStarted;
@@ -44,8 +51,10 @@ class GraphView extends StatefulWidget {
     super.key,
     required this.layout,
     this.selectedNodeId,
+    this.detailsNodeId,
     this.barycenter,
     this.onNodeTapped,
+    this.onNodeDoubleTapped,
     this.onNodeDragStarted,
     this.onNodeDragUpdated,
     this.onNodeDragEnded,
@@ -79,7 +88,14 @@ class GraphViewState extends State<GraphView> {
   /// Por defecto comenzamos en navegación.
   _GraphInteractionMode _interactionMode = _GraphInteractionMode.navigation;
 
+  /// Nodo actualmente agarrado mediante long-press.
   int? _draggedNodeId;
+
+  /// Nodo detectado al comenzar un posible doble toque.
+  ///
+  /// onDoubleTapDown proporciona la posición del gesto.
+  /// onDoubleTap confirma posteriormente que realmente fue un doble toque.
+  int? _doubleTapNodeId;
 
   bool _isDraggingNode = false;
 
@@ -101,6 +117,12 @@ class GraphViewState extends State<GraphView> {
     if (draggedId != null && !_containsNode(draggedId)) {
       _draggedNodeId = null;
       _isDraggingNode = false;
+    }
+
+    final doubleTapId = _doubleTapNodeId;
+
+    if (doubleTapId != null && !_containsNode(doubleTapId)) {
+      _doubleTapNodeId = null;
     }
 
     _maybeCenterOnBarycenter();
@@ -128,13 +150,31 @@ class GraphViewState extends State<GraphView> {
             GestureDetector(
               behavior: HitTestBehavior.opaque,
 
-              // Las interacciones con nodos solo existen en modo nodos.
+              // ─────────────────────────────────────────────
+              // TOQUE SIMPLE
+              // ─────────────────────────────────────────────
               onTapUp: _isNodeMode
                   ? (details) {
                       _handleTap(details.localPosition);
                     }
                   : null,
 
+              // ─────────────────────────────────────────────
+              // DOBLE TOQUE
+              // ─────────────────────────────────────────────
+              onDoubleTapDown: _isNodeMode
+                  ? (details) {
+                      _handleDoubleTapDown(details.localPosition);
+                    }
+                  : null,
+
+              onDoubleTap: _isNodeMode ? _handleDoubleTap : null,
+
+              onDoubleTapCancel: _isNodeMode ? _handleDoubleTapCancel : null,
+
+              // ─────────────────────────────────────────────
+              // LONG PRESS + DRAG
+              // ─────────────────────────────────────────────
               onLongPressStart: _isNodeMode
                   ? (details) {
                       _handleLongPressStart(details.localPosition);
@@ -175,6 +215,7 @@ class GraphViewState extends State<GraphView> {
                   painter: GraphPainter(
                     layout: widget.layout,
                     selectedNodeId: widget.selectedNodeId,
+                    detailsNodeId: widget.detailsNodeId,
                   ),
                 ),
               ),
@@ -214,8 +255,7 @@ class GraphViewState extends State<GraphView> {
   // ─────────────────────────────────────────────────────────────
 
   void _toggleInteractionMode() {
-    // Por seguridad, si existiera un drag activo lo finalizamos antes
-    // de cambiar de modo.
+    // Si existe un drag activo lo finalizamos antes de cambiar de modo.
     final draggedNodeId = _draggedNodeId;
 
     if (draggedNodeId != null) {
@@ -224,6 +264,7 @@ class GraphViewState extends State<GraphView> {
 
     setState(() {
       _draggedNodeId = null;
+      _doubleTapNodeId = null;
       _isDraggingNode = false;
 
       _interactionMode = _isNavigationMode
@@ -231,10 +272,9 @@ class GraphViewState extends State<GraphView> {
           : _GraphInteractionMode.navigation;
     });
 
-    // IMPORTANTE:
-    // no modificamos _transformController.
+    // No modificamos _transformController.
     //
-    // La cámara queda exactamente en la posición y escala elegidas
+    // El mapa conserva exactamente la posición y escala elegidas
     // por el usuario.
   }
 
@@ -256,6 +296,40 @@ class GraphViewState extends State<GraphView> {
   }
 
   // ─────────────────────────────────────────────────────────────
+  // DOUBLE TAP
+  // ─────────────────────────────────────────────────────────────
+
+  void _handleDoubleTapDown(Offset localPosition) {
+    if (!_isNodeMode || _isDraggingNode) {
+      _doubleTapNodeId = null;
+      return;
+    }
+
+    final node = _findNodeAt(localPosition);
+
+    _doubleTapNodeId = node?.id;
+  }
+
+  void _handleDoubleTap() {
+    if (!_isNodeMode || _isDraggingNode) {
+      _doubleTapNodeId = null;
+      return;
+    }
+
+    final nodeId = _doubleTapNodeId;
+
+    _doubleTapNodeId = null;
+
+    if (nodeId != null) {
+      widget.onNodeDoubleTapped?.call(nodeId);
+    }
+  }
+
+  void _handleDoubleTapCancel() {
+    _doubleTapNodeId = null;
+  }
+
+  // ─────────────────────────────────────────────────────────────
   // LONG PRESS / DRAG
   // ─────────────────────────────────────────────────────────────
 
@@ -272,6 +346,7 @@ class GraphViewState extends State<GraphView> {
     }
 
     setState(() {
+      _doubleTapNodeId = null;
       _draggedNodeId = nodeId;
       _isDraggingNode = true;
     });
@@ -485,9 +560,6 @@ class _InteractionModeButton extends StatelessWidget {
             ? 'Bloquear mapa e interactuar con nodos'
             : 'Mover y ampliar mapa',
         onPressed: onPressed,
-
-        // Mano abierta = navegación.
-        // Puño = interacción con nodos.
         icon: Icon(
           isNavigationMode ? Icons.pan_tool_outlined : Icons.back_hand,
         ),

@@ -4,9 +4,9 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_node.dart';
 
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_edge.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_node.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/usecases/build_graph.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/usecases/calculate_layout.dart';
@@ -114,6 +114,9 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     on<NodeSelected>(_onNodeSelected);
     on<NodeDeselected>(_onNodeDeselected);
 
+    on<NodeDetailsToggled>(_onNodeDetailsToggled);
+    on<NodeDetailsDismissed>(_onNodeDetailsDismissed);
+
     on<NodeDragStarted>(_onNodeDragStarted);
     on<NodeDragUpdated>(_onNodeDragUpdated);
     on<NodeDragEnded>(_onNodeDragEnded);
@@ -191,6 +194,10 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
           ? currentState.selectedNodeId
           : null;
 
+      final detailsNodeId = currentState is GraphReady
+          ? currentState.detailsNodeId
+          : null;
+
       if (isInitialBuild) {
         emit(const GraphBuilding());
       }
@@ -252,10 +259,16 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
               ? selectedNodeId
               : null;
 
+          final preservedDetails =
+              detailsNodeId != null && _containsNode(layout, detailsNodeId)
+              ? detailsNodeId
+              : null;
+
           emit(
             GraphReady(
               layout,
               selectedNodeId: preservedSelection,
+              detailsNodeId: preservedDetails,
               barycenter: _barycenter,
             ),
           );
@@ -361,6 +374,7 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
       GraphReady(
         updatedLayout,
         selectedNodeId: currentState.selectedNodeId,
+        detailsNodeId: currentState.detailsNodeId,
         barycenter: currentState.barycenter,
       ),
     );
@@ -506,6 +520,7 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
       GraphReady(
         updatedLayout,
         selectedNodeId: currentState.selectedNodeId,
+        detailsNodeId: currentState.detailsNodeId,
         barycenter: currentState.barycenter,
       ),
     );
@@ -766,6 +781,7 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
       GraphReady(
         currentState.layout,
         selectedNodeId: event.nodeId,
+        detailsNodeId: currentState.detailsNodeId,
         barycenter: currentState.barycenter,
       ),
     );
@@ -781,8 +797,73 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
       return;
     }
 
-    emit(GraphReady(currentState.layout, barycenter: currentState.barycenter));
+    emit(
+      GraphReady(
+        currentState.layout,
+        detailsNodeId: currentState.detailsNodeId,
+        barycenter: currentState.barycenter,
+      ),
+    );
   }
+
+  // ─────────────────────────────────────────────────────────────
+  // DETAILS
+  // ─────────────────────────────────────────────────────────────
+
+  void _onNodeDetailsToggled(
+    NodeDetailsToggled event,
+    Emitter<VisualizationState> emit,
+  ) {
+    final currentState = state;
+
+    if (currentState is! GraphReady) {
+      return;
+    }
+
+    if (!_containsNode(currentState.layout, event.nodeId)) {
+      return;
+    }
+
+    final nextDetailsNodeId = currentState.detailsNodeId == event.nodeId
+        ? null
+        : event.nodeId;
+
+    emit(
+      GraphReady(
+        currentState.layout,
+        selectedNodeId: currentState.selectedNodeId,
+        detailsNodeId: nextDetailsNodeId,
+        barycenter: currentState.barycenter,
+      ),
+    );
+  }
+
+  void _onNodeDetailsDismissed(
+    NodeDetailsDismissed event,
+    Emitter<VisualizationState> emit,
+  ) {
+    final currentState = state;
+
+    if (currentState is! GraphReady) {
+      return;
+    }
+
+    if (currentState.detailsNodeId == null) {
+      return;
+    }
+
+    emit(
+      GraphReady(
+        currentState.layout,
+        selectedNodeId: currentState.selectedNodeId,
+        barycenter: currentState.barycenter,
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // RETRY
+  // ─────────────────────────────────────────────────────────────
 
   void _onRetryGraphBuild(
     RetryGraphBuild event,
