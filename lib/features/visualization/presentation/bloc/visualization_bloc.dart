@@ -1,55 +1,65 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_edge.dart';
-import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_node.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/usecases/build_graph.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/usecases/calculate_layout.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_event.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_state.dart';
 
-/// Orquesta la construcción, actualización e interacción del grafo.
+/// Tick interno de la simulación física.
 ///
-/// El grafo se trata como una estructura visual persistente:
+/// No forma parte de la API pública de interacción del grafo.
+class _PhysicsTick extends VisualizationEvent {
+  const _PhysicsTick();
+}
+
+/// Orquesta construcción, actualización e interacción del grafo.
 ///
-/// - la primera carga realiza un layout completo;
-/// - las actualizaciones BLE conservan las posiciones conocidas;
-/// - cambios de RSSI/metadata no ejecutan física;
-/// - un cambio real de topología puede estabilizar el layout;
-/// - GraphBuilding solo aparece cuando todavía no existe un grafo visible;
-/// - el movimiento manual actualiza la misma memoria espacial utilizada
-///   posteriormente por los refresh BLE.
+/// Existen dos mecanismos de posicionamiento diferentes:
 ///
-/// `_lastLayout` representa la memoria espacial autoritativa del grafo.
+/// 1. CalculateLayout / Fruchterman-Reingold:
+///    utilizado para la carga inicial y cambios estructurales.
+///
+/// 2. Simulación incremental:
+///    utilizada durante el drag y la relajación posterior.
+///
+/// `_lastLayout` es siempre la memoria espacial autoritativa.
 class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
   final BuildGraph _buildGraph;
   final CalculateLayout _calculateLayout;
   final Duration _debounceDuration;
 
-  /// Último layout visible y memoria espacial autoritativa.
   LayoutResult? _lastLayout;
 
-  /// Secuencia para debounce de actualizaciones BLE.
   int _debounceSeq = 0;
-
-  /// Último hash BLE observado.
-  ///
-  /// Se utiliza exclusivamente para ignorar actualizaciones idénticas.
   int _lastNodeHash = 0;
 
-  /// Evita dos construcciones simultáneas.
   bool _isBuilding = false;
 
-  /// Nodo actualmente agarrado mediante long press.
-  ///
-  /// null cuando no existe drag activo.
+  /// Nodo fijado actualmente por el dedo.
   int? _draggedNodeId;
 
-  /// Centro de referencia del grafo.
+  /// Velocidad actual de cada nodo.
+  final Map<int, Offset> _velocities = <int, Offset>{};
+
+  /// Longitud de reposo de cada resorte.
+  ///
+  /// Se captura al comenzar una interacción para que el grafo intente
+  /// conservar aproximadamente su geometría anterior en vez de colapsar
+  /// hacia una distancia arbitraria.
+  final Map<String, double> _springRestLengths = <String, double>{};
+
+  Timer? _physicsTimer;
+
+  /// Cantidad de ticks consecutivos con movimiento prácticamente nulo.
+  int _settledTicks = 0;
+
   Offset? _barycenter;
 
   @visibleForTesting
@@ -61,6 +71,34 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
   static const double _canvasWidth = 2000.0;
   static const double _canvasHeight = 2000.0;
   static const double _canvasDepth = 2000.0;
+
+  static const double _canvasMargin = 30.0;
+
+  /// ~30 FPS es suficiente para este tipo de grafo y reduce trabajo
+  /// innecesario frente a una simulación de 60 FPS.
+  static const Duration _physicsInterval = Duration(milliseconds: 33);
+
+  /// Intensidad de los resortes.
+  static const double _directSpringStrength = 0.020;
+  static const double _transitiveSpringStrength = 0.008;
+
+  /// Amortiguación de velocidad.
+  ///
+  /// Cuanto menor sea, antes se detendrá el sistema.
+  static const double _damping = 0.82;
+
+  /// Límite de velocidad por tick para evitar explosiones numéricas.
+  static const double _maxSpeed = 24.0;
+
+  /// Repulsión local para evitar que dos nodos terminen exactamente
+  /// superpuestos durante la relajación.
+  static const double _repulsionDistance = 90.0;
+  static const double _repulsionStrength = 0.035;
+
+  /// Umbral para considerar que el sistema prácticamente se detuvo.
+  static const double _settledSpeed = 0.12;
+
+  static const int _settledTicksRequired = 10;
 
   VisualizationBloc({
     required BuildGraph buildGraph,
@@ -79,14 +117,11 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     on<NodeDragUpdated>(_onNodeDragUpdated);
     on<NodeDragEnded>(_onNodeDragEnded);
 
+    on<_PhysicsTick>(_onPhysicsTick);
+
     on<RetryGraphBuild>(_onRetryGraphBuild);
   }
 
-  /// Recibe una actualización procedente del scanner BLE.
-  ///
-  /// El debounce agrupa ráfagas rápidas. La decisión sobre si cambió
-  /// realmente la estructura del grafo se realiza posteriormente,
-  /// comparando el resultado de BuildGraph contra `_lastLayout`.
   Future<void> _onBuildGraphRequested(
     BuildGraphRequested event,
     Emitter<VisualizationState> emit,
@@ -112,9 +147,6 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     await processBuildRequest(event, emit);
   }
 
-  /// Hash de ID + RSSI.
-  ///
-  /// Sirve únicamente para deduplicar eventos BLE exactamente iguales.
   int _computeNodeHash(List<dynamic> nodes) {
     final keys = <String>{};
 
@@ -136,20 +168,6 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     return Object.hashAll(sorted);
   }
 
-  /// Construye o actualiza el grafo.
-  ///
-  /// La topología se determina después de BuildGraph:
-  ///
-  /// - mismos IDs + mismas aristas:
-  ///   actualización de metadata, sin física;
-  ///
-  /// - cambian IDs o aristas:
-  ///   actualización estructural, con estabilización;
-  ///
-  /// - sin layout anterior:
-  ///   layout inicial completo.
-  ///
-  /// Durante una actualización normal nunca se emite GraphBuilding.
   @visibleForTesting
   Future<void> processBuildRequest(
     BuildGraphRequested event,
@@ -217,8 +235,8 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
         (layout) {
           _lastLayout = layout;
 
-          // Si el nodo que estaba siendo arrastrado desapareció del scan,
-          // finalizamos el drag automáticamente.
+          _removeStalePhysicsData(layout);
+
           final activeDraggedNodeId = _draggedNodeId;
 
           if (activeDraggedNodeId != null &&
@@ -256,9 +274,10 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     }
   }
 
-  /// Inicia el movimiento manual de un nodo.
-  ///
-  /// El nodo debe existir en el layout visible.
+  // ─────────────────────────────────────────────────────────────
+  // DRAG
+  // ─────────────────────────────────────────────────────────────
+
   void _onNodeDragStarted(
     NodeDragStarted event,
     Emitter<VisualizationState> emit,
@@ -274,16 +293,17 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     }
 
     _draggedNodeId = event.nodeId;
+
+    // El nodo agarrado no debe conservar velocidad anterior.
+    _velocities[event.nodeId] = Offset.zero;
+
+    _captureSpringRestLengths(currentState.layout);
+
+    _settledTicks = 0;
+
+    _startPhysics();
   }
 
-  /// Actualiza la posición del nodo actualmente agarrado.
-  ///
-  /// Las coordenadas recibidas pertenecen al canvas lógico 2000×2000.
-  ///
-  /// La posición se limita al canvas y se guarda inmediatamente tanto en:
-  ///
-  /// - `_lastLayout`, para que sobreviva a refresh BLE posteriores;
-  /// - `GraphReady`, para redibujar 2D y 3D desde la misma fuente de verdad.
   void _onNodeDragUpdated(
     NodeDragUpdated event,
     Emitter<VisualizationState> emit,
@@ -298,8 +318,13 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
       return;
     }
 
-    final x = event.x.clamp(0.0, _canvasWidth).toDouble();
-    final y = event.y.clamp(0.0, _canvasHeight).toDouble();
+    final x = event.x
+        .clamp(_canvasMargin, _canvasWidth - _canvasMargin)
+        .toDouble();
+
+    final y = event.y
+        .clamp(_canvasMargin, _canvasHeight - _canvasMargin)
+        .toDouble();
 
     var nodeFound = false;
 
@@ -311,7 +336,7 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
 
           nodeFound = true;
 
-          return _copyNodeWithPosition(node, x: x, y: y);
+          return node.copyWith(x: x, y: y);
         })
         .toList(growable: false);
 
@@ -320,19 +345,17 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
       return;
     }
 
+    _velocities[event.nodeId] = Offset.zero;
+
     final updatedLayout = LayoutResult(
       nodes: updatedNodes,
       edges: currentState.layout.edges,
       iterations: currentState.layout.iterations,
-      converged: currentState.layout.converged,
+      converged: false,
     );
 
     _lastLayout = updatedLayout;
 
-    // No recalculamos barycenter durante cada frame de drag.
-    //
-    // GraphView solo utiliza barycenter para el centrado inicial, por lo que
-    // cambiarlo continuamente no aporta nada y añade trabajo innecesario.
     emit(
       GraphReady(
         updatedLayout,
@@ -342,47 +365,332 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     );
   }
 
-  /// Finaliza el movimiento manual.
-  ///
-  /// En esta primera implementación no ejecutamos física al soltar.
-  /// La posición queda exactamente donde la dejó el usuario.
-  ///
-  /// En el siguiente paso este punto servirá para iniciar la relajación
-  /// de los nodos conectados.
   void _onNodeDragEnded(NodeDragEnded event, Emitter<VisualizationState> emit) {
     if (_draggedNodeId != event.nodeId) {
       return;
     }
 
     _draggedNodeId = null;
+    _settledTicks = 0;
+
+    // No detenemos el timer:
+    // la red continúa relajándose después de soltar.
+    _startPhysics();
   }
 
-  /// Crea una copia del nodo modificando únicamente su posición 2D.
-  ///
-  /// Z y toda la metadata permanecen intactos para mantener paridad con
-  /// el modelo utilizado por las vistas 2D y 3D.
-  GraphNode _copyNodeWithPosition(
-    GraphNode node, {
-    required double x,
-    required double y,
-  }) {
-    return GraphNode(
-      id: node.id,
-      x: x,
-      y: y,
-      z: node.z,
-      proximity: node.proximity,
-      name: node.name,
-      suggestedName: node.suggestedName,
-      connectionCount: node.connectionCount,
-      isSelf: node.isSelf,
-      connectable: node.connectable,
-      userColor: node.userColor,
-      estimatedDistance: node.estimatedDistance,
+  // ─────────────────────────────────────────────────────────────
+  // LIVE PHYSICS
+  // ─────────────────────────────────────────────────────────────
+
+  void _startPhysics() {
+    if (_physicsTimer?.isActive ?? false) {
+      return;
+    }
+
+    _physicsTimer = Timer.periodic(_physicsInterval, (_) {
+      if (!isClosed) {
+        add(const _PhysicsTick());
+      }
+    });
+  }
+
+  void _stopPhysics() {
+    _physicsTimer?.cancel();
+    _physicsTimer = null;
+
+    _settledTicks = 0;
+
+    _velocities.removeWhere(
+      (nodeId, velocity) => velocity.distance < _settledSpeed,
     );
   }
 
-  /// Determina si BuildGraph produjo una topología distinta.
+  void _onPhysicsTick(_PhysicsTick event, Emitter<VisualizationState> emit) {
+    final currentState = state;
+    final layout = _lastLayout;
+
+    if (currentState is! GraphReady || layout == null) {
+      _stopPhysics();
+      return;
+    }
+
+    if (layout.nodes.length < 2) {
+      if (_draggedNodeId == null) {
+        _stopPhysics();
+      }
+
+      return;
+    }
+
+    final nodesById = <int, dynamic>{};
+
+    for (final node in layout.nodes) {
+      final id = node.id;
+
+      if (id != null) {
+        nodesById[id] = node;
+      }
+    }
+
+    final forces = <int, Offset>{};
+
+    for (final id in nodesById.keys) {
+      forces[id] = Offset.zero;
+    }
+
+    _applySpringForces(layout: layout, nodesById: nodesById, forces: forces);
+
+    _applyRepulsion(nodesById: nodesById, forces: forces);
+
+    var maxSpeed = 0.0;
+
+    final updatedNodes = layout.nodes
+        .map((node) {
+          final id = node.id;
+
+          if (id == null) {
+            return node;
+          }
+
+          // El nodo agarrado está fijado exactamente al dedo.
+          if (id == _draggedNodeId) {
+            _velocities[id] = Offset.zero;
+            return node;
+          }
+
+          final force = forces[id] ?? Offset.zero;
+          final previousVelocity = _velocities[id] ?? Offset.zero;
+
+          var velocity = Offset(
+            (previousVelocity.dx + force.dx) * _damping,
+            (previousVelocity.dy + force.dy) * _damping,
+          );
+
+          velocity = _limitVector(velocity, _maxSpeed);
+
+          if (velocity.distance < 0.01) {
+            velocity = Offset.zero;
+          }
+
+          _velocities[id] = velocity;
+
+          maxSpeed = math.max(maxSpeed, velocity.distance);
+
+          if (velocity == Offset.zero) {
+            return node;
+          }
+
+          final newX = (node.x + velocity.dx)
+              .clamp(_canvasMargin, _canvasWidth - _canvasMargin)
+              .toDouble();
+
+          final newY = (node.y + velocity.dy)
+              .clamp(_canvasMargin, _canvasHeight - _canvasMargin)
+              .toDouble();
+
+          return node.copyWith(x: newX, y: newY);
+        })
+        .toList(growable: false);
+
+    final updatedLayout = LayoutResult(
+      nodes: updatedNodes,
+      edges: layout.edges,
+      iterations: layout.iterations,
+      converged: _draggedNodeId == null && maxSpeed < _settledSpeed,
+    );
+
+    _lastLayout = updatedLayout;
+
+    emit(
+      GraphReady(
+        updatedLayout,
+        selectedNodeId: currentState.selectedNodeId,
+        barycenter: currentState.barycenter,
+      ),
+    );
+
+    if (_draggedNodeId != null) {
+      _settledTicks = 0;
+      return;
+    }
+
+    if (maxSpeed < _settledSpeed) {
+      _settledTicks++;
+    } else {
+      _settledTicks = 0;
+    }
+
+    if (_settledTicks >= _settledTicksRequired) {
+      _stopPhysics();
+    }
+  }
+
+  /// Aplica Hooke simplificado sobre las aristas.
+  ///
+  /// direct:
+  ///   vínculo más fuerte.
+  ///
+  /// transitive:
+  ///   vínculo más suave.
+  void _applySpringForces({
+    required LayoutResult layout,
+    required Map<int, dynamic> nodesById,
+    required Map<int, Offset> forces,
+  }) {
+    for (final edge in layout.edges) {
+      final from = nodesById[edge.fromId];
+      final to = nodesById[edge.toId];
+
+      if (from == null || to == null) {
+        continue;
+      }
+
+      final dx = to.x - from.x;
+      final dy = to.y - from.y;
+
+      final distanceSquared = dx * dx + dy * dy;
+
+      if (distanceSquared < 0.0001) {
+        continue;
+      }
+
+      final distance = math.sqrt(distanceSquared);
+
+      final direction = Offset(dx / distance, dy / distance);
+
+      final restLength =
+          _springRestLengths[_edgeKey(edge)] ??
+          distance.clamp(80.0, 500.0).toDouble();
+
+      final displacement = distance - restLength;
+
+      final springStrength = edge.edgeType == EdgeType.direct
+          ? _directSpringStrength
+          : _transitiveSpringStrength;
+
+      // thickness aporta ligeramente más influencia, sin convertir
+      // las aristas gruesas en resortes excesivamente agresivos.
+      final thicknessMultiplier =
+          1.0 + ((edge.thickness - 1.0).clamp(0.0, 2.0) * 0.12);
+
+      final magnitude = displacement * springStrength * thicknessMultiplier;
+
+      final force = direction * magnitude;
+
+      forces[edge.fromId] = (forces[edge.fromId] ?? Offset.zero) + force;
+
+      forces[edge.toId] = (forces[edge.toId] ?? Offset.zero) - force;
+    }
+  }
+
+  /// Repulsión local.
+  ///
+  /// No intenta reemplazar Fruchterman-Reingold. Su único objetivo es
+  /// impedir que nodos cercanos terminen visualmente uno encima del otro.
+  void _applyRepulsion({
+    required Map<int, dynamic> nodesById,
+    required Map<int, Offset> forces,
+  }) {
+    final entries = nodesById.entries.toList(growable: false);
+
+    for (var i = 0; i < entries.length; i++) {
+      for (var j = i + 1; j < entries.length; j++) {
+        final first = entries[i];
+        final second = entries[j];
+
+        final dx = second.value.x - first.value.x;
+        final dy = second.value.y - first.value.y;
+
+        final distanceSquared = dx * dx + dy * dy;
+
+        if (distanceSquared < 0.0001) {
+          continue;
+        }
+
+        final distance = math.sqrt(distanceSquared);
+
+        if (distance >= _repulsionDistance) {
+          continue;
+        }
+
+        final direction = Offset(dx / distance, dy / distance);
+
+        final overlap = _repulsionDistance - distance;
+
+        final magnitude = overlap * _repulsionStrength;
+
+        final force = direction * magnitude;
+
+        forces[first.key] = (forces[first.key] ?? Offset.zero) - force;
+
+        forces[second.key] = (forces[second.key] ?? Offset.zero) + force;
+      }
+    }
+  }
+
+  void _captureSpringRestLengths(LayoutResult layout) {
+    final nodesById = <int, dynamic>{};
+
+    for (final node in layout.nodes) {
+      final id = node.id;
+
+      if (id != null) {
+        nodesById[id] = node;
+      }
+    }
+
+    for (final edge in layout.edges) {
+      final from = nodesById[edge.fromId];
+      final to = nodesById[edge.toId];
+
+      if (from == null || to == null) {
+        continue;
+      }
+
+      final dx = to.x - from.x;
+      final dy = to.y - from.y;
+
+      final distance = math.sqrt(dx * dx + dy * dy);
+
+      _springRestLengths[_edgeKey(edge)] = distance
+          .clamp(60.0, 600.0)
+          .toDouble();
+    }
+  }
+
+  String _edgeKey(GraphEdge edge) {
+    final first = math.min(edge.fromId, edge.toId);
+    final second = math.max(edge.fromId, edge.toId);
+
+    return '$first:$second:${edge.edgeType.name}';
+  }
+
+  Offset _limitVector(Offset vector, double maximum) {
+    final magnitude = vector.distance;
+
+    if (magnitude <= maximum || magnitude == 0) {
+      return vector;
+    }
+
+    final factor = maximum / magnitude;
+
+    return Offset(vector.dx * factor, vector.dy * factor);
+  }
+
+  void _removeStalePhysicsData(LayoutResult layout) {
+    final ids = _nodeIds(layout);
+
+    _velocities.removeWhere((id, _) => !ids.contains(id));
+
+    final validEdges = _edgeKeys(layout.edges);
+
+    _springRestLengths.removeWhere((key, _) => !validEdges.contains(key));
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // TOPOLOGY
+  // ─────────────────────────────────────────────────────────────
+
   bool _hasTopologyChanged({
     required LayoutResult previous,
     required LayoutResult current,
@@ -418,7 +726,7 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     final result = <String>{};
 
     for (final edge in edges) {
-      result.add('${edge.fromId}:${edge.toId}:${edge.edgeType.name}');
+      result.add(_edgeKey(edge));
     }
 
     return result;
@@ -442,7 +750,10 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     return false;
   }
 
-  /// Selecciona un nodo sin recalcular el layout.
+  // ─────────────────────────────────────────────────────────────
+  // SELECTION
+  // ─────────────────────────────────────────────────────────────
+
   void _onNodeSelected(NodeSelected event, Emitter<VisualizationState> emit) {
     final currentState = state;
 
@@ -459,7 +770,6 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     );
   }
 
-  /// Elimina la selección sin recalcular el layout.
   void _onNodeDeselected(
     NodeDeselected event,
     Emitter<VisualizationState> emit,
@@ -473,7 +783,6 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     emit(GraphReady(currentState.layout, barycenter: currentState.barycenter));
   }
 
-  /// Reintenta la construcción después de un error.
   void _onRetryGraphBuild(
     RetryGraphBuild event,
     Emitter<VisualizationState> emit,
@@ -493,9 +802,10 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     );
   }
 
-  /// Calcula el punto de referencia del grafo.
-  ///
-  /// El self-node tiene prioridad. Si no existe, se utiliza el centroide.
+  // ─────────────────────────────────────────────────────────────
+  // BARYCENTER
+  // ─────────────────────────────────────────────────────────────
+
   void _computeBarycenter(LayoutResult layout) {
     if (layout.nodes.isEmpty) {
       _barycenter = Offset.zero;
@@ -521,5 +831,13 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
       sumX / layout.nodes.length,
       sumY / layout.nodes.length,
     );
+  }
+
+  @override
+  Future<void> close() {
+    _physicsTimer?.cancel();
+    _physicsTimer = null;
+
+    return super.close();
   }
 }

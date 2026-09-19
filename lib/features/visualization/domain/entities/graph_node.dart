@@ -118,6 +118,40 @@ class GraphNode extends Equatable {
   /// Prioridad: name > suggestedName > "Desconocido" (T1.8).
   String get label => name ?? suggestedName ?? 'Desconocido';
 
+  /// Crea una copia del nodo reemplazando únicamente los valores indicados.
+  ///
+  /// Es especialmente útil para las actualizaciones espaciales del grafo:
+  /// permite mover un nodo sin reconstruir manualmente toda su metadata.
+  GraphNode copyWith({
+    int? id,
+    double? x,
+    double? y,
+    ProximityLevel? proximity,
+    String? name,
+    String? suggestedName,
+    int? connectionCount,
+    bool? isSelf,
+    bool? connectable,
+    double? z,
+    int? userColor,
+    double? estimatedDistance,
+  }) {
+    return GraphNode(
+      id: id ?? this.id,
+      x: x ?? this.x,
+      y: y ?? this.y,
+      proximity: proximity ?? this.proximity,
+      name: name ?? this.name,
+      suggestedName: suggestedName ?? this.suggestedName,
+      connectionCount: connectionCount ?? this.connectionCount,
+      isSelf: isSelf ?? this.isSelf,
+      connectable: connectable ?? this.connectable,
+      z: z ?? this.z,
+      userColor: userColor ?? this.userColor,
+      estimatedDistance: estimatedDistance ?? this.estimatedDistance,
+    );
+  }
+
   @override
   List<Object?> get props => [
     id,
