@@ -27,11 +27,10 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/wi
 
 /// Pantalla principal: alterna entre lista de nodos y grafo.
 ///
-/// Usa [AnimatedCrossFade] con histéresis.
-///
 /// Actualmente:
 /// - Con 1 o más nodos activa la vista de grafo.
 /// - Con 0 nodos vuelve a la vista de lista.
+/// - Las vistas 2D y 3D permanecen montadas mediante Stack + Offstage.
 ///
 /// Escucha [NodeListBloc] para cambios en la lista y
 /// [VisualizationBloc] para el estado del grafo.
@@ -319,6 +318,7 @@ class _HomePageState extends State<HomePage> {
 
             case RemoteIdentityLoaded(
               :final remoteId,
+              :final uuid,
               :final name,
               :final color,
             ):
@@ -331,11 +331,12 @@ class _HomePageState extends State<HomePage> {
 
                 if (node != null && node.id != null) {
                   context.read<NodeListBloc>().add(
-                    UpdateNodeName(node.id!, name),
-                  );
-
-                  context.read<NodeListBloc>().add(
-                    UpdateNodeColor(node.id!, color),
+                    UpdateNodeIdentity(
+                      nodeId: node.id!,
+                      deviceUuid: uuid,
+                      name: name,
+                      color: color,
+                    ),
                   );
                 }
               });
@@ -629,68 +630,84 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// AnimatedCrossFade entre lista y grafo.
+  /// Alterna entre lista y grafo respetando el viewport disponible.
+  ///
+  /// LayoutBuilder captura las restricciones finitas proporcionadas por
+  /// Expanded. SizedBox fuerza a que tanto la lista como el grafo trabajen
+  /// dentro del mismo viewport.
+  ///
+  /// Las vistas 2D y 3D permanecen montadas mediante Stack + Offstage.
   Widget _buildAnimatedContent(List<Node> nodes) {
-    return AnimatedCrossFade(
-      duration: const Duration(milliseconds: 300),
-      crossFadeState: _showingGraph
-          ? CrossFadeState.showSecond
-          : CrossFadeState.showFirst,
-      firstChild: _buildListView(nodes),
-      secondChild: BlocBuilder<VisualizationBloc, VisualizationState>(
-        builder: (context, vizState) {
-          return switch (vizState) {
-            VisualizationInitial() ||
-            GraphBuilding() => const Center(child: CircularProgressIndicator()),
-            GraphReady(
-              :final layout,
-              :final selectedNodeId,
-              :final barycenter,
-            ) =>
-              ValueListenableBuilder<bool>(
-                valueListenable: _is3D,
-                builder: (context, is3D, _) {
-                  return Stack(
-                    children: [
-                      Offstage(
-                        offstage: is3D,
-                        child: GraphView(
-                          key: _graphViewKey,
-                          layout: layout,
-                          selectedNodeId: selectedNodeId,
-                          barycenter: barycenter,
-                          onNodeTapped: (nodeId) {
-                            context.read<VisualizationBloc>().add(
-                              NodeSelected(nodeId),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final viewport = SizedBox(
+          width: constraints.maxWidth,
+          height: constraints.maxHeight,
+          child: _showingGraph
+              ? BlocBuilder<VisualizationBloc, VisualizationState>(
+                  builder: (context, vizState) {
+                    return switch (vizState) {
+                      VisualizationInitial() || GraphBuilding() => const Center(
+                        child: CircularProgressIndicator(),
+                      ),
+                      GraphReady(
+                        :final layout,
+                        :final selectedNodeId,
+                        :final barycenter,
+                      ) =>
+                        ValueListenableBuilder<bool>(
+                          valueListenable: _is3D,
+                          builder: (context, is3D, _) {
+                            return Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                Offstage(
+                                  offstage: is3D,
+                                  child: GraphView(
+                                    key: _graphViewKey,
+                                    layout: layout,
+                                    selectedNodeId: selectedNodeId,
+                                    barycenter: barycenter,
+                                    onNodeTapped: (nodeId) {
+                                      context.read<VisualizationBloc>().add(
+                                        NodeSelected(nodeId),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                Offstage(
+                                  offstage: !is3D,
+                                  child: GraphView3D(
+                                    layout: layout,
+                                    onNodeTapped: (nodeId) {
+                                      context.read<VisualizationBloc>().add(
+                                        NodeSelected(nodeId),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ],
                             );
                           },
                         ),
-                      ),
-                      Offstage(
-                        offstage: !is3D,
-                        child: GraphView3D(
-                          layout: layout,
-                          onNodeTapped: (nodeId) {
-                            context.read<VisualizationBloc>().add(
-                              NodeSelected(nodeId),
-                            );
-                          },
+                      GraphError(:final message) => Center(
+                        child: Text(
+                          message,
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 16,
+                          ),
                         ),
                       ),
-                    ],
-                  );
-                },
-              ),
-            GraphError(:final message) => Center(
-              child: Text(
-                message,
-                style: const TextStyle(color: Colors.red, fontSize: 16),
-              ),
-            ),
-            _ => const SizedBox.shrink(),
-          };
-        },
-      ),
+                      _ => const SizedBox.shrink(),
+                    };
+                  },
+                )
+              : _buildListView(nodes),
+        );
+
+        return viewport;
+      },
     );
   }
 

@@ -11,7 +11,9 @@ import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart'
     hide User;
+
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/presentation/widgets/graph_view.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart';
@@ -287,13 +289,24 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
     });
 
-    testWidgets('shows ListView with NodeTile when loaded (≤4 nodes)', (
+    // ─────────────────────────────────────────────────────────────
+    // Vista de grafo — umbral removido
+    // ─────────────────────────────────────────────────────────────
+    //
+    // La Home ya no usa el antiguo umbral:
+    //   1–4 nodos → lista
+    //   5+ nodos  → grafo
+    //
+    // Cualquier NodeListLoaded con al menos un nodo activa el grafo.
+
+    testWidgets('NodeListLoaded con nodos activa el modo grafo', (
       tester,
     ) async {
       final nodes = [
         _testNode(1, 'AA:BB:CC:DD:EE:01'),
         _testNode(2, 'AA:BB:CC:DD:EE:02'),
       ];
+
       await tester.pumpWidget(
         _pumpHomePage(
           nodeListState: NodeListLoaded(nodes),
@@ -301,67 +314,18 @@ void main() {
         ),
       );
 
-      // AnimatedCrossFade muestra firstChild (ListView)
-      expect(find.byType(ListView), findsOneWidget);
-      expect(find.text('Node AA:BB:CC:DD:EE:01'), findsOneWidget);
-      expect(find.text('Node AA:BB:CC:DD:EE:02'), findsOneWidget);
-    });
-
-    testWidgets('AnimatedCrossFade shows ListView when ≤4 nodes', (
-      tester,
-    ) async {
-      final nodes = [
-        _testNode(1, 'AA:BB:CC:DD:EE:01'),
-        _testNode(2, 'AA:BB:CC:DD:EE:02'),
-        _testNode(3, 'AA:BB:CC:DD:EE:03'),
-        _testNode(4, 'AA:BB:CC:DD:EE:04'),
-      ];
-      await tester.pumpWidget(
-        _pumpHomePage(
-          nodeListState: NodeListLoaded(nodes),
-          visualizationState: const VisualizationInitial(),
-        ),
-      );
-
-      // 4 nodos → firstChild (ListView) visible
-      expect(find.byType(ListView), findsOneWidget);
-      // Verifica que los 4 nodos estén renderizados
-      expect(find.text('Node AA:BB:CC:DD:EE:01'), findsOneWidget);
-      expect(find.text('Node AA:BB:CC:DD:EE:04'), findsOneWidget);
-    });
-
-    testWidgets('5 nodes → crossfades to GraphView', (tester) async {
-      final nodes = List.generate(
-        5,
-        (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
-      );
-      await tester.pumpWidget(
-        _pumpHomePage(
-          nodeListState: NodeListLoaded(nodes),
-          visualizationState: const VisualizationInitial(),
-        ),
-      );
-
-      // _triggerGraphBuild se dispara vía BlocListener de forma asíncrona
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      // AnimatedCrossFade presente con ambos hijos
-      expect(find.byType(AnimatedCrossFade), findsOneWidget);
-
-      // Ambos hijos se mantienen en el árbol (AnimatedCrossFade los construye ambos)
-      // El firstChild (ListView) y secondChild (CircularProgressIndicator) coexisten
-      expect(find.byType(ListView), findsOneWidget);
+      // VisualizationInitial representa un grafo todavía no construido.
+      // La Home debe estar en modo grafo y mostrar su estado de carga.
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byType(ListView), findsNothing);
     });
 
-    testWidgets('6 nodes → graph visible with GraphReady state', (
-      tester,
-    ) async {
-      final nodes = List.generate(
-        6,
-        (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
-      );
+    testWidgets('GraphReady con 1 nodo renderiza GraphView', (tester) async {
+      final nodes = [_testNode(1, 'AA:BB:CC:DD:EE:01')];
+
       await tester.pumpWidget(
         _pumpHomePage(
           nodeListState: NodeListLoaded(nodes),
@@ -372,17 +336,18 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
 
-      // AnimatedCrossFade y GraphView deben estar presentes
-      expect(find.byType(AnimatedCrossFade), findsOneWidget);
-      // GraphView solo se renderiza cuando vizState es GraphReady
-      // Verificamos que está presente en el segundo hijo
+      expect(find.byType(GraphView), findsOneWidget);
+      expect(find.byType(ListView), findsNothing);
     });
 
-    testWidgets('GraphReady renders GraphView widget', (tester) async {
+    testWidgets('GraphReady con varios nodos renderiza GraphView', (
+      tester,
+    ) async {
       final nodes = List.generate(
         6,
         (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
       );
+
       await tester.pumpWidget(
         _pumpHomePage(
           nodeListState: NodeListLoaded(nodes),
@@ -392,76 +357,32 @@ void main() {
 
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.byType(GraphView), findsOneWidget);
+      expect(find.byType(ListView), findsNothing);
     });
 
-    testWidgets('5→3 nodes → crossfades back to ListView', (tester) async {
-      // Empezar con 5 nodos (modo grafo)
-      final fiveNodes = List.generate(
-        5,
-        (i) => _testNode(i + 1, 'AA:BB:CC:DD:EE:0${i + 1}'),
-      );
-      await tester.pumpWidget(
-        _pumpHomePage(
-          nodeListState: NodeListLoaded(fiveNodes),
-          visualizationState: const VisualizationInitial(),
-        ),
-      );
-
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-
-      // Ambos hijos del AnimatedCrossFade presentes (fisiología del widget)
-      expect(find.byType(AnimatedCrossFade), findsOneWidget);
-      expect(find.byType(ListView), findsOneWidget);
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
-
-      // Reducir a 3 nodos: la histéresis debe bajar a lista (primera vista)
-      final threeNodes = [
+    testWidgets('3 nodos permanecen en modo grafo sin umbral de histéresis', (
+      tester,
+    ) async {
+      final nodes = [
         _testNode(1, 'AA:BB:CC:DD:EE:01'),
         _testNode(2, 'AA:BB:CC:DD:EE:02'),
         _testNode(3, 'AA:BB:CC:DD:EE:03'),
       ];
 
-      // Reconstruir con 3 nodos — nuevo widget con estado limpio
-      // (_showingGraph empieza en false, el listener ve count<=3 y no cambia nada)
-      final mockNodeListBloc3 = MockNodeListBloc();
-      final mockBleBloc3 = MockBleBloc();
-      final mockVizBloc3 = MockVisualizationBloc();
-
-      when(mockNodeListBloc3.state).thenReturn(NodeListLoaded(threeNodes));
-      when(
-        mockNodeListBloc3.stream,
-      ).thenAnswer((_) => Stream.value(NodeListLoaded(threeNodes)));
-      when(mockBleBloc3.state).thenReturn(const BleStopped());
-      when(
-        mockBleBloc3.stream,
-      ).thenAnswer((_) => Stream.value(const BleStopped()));
-      when(mockVizBloc3.state).thenReturn(const VisualizationInitial());
-      when(
-        mockVizBloc3.stream,
-      ).thenAnswer((_) => Stream.value(const VisualizationInitial()));
-
       await tester.pumpWidget(
-        MaterialApp(
-          home: MultiBlocProvider(
-            providers: [
-              BlocProvider<NodeListBloc>.value(value: mockNodeListBloc3),
-              BlocProvider<BleBloc>.value(value: mockBleBloc3),
-              BlocProvider<VisualizationBloc>.value(value: mockVizBloc3),
-              BlocProvider<BleConnectionBloc>.value(value: _mockConnBloc()),
-              BlocProvider<ScanSessionBloc>.value(value: _mockSessionBloc()),
-            ],
-            child: const HomePage(),
-          ),
+        _pumpHomePage(
+          nodeListState: NodeListLoaded(nodes),
+          visualizationState: GraphReady(_testLayout),
         ),
       );
 
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 500));
 
-      // Con 3 nodos, _showingGraph = false, firstChild (ListView) es el activo
-      // AnimatedCrossFade construye ambos hijos, pero ListView sigue presente
-      expect(find.byType(ListView), findsOneWidget);
+      expect(find.byType(GraphView), findsOneWidget);
+      expect(find.byType(ListView), findsNothing);
     });
 
     testWidgets('shows empty state text when no nodes', (tester) async {
@@ -1520,9 +1441,9 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
 
-      // Con 1 nodo, debería mostrarse el grafo (antes requería 5+)
-      // Verificamos que el AnimatedCrossFade está en modo secondChild (grafo)
-      expect(find.byType(AnimatedCrossFade), findsOneWidget);
+      // Con 1 nodo debe mostrarse el grafo (antes requería 5+).
+      // Verificamos el comportamiento visible, no el mecanismo de transición.
+      expect(find.byType(GraphView), findsOneWidget);
     });
 
     testWidgets(
@@ -1607,28 +1528,37 @@ void main() {
         ];
 
         when(mockNodeListBloc.state).thenReturn(NodeListLoaded(nodes));
+
         when(
           mockNodeListBloc.stream,
         ).thenAnswer((_) => Stream.value(NodeListLoaded(nodes)));
+
         when(mockBleBloc.state).thenReturn(const BleStopped());
+
         when(
           mockBleBloc.stream,
         ).thenAnswer((_) => Stream.value(const BleStopped()));
+
         when(mockVizBloc.state).thenReturn(const VisualizationInitial());
+
         when(
           mockVizBloc.stream,
         ).thenAnswer((_) => Stream.value(const VisualizationInitial()));
+
         when(mockConnectionBloc.state).thenReturn(
           const RemoteIdentityLoaded(
             remoteId: 'AA:BB:CC:DD:EE:01',
+            uuid: '550e8400-e29b-41d4-a716-446655440001',
             name: 'Nodo Remoto',
             color: '#FF5722',
           ),
         );
+
         when(mockConnectionBloc.stream).thenAnswer(
           (_) => Stream.value(
             const RemoteIdentityLoaded(
               remoteId: 'AA:BB:CC:DD:EE:01',
+              uuid: '550e8400-e29b-41d4-a716-446655440001',
               name: 'Nodo Remoto',
               color: '#FF5722',
             ),
@@ -1655,7 +1585,8 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 500));
 
-        // Verificar que UpdateNodeName fue despachado con el nombre remoto
+        // Verificar que UpdateNodeName fue despachado
+        // con el nombre recibido desde la identidad remota.
         verify(
           mockNodeListBloc.add(
             argThat(
@@ -1669,7 +1600,8 @@ void main() {
           ),
         ).called(1);
 
-        // Verificar que UpdateNodeColor fue despachado con el color remoto
+        // Verificar que UpdateNodeColor fue despachado
+        // con el color recibido desde la identidad remota.
         verify(
           mockNodeListBloc.add(
             argThat(

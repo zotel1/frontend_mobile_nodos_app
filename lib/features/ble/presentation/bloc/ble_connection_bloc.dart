@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:convert';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_identity.dart';
 
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -107,21 +107,28 @@ class ConnectionInserted extends BleConnectionState {
 
 /// Identidad remota cargada exitosamente vía GATT read.
 ///
-/// [remoteId] es la dirección BLE del dispositivo remoto.
-/// [name] y [color] son los valores leídos de la característica de identidad.
+/// [remoteId] identifica la conexión BLE actual.
+/// [uuid] identifica persistentemente a la instalación remota de Nodos.
+/// [name] y [color] son los metadatos configurados por el usuario remoto.
+///
+/// El UUID lógico no debe confundirse con [remoteId]:
+/// la dirección BLE puede variar, mientras que el UUID Nodos representa
+/// la identidad persistente de la instalación.
 class RemoteIdentityLoaded extends BleConnectionState {
   final String remoteId;
+  final String uuid;
   final String name;
   final String color;
 
   const RemoteIdentityLoaded({
     required this.remoteId,
+    required this.uuid,
     required this.name,
     required this.color,
   });
 
   @override
-  List<Object?> get props => [remoteId, name, color];
+  List<Object?> get props => [remoteId, uuid, name, color];
 }
 
 /// No se pudo leer la identidad remota vía GATT.
@@ -261,13 +268,15 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
       );
 
       if (bytes != null && bytes.isNotEmpty) {
-        final jsonStr = utf8.decode(bytes);
-        final data = jsonDecode(jsonStr) as Map<String, dynamic>;
-        final name = data['name'] as String? ?? 'Desconocido';
-        final color = data['color'] as String? ?? '#2196F3';
+        final identity = NodosIdentity.fromBytes(bytes);
 
         emit(
-          RemoteIdentityLoaded(remoteId: remoteId, name: name, color: color),
+          RemoteIdentityLoaded(
+            remoteId: remoteId,
+            uuid: identity.uuid,
+            name: identity.name,
+            color: identity.color,
+          ),
         );
         return;
       }

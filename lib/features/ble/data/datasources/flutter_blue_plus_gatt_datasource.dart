@@ -121,15 +121,58 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
   ) async {
     final device = BluetoothDevice.fromId(remoteId);
     final services = await device.discoverServices();
+
+    BluetoothCharacteristic? target;
+
     for (final service in services) {
       for (final characteristic in service.characteristics) {
-        if (characteristic.characteristicUuid.toString() ==
-            characteristicUuid) {
-          return await characteristic.read();
+        if (characteristic.characteristicUuid.toString().toLowerCase() ==
+            characteristicUuid.toLowerCase()) {
+          target = characteristic;
+          break;
+        }
+      }
+
+      if (target != null) break;
+    }
+
+    if (target == null) {
+      return null;
+    }
+
+    // Si la característica soporta notificaciones, primero nos suscribimos.
+    //
+    // El servidor Nodos detectará la suscripción y enviará inmediatamente
+    // su identidad mediante sendData().
+    if (target.properties.notify || target.properties.indicate) {
+      try {
+        await target.setNotifyValue(true);
+
+        final value = await target.onValueReceived
+            .firstWhere((bytes) => bytes.isNotEmpty)
+            .timeout(const Duration(seconds: 3));
+
+        return value;
+      } on TimeoutException {
+        // Si el periférico no envía nada, intentamos READ como fallback.
+      } finally {
+        try {
+          await target.setNotifyValue(false);
+        } catch (_) {
+          // La conexión pudo haberse cerrado durante el proceso.
         }
       }
     }
-    return null;
+
+    // Fallback para características normales READ y para dispositivos donde
+    // la identidad ya haya quedado almacenada como último valor enviado.
+    try {
+      final value = await target.read();
+
+      return value.isEmpty ? null : value;
+    } catch (_) {
+      return null;
+    }
   }
 
   // ── Interfaz pública ──

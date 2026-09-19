@@ -14,6 +14,25 @@ abstract class NodeLocalDataSource {
 
   Future<void> upsertNode(Node node);
 
+  /// Asocia una identidad Nodos estable a un nodo detectado por BLE.
+  ///
+  /// Si [deviceUuid] ya pertenece a otra fila de nodes, ambas filas
+  /// representan el mismo dispositivo físico y deben reconciliarse.
+  ///
+  /// La implementación debe preservar:
+  /// - connections;
+  /// - scanSessionNodes;
+  /// - identidad persistente;
+  /// - la dirección BLE más reciente.
+  ///
+  /// Retorna el Node canónico resultante.
+  Future<Node?> reconcileNodeIdentity(
+    int nodeId, {
+    required String deviceUuid,
+    required String name,
+    required String color,
+  });
+
   Future<void> deleteNode(int id);
 
   /// Actualmente elimina filas persistentes.
