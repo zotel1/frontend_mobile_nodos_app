@@ -31,6 +31,19 @@ abstract class NodeRepository {
   /// 3. bleAddress, si existe.
   Future<void> upsertNode(Node node);
 
+  /// Persiste la identidad estable obtenida mediante el protocolo Nodos.
+  ///
+  /// Si [deviceUuid] ya está asociado a otro Node, la implementación debe
+  /// reconciliar ambas filas preservando conexiones e historial de sesiones.
+  ///
+  /// Retorna el Node canónico resultante.
+  Future<Node?> reconcileNodeIdentity(
+    int nodeId, {
+    required String deviceUuid,
+    required String name,
+    required String color,
+  });
+
   Future<void> updateNodeMetadata(int id, {String? name, String? color});
 
   /// Elimina todos los nodos.

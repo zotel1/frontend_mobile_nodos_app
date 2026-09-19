@@ -39,5 +39,20 @@ class NodeRepositoryImpl implements NodeRepository {
   }
 
   @override
+  Future<Node?> reconcileNodeIdentity(
+    int nodeId, {
+    required String deviceUuid,
+    required String name,
+    required String color,
+  }) {
+    return _dataSource.reconcileNodeIdentity(
+      nodeId,
+      deviceUuid: deviceUuid,
+      name: name,
+      color: color,
+    );
+  }
+
+  @override
   Future<void> clearAllNodes() => _dataSource.deleteAllNodes();
 }
