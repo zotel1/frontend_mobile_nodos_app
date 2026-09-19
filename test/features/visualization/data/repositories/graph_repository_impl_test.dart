@@ -1,7 +1,8 @@
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mockito/mockito.dart';
 import 'package:mockito/annotations.dart';
+import 'package:mockito/mockito.dart';
+
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
@@ -26,11 +27,14 @@ void main() {
     await db.close();
   });
 
-  // ── Helpers ──
+  // ─────────────────────────────────────────────────────────────
+  // Helpers
+  // ─────────────────────────────────────────────────────────────
 
-  /// Inserta un nodo en la tabla nodes.
   Future<int> insertNode(String address, [String name = 'Desconocido']) async {
-    return db.into(db.nodes).insert(
+    return db
+        .into(db.nodes)
+        .insert(
           NodesCompanion(
             bleAddress: Value(address),
             name: Value(name),
@@ -43,9 +47,10 @@ void main() {
         );
   }
 
-  /// Inserta una sesión de escaneo.
   Future<int> insertSession() async {
-    return db.into(db.scanSessions).insert(
+    return db
+        .into(db.scanSessions)
+        .insert(
           ScanSessionsCompanion.insert(
             startedAt: DateTime(2026, 6, 19),
             nodesDetected: 0,
@@ -53,10 +58,14 @@ void main() {
         );
   }
 
-  /// Inserta un registro en scan_session_nodes.
-  Future<void> insertSessionNode(int sessionId, int nodeId,
-      [int rssi = -60]) async {
-    await db.into(db.scanSessionNodes).insert(
+  Future<void> insertSessionNode(
+    int sessionId,
+    int nodeId, [
+    int rssi = -60,
+  ]) async {
+    await db
+        .into(db.scanSessionNodes)
+        .insert(
           ScanSessionNodesCompanion.insert(
             sessionId: sessionId,
             nodeId: nodeId,
@@ -66,9 +75,56 @@ void main() {
         );
   }
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // T2.1 — Co-deteccion counting query
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Future<void> insertConnection(int fromId, int toId) async {
+    await db
+        .into(db.connections)
+        .insert(
+          ConnectionsCompanion.insert(
+            fromNodeId: fromId,
+            toNodeId: toId,
+            createdAt: DateTime(2026, 6, 19),
+          ),
+          mode: InsertMode.insertOrIgnore,
+        );
+  }
+
+  void mockNodeLookup(int id, String address, [String name = 'Desconocido']) {
+    when(mockNodeRepository.getNodeById(id)).thenAnswer(
+      (_) async => Node(
+        id: id,
+        bleAddress: address,
+        name: name,
+        firstSeen: DateTime(2026, 6, 1),
+        lastSeen: DateTime(2026, 6, 19),
+        rssiHistory: const [-60],
+      ),
+    );
+  }
+
+  Node makePersistentSelf({
+    int id = 99,
+    String uuid = 'self-device-uuid',
+    String name = 'Mi dispositivo',
+  }) {
+    return Node(
+      id: id,
+      deviceUuid: uuid,
+      bleAddress: null,
+      isSelf: true,
+      name: name,
+      color: '#2196F3',
+      firstSeen: DateTime(2026, 6, 1),
+      lastSeen: DateTime(2026, 6, 19),
+      rssiHistory: const [],
+      deviceType: 'android',
+      connectable: false,
+      estimatedDistance: 0.0,
+    );
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // T2.1 — Co-detection counting query
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   group('T2.1: getCoDetectionCounts', () {
     test('retorna mapa vacío cuando no hay sesiones', () async {
@@ -79,7 +135,9 @@ void main() {
 
     test('retorna mapa vacío cuando hay sesiones con un solo nodo', () async {
       final session = await insertSession();
+
       final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+
       await insertSessionNode(session, nodeA);
 
       final counts = await repository.getCoDetectionCounts();
@@ -87,343 +145,373 @@ void main() {
       expect(counts, isEmpty);
     });
 
-    test('cuenta una co-detección para un par en una sesión compartida',
-        () async {
-      final session = await insertSession();
-      final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
-      final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
-      await insertSessionNode(session, nodeA);
-      await insertSessionNode(session, nodeB);
+    test(
+      'cuenta una co-detección para un par en una sesión compartida',
+      () async {
+        final session = await insertSession();
 
-      final counts = await repository.getCoDetectionCounts();
+        final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
 
-      // El par (nodeA, nodeB) debe tener count=1
-      final keyA = '$nodeA-$nodeB';
-      final keyB = '$nodeB-$nodeA'; // no debería existir
-      expect(counts[keyA], equals(1));
-      expect(counts.containsKey(keyB), isFalse);
-    });
+        final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
 
-    test('cuenta múltiples co-detecciones entre dos nodos en varias sesiones',
-        () async {
-      final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
-      final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
+        await insertSessionNode(session, nodeA);
 
-      // Sesión 1: ambos nodos juntos
-      final s1 = await insertSession();
-      await insertSessionNode(s1, nodeA);
-      await insertSessionNode(s1, nodeB);
+        await insertSessionNode(session, nodeB);
 
-      // Sesión 2: ambos nodos juntos nuevamente
-      final s2 = await insertSession();
-      await insertSessionNode(s2, nodeA);
-      await insertSessionNode(s2, nodeB);
+        final counts = await repository.getCoDetectionCounts();
 
-      // Sesión 3: solo nodeA
-      final s3 = await insertSession();
-      await insertSessionNode(s3, nodeA);
+        final keyA = '$nodeA-$nodeB';
+        final keyB = '$nodeB-$nodeA';
 
-      final counts = await repository.getCoDetectionCounts();
+        expect(counts[keyA], equals(1));
 
-      final key = '$nodeA-$nodeB';
-      expect(counts[key], equals(2));
-    });
+        expect(counts.containsKey(keyB), isFalse);
+      },
+    );
 
-    test('cuenta pares correctamente con 3 nodos compartiendo sesiones',
-        () async {
-      final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
-      final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
-      final nodeC = await insertNode('AA:BB:CC:DD:EE:03', 'Node C');
+    test(
+      'cuenta múltiples co-detecciones entre dos nodos en varias sesiones',
+      () async {
+        final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
 
-      // Sesión: A, B, C juntos
-      final s1 = await insertSession();
-      await insertSessionNode(s1, nodeA);
-      await insertSessionNode(s1, nodeB);
-      await insertSessionNode(s1, nodeC);
+        final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
 
-      // Otra sesión: solo A y B
-      final s2 = await insertSession();
-      await insertSessionNode(s2, nodeA);
-      await insertSessionNode(s2, nodeB);
+        final s1 = await insertSession();
 
-      final counts = await repository.getCoDetectionCounts();
+        await insertSessionNode(s1, nodeA);
 
-      // A-B: 2 co-detecciones (s1 + s2)
-      expect(counts['$nodeA-$nodeB'], equals(2));
-      // A-C: 1 co-detección (s1)
-      expect(counts['$nodeA-$nodeC'], equals(1));
-      // B-C: 1 co-detección (s1)
-      expect(counts['$nodeB-$nodeC'], equals(1));
-      // Pares invertidos no deben existir
-      expect(counts.containsKey('$nodeB-$nodeA'), isFalse);
-      expect(counts.containsKey('$nodeC-$nodeB'), isFalse);
-    });
+        await insertSessionNode(s1, nodeB);
+
+        final s2 = await insertSession();
+
+        await insertSessionNode(s2, nodeA);
+
+        await insertSessionNode(s2, nodeB);
+
+        final s3 = await insertSession();
+
+        await insertSessionNode(s3, nodeA);
+
+        final counts = await repository.getCoDetectionCounts();
+
+        expect(counts['$nodeA-$nodeB'], equals(2));
+      },
+    );
+
+    test(
+      'cuenta pares correctamente con 3 nodos compartiendo sesiones',
+      () async {
+        final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+
+        final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
+
+        final nodeC = await insertNode('AA:BB:CC:DD:EE:03', 'Node C');
+
+        final s1 = await insertSession();
+
+        await insertSessionNode(s1, nodeA);
+
+        await insertSessionNode(s1, nodeB);
+
+        await insertSessionNode(s1, nodeC);
+
+        final s2 = await insertSession();
+
+        await insertSessionNode(s2, nodeA);
+
+        await insertSessionNode(s2, nodeB);
+
+        final counts = await repository.getCoDetectionCounts();
+
+        expect(counts['$nodeA-$nodeB'], equals(2));
+
+        expect(counts['$nodeA-$nodeC'], equals(1));
+
+        expect(counts['$nodeB-$nodeC'], equals(1));
+
+        expect(counts.containsKey('$nodeB-$nodeA'), isFalse);
+
+        expect(counts.containsKey('$nodeC-$nodeB'), isFalse);
+      },
+    );
   });
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // T2.2 — Reemplazar clique edges con co-detection edges reales
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Legacy co-detection
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   group('T2.2: buildGraph con co-detection edges reales (legacy)', () {
-    /// Helper para mockear NodeRepository.getNodeById
-    void mockNodeLookup(int id, String address, [String name = 'Desconocido']) {
-      when(mockNodeRepository.getNodeById(id)).thenAnswer((_) async => Node(
-            id: id,
-            bleAddress: address,
-            name: name,
-            firstSeen: DateTime(2026, 6, 1),
-            lastSeen: DateTime(2026, 6, 19),
-            rssiHistory: const [-60],
-          ));
-    }
-
     test('sin co-detecciones → sin aristas en el layout (legacy)', () async {
       final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+
       final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
 
-      // Sesión con ambos nodos: crea registros scan_session_nodes
       final session = await insertSession();
+
       await insertSessionNode(session, nodeA);
+
       await insertSessionNode(session, nodeB);
 
       mockNodeLookup(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
+
       mockNodeLookup(nodeB, 'AA:BB:CC:DD:EE:02', 'Node B');
 
       final layout = await repository.buildGraphCoDetection(session);
 
-      // Hay 2 nodos en la sesión y 1 co-detección → 2 nodos + 1 arista
       expect(layout.nodes.length, equals(2));
+
       expect(layout.edges.length, equals(1));
+
       expect(layout.edges.first.fromId, anyOf(nodeA, nodeB));
+
       expect(layout.edges.first.toId, anyOf(nodeA, nodeB));
+
       expect(layout.edges.first.fromId, isNot(equals(layout.edges.first.toId)));
     });
 
-    test('múltiples co-detecciones → todas las aristas entre pares (legacy)',
-        () async {
-      final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
-      final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
-      final nodeC = await insertNode('AA:BB:CC:DD:EE:03', 'Node C');
+    test(
+      'múltiples co-detecciones → todas las aristas entre pares (legacy)',
+      () async {
+        final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
 
-      final s1 = await insertSession();
-      await insertSessionNode(s1, nodeA);
-      await insertSessionNode(s1, nodeB);
-      await insertSessionNode(s1, nodeC);
+        final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
 
-      final s2 = await insertSession();
-      await insertSessionNode(s2, nodeA);
-      await insertSessionNode(s2, nodeB);
+        final nodeC = await insertNode('AA:BB:CC:DD:EE:03', 'Node C');
 
-      mockNodeLookup(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
-      mockNodeLookup(nodeB, 'AA:BB:CC:DD:EE:02', 'Node B');
-      mockNodeLookup(nodeC, 'AA:BB:CC:DD:EE:03', 'Node C');
+        final s1 = await insertSession();
 
-      final layout = await repository.buildGraphCoDetection(s1);
+        await insertSessionNode(s1, nodeA);
 
-      expect(layout.nodes.length, equals(3));
-      expect(layout.edges.length, equals(3));
+        await insertSessionNode(s1, nodeB);
 
-      final edgeAB = layout.edges.firstWhere(
-        (e) => (e.fromId == nodeA && e.toId == nodeB) ||
-            (e.fromId == nodeB && e.toId == nodeA),
-        orElse: () => throw StateError('Arco A-B no encontrado'),
-      );
-      expect(edgeAB.thickness, equals(2.0));
-    });
+        await insertSessionNode(s1, nodeC);
+
+        final s2 = await insertSession();
+
+        await insertSessionNode(s2, nodeA);
+
+        await insertSessionNode(s2, nodeB);
+
+        mockNodeLookup(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
+
+        mockNodeLookup(nodeB, 'AA:BB:CC:DD:EE:02', 'Node B');
+
+        mockNodeLookup(nodeC, 'AA:BB:CC:DD:EE:03', 'Node C');
+
+        final layout = await repository.buildGraphCoDetection(s1);
+
+        expect(layout.nodes.length, equals(3));
+
+        expect(layout.edges.length, equals(3));
+
+        final edgeAB = layout.edges.firstWhere(
+          (edge) =>
+              (edge.fromId == nodeA && edge.toId == nodeB) ||
+              (edge.fromId == nodeB && edge.toId == nodeA),
+          orElse: () => throw StateError('Arco A-B no encontrado'),
+        );
+
+        expect(edgeAB.thickness, equals(2.0));
+      },
+    );
 
     test('nodo detectado solo → sin aristas (legacy)', () async {
       final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+
       final session = await insertSession();
+
       await insertSessionNode(session, nodeA);
+
       mockNodeLookup(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
 
       final layout = await repository.buildGraphCoDetection(session);
+
       expect(layout.nodes.length, equals(1));
+
       expect(layout.edges, isEmpty);
     });
   });
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // T2.2 — Computar connectionCount durante buildGraph
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
   group('T2.2: connectionCount en buildGraph (legacy)', () {
-    /// Helper para mockear NodeRepository.getNodeById
-    void mockNodeLookup(int id, String address, [String name = 'Desconocido']) {
-      when(mockNodeRepository.getNodeById(id)).thenAnswer((_) async => Node(
-            id: id,
-            bleAddress: address,
-            name: name,
-            firstSeen: DateTime(2026, 6, 1),
-            lastSeen: DateTime(2026, 6, 19),
-            rssiHistory: const [-60],
-          ));
-    }
-
     test('nodo aislado tiene connectionCount=0', () async {
       final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+
       final session = await insertSession();
+
       await insertSessionNode(session, nodeA);
+
       mockNodeLookup(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
 
       final layout = await repository.buildGraphCoDetection(session);
+
       expect(layout.nodes.length, equals(1));
+
       expect(layout.nodes.first.connectionCount, equals(0));
     });
 
     test('nodo con 1 arista tiene connectionCount=1', () async {
       final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+
       final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
+
       final session = await insertSession();
+
       await insertSessionNode(session, nodeA);
+
       await insertSessionNode(session, nodeB);
+
       mockNodeLookup(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
+
       mockNodeLookup(nodeB, 'AA:BB:CC:DD:EE:02', 'Node B');
 
       final layout = await repository.buildGraphCoDetection(session);
 
-      // Ambos nodos deben tener connectionCount=1 (1 arista entre ellos)
       for (final node in layout.nodes) {
         expect(node.connectionCount, equals(1));
       }
     });
 
-    test('nodo central entre dos tiene connectionCount=2', () async {
-      final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
-      final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
-      final nodeC = await insertNode('AA:BB:CC:DD:EE:03', 'Node C');
+    test(
+      'nodo central entre dos tiene connectionCount=1 dentro de la sesión activa',
+      () async {
+        final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
 
-      // Dos sesiones: (A,B) y (B,C). B es el nodo central.
-      final s1 = await insertSession();
-      await insertSessionNode(s1, nodeA);
-      await insertSessionNode(s1, nodeB);
+        final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
 
-      final s2 = await insertSession();
-      await insertSessionNode(s2, nodeB);
-      await insertSessionNode(s2, nodeC);
+        final nodeC = await insertNode('AA:BB:CC:DD:EE:03', 'Node C');
 
-      // Para s1: A y B aparecen. A tiene 1 conexión (A-B), B tiene 1 (A-B).
-      mockNodeLookup(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
-      mockNodeLookup(nodeB, 'AA:BB:CC:DD:EE:02', 'Node B');
+        final s1 = await insertSession();
 
-      final layout = await repository.buildGraphCoDetection(s1);
+        await insertSessionNode(s1, nodeA);
 
-      expect(layout.nodes.length, equals(2));
-      final nodeAInGraph =
-          layout.nodes.firstWhere((n) => n.id == nodeA);
-      final nodeBInGraph =
-          layout.nodes.firstWhere((n) => n.id == nodeB);
-      expect(nodeAInGraph.connectionCount, equals(1));
-      expect(nodeBInGraph.connectionCount, equals(1));
-    });
+        await insertSessionNode(s1, nodeB);
+
+        final s2 = await insertSession();
+
+        await insertSessionNode(s2, nodeB);
+
+        await insertSessionNode(s2, nodeC);
+
+        mockNodeLookup(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
+
+        mockNodeLookup(nodeB, 'AA:BB:CC:DD:EE:02', 'Node B');
+
+        final layout = await repository.buildGraphCoDetection(s1);
+
+        expect(layout.nodes.length, equals(2));
+
+        final nodeAInGraph = layout.nodes.firstWhere(
+          (node) => node.id == nodeA,
+        );
+
+        final nodeBInGraph = layout.nodes.firstWhere(
+          (node) => node.id == nodeB,
+        );
+
+        expect(nodeAInGraph.connectionCount, equals(1));
+
+        expect(nodeBInGraph.connectionCount, equals(1));
+      },
+    );
 
     test('tres nodos en clique → cada uno connectionCount=2', () async {
       final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+
       final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
+
       final nodeC = await insertNode('AA:BB:CC:DD:EE:03', 'Node C');
 
-      // Sesión con los 3 juntos
       final s1 = await insertSession();
+
       await insertSessionNode(s1, nodeA);
+
       await insertSessionNode(s1, nodeB);
+
       await insertSessionNode(s1, nodeC);
 
       mockNodeLookup(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
+
       mockNodeLookup(nodeB, 'AA:BB:CC:DD:EE:02', 'Node B');
+
       mockNodeLookup(nodeC, 'AA:BB:CC:DD:EE:03', 'Node C');
 
       final layout = await repository.buildGraphCoDetection(s1);
 
-      // 3 nodos, 3 aristas (A-B, A-C, B-C). Cada nodo en 2 aristas.
       for (final node in layout.nodes) {
         expect(node.connectionCount, equals(2));
       }
     });
   });
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // T2.3 — Grosor de arista desde co-detecciones
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
   group('T2.3: Edge thickness from co-detection count (legacy)', () {
-    // thicknessFromCount ya existe en GraphEdge, verificamos que se use
-    // correctamente al construir aristas en buildGraph.
-
     test('thicknessFromCount devuelve 1.0 para 1 co-detección', () {
       expect(GraphEdge.thicknessFromCount(1), equals(1.0));
     });
 
     test('thicknessFromCount devuelve 2.0 para 2-3 co-detecciones', () {
       expect(GraphEdge.thicknessFromCount(2), equals(2.0));
+
       expect(GraphEdge.thicknessFromCount(3), equals(2.0));
     });
 
     test('thicknessFromCount devuelve 3.0 para 4+ co-detecciones', () {
       expect(GraphEdge.thicknessFromCount(4), equals(3.0));
+
       expect(GraphEdge.thicknessFromCount(10), equals(3.0));
     });
 
     test('thicknessFromCount para casos borde: 0', () {
-      // Si count es 0, debería devolver el mínimo (1.0)
       expect(GraphEdge.thicknessFromCount(0), equals(1.0));
     });
 
-    test('arista en buildGraph usa thicknessFromCount con conteo real',
-        () async {
-      final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
-      final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
+    test(
+      'arista en buildGraph usa thicknessFromCount con conteo real',
+      () async {
+        final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
 
-      // 3 sesiones con ambos nodos → 3 co-detecciones
-      final s1 = await insertSession();
-      await insertSessionNode(s1, nodeA);
-      await insertSessionNode(s1, nodeB);
+        final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
 
-      final s2 = await insertSession();
-      await insertSessionNode(s2, nodeA);
-      await insertSessionNode(s2, nodeB);
+        final s1 = await insertSession();
 
-      final s3 = await insertSession();
-      await insertSessionNode(s3, nodeA);
-      await insertSessionNode(s3, nodeB);
+        await insertSessionNode(s1, nodeA);
 
-      when(mockNodeRepository.getNodeById(nodeA)).thenAnswer((_) async => Node(
-            id: nodeA,
-            bleAddress: 'AA:BB:CC:DD:EE:01',
-            name: 'Node A',
-            firstSeen: DateTime(2026, 6, 1),
-            lastSeen: DateTime(2026, 6, 19),
-            rssiHistory: const [-60],
-          ));
-      when(mockNodeRepository.getNodeById(nodeB)).thenAnswer((_) async => Node(
-            id: nodeB,
-            bleAddress: 'AA:BB:CC:DD:EE:02',
-            name: 'Node B',
-            firstSeen: DateTime(2026, 6, 1),
-            lastSeen: DateTime(2026, 6, 19),
-            rssiHistory: const [-60],
-          ));
+        await insertSessionNode(s1, nodeB);
 
-      final layout = await repository.buildGraphCoDetection(s1);
+        final s2 = await insertSession();
 
-      expect(layout.edges.length, equals(1));
-      // 3 co-detecciones → grosor debe ser 2.0
-      expect(layout.edges.first.thickness, equals(2.0));
-    });
+        await insertSessionNode(s2, nodeA);
 
-    // ─── PR6b: connectable propagation en buildGraphCoDetection ───
-    // QUÉ: verifica que el método legacy buildGraphCoDetection propaga
-    // Node.connectable a GraphNode.connectable.
-    // POR QUÉ: el pipeline connectable debe ser consistente en ambos
-    // métodos (buildGraph y buildGraphCoDetection). Sin esta propagación
-    // los nodos en el grafo legacy siempre tendrían connectable=true.
-    test('PR6b: propaga Node.connectable=false a GraphNode en legacy',
-        () async {
-      final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
-      final session = await insertSession();
-      await insertSessionNode(session, nodeA);
+        await insertSessionNode(s2, nodeB);
 
-      // Node con connectable=false
-      when(mockNodeRepository.getNodeById(nodeA)).thenAnswer((_) async => Node(
+        final s3 = await insertSession();
+
+        await insertSessionNode(s3, nodeA);
+
+        await insertSessionNode(s3, nodeB);
+
+        mockNodeLookup(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
+
+        mockNodeLookup(nodeB, 'AA:BB:CC:DD:EE:02', 'Node B');
+
+        final layout = await repository.buildGraphCoDetection(s1);
+
+        expect(layout.edges.length, equals(1));
+
+        expect(layout.edges.first.thickness, equals(2.0));
+      },
+    );
+
+    test(
+      'PR6b: propaga Node.connectable=false a GraphNode en legacy',
+      () async {
+        final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+
+        final session = await insertSession();
+
+        await insertSessionNode(session, nodeA);
+
+        when(mockNodeRepository.getNodeById(nodeA)).thenAnswer(
+          (_) async => Node(
             id: nodeA,
             bleAddress: 'AA:BB:CC:DD:EE:01',
             name: 'Node A',
@@ -431,295 +519,413 @@ void main() {
             lastSeen: DateTime(2026, 6, 19),
             rssiHistory: const [-60],
             connectable: false,
-          ));
+          ),
+        );
 
-      final layout = await repository.buildGraphCoDetection(session);
+        final layout = await repository.buildGraphCoDetection(session);
 
-      expect(layout.nodes, hasLength(1));
-      expect(layout.nodes.first.connectable, isFalse);
-    });
+        expect(layout.nodes, hasLength(1));
 
-    test('PR6b: propaga Node.connectable=true a GraphNode en legacy',
-        () async {
+        expect(layout.nodes.first.connectable, isFalse);
+      },
+    );
+
+    test('PR6b: propaga Node.connectable=true a GraphNode en legacy', () async {
       final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+
       final session = await insertSession();
+
       await insertSessionNode(session, nodeA);
 
-      // Node con connectable=true
-      when(mockNodeRepository.getNodeById(nodeA)).thenAnswer((_) async => Node(
-            id: nodeA,
-            bleAddress: 'AA:BB:CC:DD:EE:01',
-            name: 'Node A',
-            firstSeen: DateTime(2026, 6, 1),
-            lastSeen: DateTime(2026, 6, 19),
-            rssiHistory: const [-60],
-            connectable: true,
-          ));
+      when(mockNodeRepository.getNodeById(nodeA)).thenAnswer(
+        (_) async => Node(
+          id: nodeA,
+          bleAddress: 'AA:BB:CC:DD:EE:01',
+          name: 'Node A',
+          firstSeen: DateTime(2026, 6, 1),
+          lastSeen: DateTime(2026, 6, 19),
+          rssiHistory: const [-60],
+          connectable: true,
+        ),
+      );
 
       final layout = await repository.buildGraphCoDetection(session);
 
       expect(layout.nodes, hasLength(1));
+
       expect(layout.nodes.first.connectable, isTrue);
     });
   });
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // T2.3 — Identificar nodo propio por UUID (isSelf)
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ARCH-001 — persistent self-node
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  group('T2.3: isSelf marking en buildGraph', () {
-    void mockNodeWithAddress(int id, String address, [String name = 'Desconocido']) {
-      when(mockNodeRepository.getNodeById(id)).thenAnswer((_) async => Node(
-            id: id,
-            bleAddress: address,
-            name: name,
-            firstSeen: DateTime(2026, 6, 1),
-            lastSeen: DateTime(2026, 6, 19),
-            rssiHistory: const [-60],
-          ));
-    }
+  group('ARCH-001: persistent self-node en buildGraph', () {
+    test('sin self persistente, ningún nodo externo se marca isSelf', () async {
+      when(mockNodeRepository.getSelfNode()).thenAnswer((_) async => null);
 
-    test('ningún nodo es self cuando myDeviceUuid es null', () async {
       final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+
       final session = await insertSession();
+
       await insertSessionNode(session, nodeA);
-      mockNodeWithAddress(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
+
+      mockNodeLookup(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
 
       final layout = await repository.buildGraph(session);
-      // Sin myDeviceUuid, ningún nodo externo debe ser self.
-      // El self-node sintético (id=-1) siempre es isSelf=true.
-      for (final node in layout.nodes) {
-        if (node.id == -1) continue; // self-node sintético
-        expect(node.isSelf, isFalse);
-      }
+
+      expect(layout.nodes, hasLength(1));
+
+      expect(layout.nodes.single.isSelf, isFalse);
     });
 
-    test('ningún nodo es self cuando myDeviceUuid no coincide', () async {
-      final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
-      final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
+    test(
+      'self persistente se agrega con ID real aunque no esté en la sesión',
+      () async {
+        final self = makePersistentSelf();
+
+        when(mockNodeRepository.getSelfNode()).thenAnswer((_) async => self);
+
+        final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+
+        final session = await insertSession();
+
+        await insertSessionNode(session, nodeA);
+
+        mockNodeLookup(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
+
+        final layout = await repository.buildGraph(session);
+
+        expect(layout.nodes, hasLength(2));
+
+        final graphSelf = layout.nodes.firstWhere((node) => node.id == self.id);
+
+        expect(graphSelf.id, 99);
+
+        expect(graphSelf.id, isNot(-1));
+
+        expect(graphSelf.isSelf, isTrue);
+
+        expect(graphSelf.name, 'Mi dispositivo');
+
+        final external = layout.nodes.firstWhere((node) => node.id == nodeA);
+
+        expect(external.isSelf, isFalse);
+      },
+    );
+
+    test('myDeviceUuid ya no convierte un nodo externo en self', () async {
+      when(mockNodeRepository.getSelfNode()).thenAnswer((_) async => null);
+
+      const uuid = '550e8400-e29b-41d4-a716-446655440000';
+
+      final nodeA = await insertNode(uuid, 'Nodo externo');
+
       final session = await insertSession();
+
       await insertSessionNode(session, nodeA);
-      await insertSessionNode(session, nodeB);
-      mockNodeWithAddress(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
-      mockNodeWithAddress(nodeB, 'AA:BB:CC:DD:EE:02', 'Node B');
 
-      final layout = await repository.buildGraph(session,
-          myDeviceUuid: 'completely-different-uuid');
+      mockNodeLookup(nodeA, uuid, 'Nodo externo');
 
-      for (final node in layout.nodes) {
-        if (node.id == -1) continue; // self-node sintético
-        expect(node.isSelf, isFalse);
-      }
+      final layout = await repository.buildGraph(session, myDeviceUuid: uuid);
+
+      final graphNode = layout.nodes.firstWhere((node) => node.id == nodeA);
+
+      expect(
+        graphNode.isSelf,
+        isFalse,
+        reason:
+            'ARCH-001: isSelf debe provenir del Node persistente, no de comparar bleAddress con UUID',
+      );
     });
 
-    test('nodo con bleAddress igual a myDeviceUuid se marca isSelf=true',
-        () async {
-      const myUuid = '550e8400-e29b-41d4-a716-446655440000';
-      final nodeA = await insertNode(myUuid, 'Mi Dispositivo');
-      final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
+    test('existe como máximo un self-node visible', () async {
+      final self = makePersistentSelf(id: 50);
+
+      when(mockNodeRepository.getSelfNode()).thenAnswer((_) async => self);
+
+      final externalA = await insertNode('AA:01', 'A');
+
+      final externalB = await insertNode('AA:02', 'B');
+
       final session = await insertSession();
-      await insertSessionNode(session, nodeA);
-      await insertSessionNode(session, nodeB);
-      mockNodeWithAddress(nodeA, myUuid, 'Mi Dispositivo');
-      mockNodeWithAddress(nodeB, 'AA:BB:CC:DD:EE:02', 'Node B');
 
-      final layout =
-          await repository.buildGraph(session, myDeviceUuid: myUuid);
+      await insertSessionNode(session, externalA);
 
-      final selfNode = layout.nodes.firstWhere((n) => n.id == nodeA);
-      final otherNode = layout.nodes.firstWhere((n) => n.id == nodeB);
-      expect(selfNode.isSelf, isTrue);
-      expect(otherNode.isSelf, isFalse);
-    });
+      await insertSessionNode(session, externalB);
 
-    test('isSelf solo se marca en el nodo cuyo bleAddress coincide', () async {
-      const myUuid = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
-      final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
-      final nodeB = await insertNode(myUuid, 'Self Node');
-      final nodeC = await insertNode('AA:BB:CC:DD:EE:03', 'Node C');
+      mockNodeLookup(externalA, 'AA:01', 'A');
 
-      final s1 = await insertSession();
-      await insertSessionNode(s1, nodeA);
-      await insertSessionNode(s1, nodeB);
-      await insertSessionNode(s1, nodeC);
+      mockNodeLookup(externalB, 'AA:02', 'B');
 
-      mockNodeWithAddress(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
-      mockNodeWithAddress(nodeB, myUuid, 'Self Node');
-      mockNodeWithAddress(nodeC, 'AA:BB:CC:DD:EE:03', 'Node C');
+      final layout = await repository.buildGraph(session);
 
-      final layout =
-          await repository.buildGraph(s1, myDeviceUuid: myUuid);
+      final selfNodes = layout.nodes.where((node) => node.isSelf).toList();
 
-      // Solo nodeB debe ser self
-      expect(
-          layout.nodes.firstWhere((n) => n.id == nodeA).isSelf, isFalse);
-      expect(
-          layout.nodes.firstWhere((n) => n.id == nodeB).isSelf, isTrue);
-      expect(
-          layout.nodes.firstWhere((n) => n.id == nodeC).isSelf, isFalse);
+      expect(selfNodes, hasLength(1));
+
+      expect(selfNodes.single.id, self.id);
     });
   });
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // PR2 T2.3: buildGraph con tabla connections + aristas transitivas
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // QUÉ: el nuevo buildGraph deriva aristas desde la tabla connections
-  // (ya no desde co-detecciones en scan_session_nodes).
-  // Además, _getTransitiveEdges() infiere aristas 1-hop (A→B, B→C ⇒ A—C)
-  // marcadas con EdgeType.transitive.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // PR2 — connections
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   group('PR2 T2.3: buildGraph con connections', () {
-    /// Helper para insertar una conexión directa en la tabla connections.
-    Future<void> insertConnection(int fromId, int toId) async {
-      await db.into(db.connections).insert(
-            ConnectionsCompanion.insert(
-              fromNodeId: fromId,
-              toNodeId: toId,
-              createdAt: DateTime(2026, 6, 19),
-            ),
-            mode: InsertMode.insertOrIgnore,
-          );
-    }
-
-    void mockNodeLookup(int id, String address, [String name = 'Desconocido']) {
-      when(mockNodeRepository.getNodeById(id)).thenAnswer((_) async => Node(
-            id: id,
-            bleAddress: address,
-            name: name,
-            firstSeen: DateTime(2026, 6, 1),
-            lastSeen: DateTime(2026, 6, 19),
-            rssiHistory: const [-60],
-          ));
-    }
+    setUp(() {
+      when(mockNodeRepository.getSelfNode()).thenAnswer((_) async => null);
+    });
 
     test('buildGraph usa tabla connections en vez de co-detección', () async {
-      // Arrange: dos nodos conectados vía connections, sin registros en
-      // scan_session_nodes para esos nodos.
       final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+
       final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
+
       await insertConnection(nodeA, nodeB);
 
-      // Crear una sesión con ambos nodos (para que buildGraph los encuentre)
       final session = await insertSession();
+
       await insertSessionNode(session, nodeA);
+
       await insertSessionNode(session, nodeB);
 
       mockNodeLookup(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
+
       mockNodeLookup(nodeB, 'AA:BB:CC:DD:EE:02', 'Node B');
 
-      // Act
       final layout = await repository.buildGraph(session);
 
-      // Assert: debe haber 3 nodos (2 externos + 1 self-node sintético) y 1 arista directa
-      expect(layout.nodes.length, equals(3));
+      expect(layout.nodes.length, equals(2));
+
       expect(layout.edges.length, equals(1));
+
       expect(layout.edges.first.edgeType, equals(EdgeType.direct));
     });
 
     test('sin conexiones en tabla → sin aristas en el layout', () async {
       final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+
       final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
 
-      // Ambos en la misma sesión pero SIN registro en connections
       final session = await insertSession();
+
       await insertSessionNode(session, nodeA);
+
       await insertSessionNode(session, nodeB);
 
       mockNodeLookup(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
+
       mockNodeLookup(nodeB, 'AA:BB:CC:DD:EE:02', 'Node B');
 
       final layout = await repository.buildGraph(session);
 
-      // 3 nodos: 2 externos + 1 self-node sintético (id=-1)
-      expect(layout.nodes.length, equals(3));
-      // Sin conexiones → sin aristas (a diferencia del viejo buildGraph
-      // que usaba co-detección de scan_session_nodes)
+      expect(layout.nodes.length, equals(2));
+
       expect(layout.edges, isEmpty);
     });
 
     test('arista transitiva: A→B + B→C ⇒ A—C dashed', () async {
       final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+
       final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
+
       final nodeC = await insertNode('AA:BB:CC:DD:EE:03', 'Node C');
 
-      // Conexiones: A→B, B→C (NO A→C directamente)
       await insertConnection(nodeA, nodeB);
+
       await insertConnection(nodeB, nodeC);
 
       final session = await insertSession();
+
       await insertSessionNode(session, nodeA);
+
       await insertSessionNode(session, nodeB);
+
       await insertSessionNode(session, nodeC);
 
       mockNodeLookup(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
+
       mockNodeLookup(nodeB, 'AA:BB:CC:DD:EE:02', 'Node B');
+
       mockNodeLookup(nodeC, 'AA:BB:CC:DD:EE:03', 'Node C');
 
       final layout = await repository.buildGraph(session);
 
-      // 4 nodos: 3 externos + 1 self-node sintético. 3 aristas: 2 directas + 1 transitiva
-      expect(layout.nodes.length, equals(4));
+      expect(layout.nodes.length, equals(3));
+
       expect(layout.edges.length, equals(3));
 
-      // La arista A-C debe ser transitiva
       final transitiveEdge = layout.edges.firstWhere(
-        (e) => (e.fromId == nodeA && e.toId == nodeC) ||
-                (e.fromId == nodeC && e.toId == nodeA),
+        (edge) =>
+            (edge.fromId == nodeA && edge.toId == nodeC) ||
+            (edge.fromId == nodeC && edge.toId == nodeA),
         orElse: () => throw StateError('Arista transitiva A-C no encontrada'),
       );
+
       expect(transitiveEdge.edgeType, equals(EdgeType.transitive));
 
-      // Las aristas directas deben ser direct
       final directAB = layout.edges.firstWhere(
-        (e) => (e.fromId == nodeA && e.toId == nodeB) ||
-                (e.fromId == nodeB && e.toId == nodeA),
+        (edge) =>
+            (edge.fromId == nodeA && edge.toId == nodeB) ||
+            (edge.fromId == nodeB && edge.toId == nodeA),
       );
+
       final directBC = layout.edges.firstWhere(
-        (e) => (e.fromId == nodeB && e.toId == nodeC) ||
-                (e.fromId == nodeC && e.toId == nodeB),
+        (edge) =>
+            (edge.fromId == nodeB && edge.toId == nodeC) ||
+            (edge.fromId == nodeC && edge.toId == nodeB),
       );
+
       expect(directAB.edgeType, equals(EdgeType.direct));
+
       expect(directBC.edgeType, equals(EdgeType.direct));
     });
 
     test('no genera arista transitiva cuando no hay 1-hop', () async {
       final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+
       final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
+
       final nodeC = await insertNode('AA:BB:CC:DD:EE:03', 'Node C');
 
-      // Solo una conexión: A→B (C está aislado)
       await insertConnection(nodeA, nodeB);
 
       final session = await insertSession();
+
       await insertSessionNode(session, nodeA);
+
       await insertSessionNode(session, nodeB);
+
       await insertSessionNode(session, nodeC);
 
       mockNodeLookup(nodeA, 'AA:BB:CC:DD:EE:01', 'Node A');
+
       mockNodeLookup(nodeB, 'AA:BB:CC:DD:EE:02', 'Node B');
+
       mockNodeLookup(nodeC, 'AA:BB:CC:DD:EE:03', 'Node C');
 
       final layout = await repository.buildGraph(session);
 
-      // 4 nodos: 3 externos + 1 self-node sintético. Solo 1 arista directa (A-B)
-      expect(layout.nodes.length, equals(4));
+      expect(layout.nodes.length, equals(3));
+
       expect(layout.edges.length, equals(1));
+
       expect(layout.edges.first.edgeType, equals(EdgeType.direct));
     });
 
     test('getEdges también usa connections en vez de co-detección', () async {
       final nodeA = await insertNode('AA:BB:CC:DD:EE:01', 'Node A');
+
       final nodeB = await insertNode('AA:BB:CC:DD:EE:02', 'Node B');
+
       await insertConnection(nodeA, nodeB);
 
       final session = await insertSession();
+
       await insertSessionNode(session, nodeA);
+
       await insertSessionNode(session, nodeB);
 
       final edges = await repository.getEdges(session);
 
       expect(edges.length, equals(1));
+
       expect(edges.first.edgeType, equals(EdgeType.direct));
     });
+
+    test(
+      'ARCH-001: conexión self-remoto se renderiza aunque self no esté en scan_session_nodes',
+      () async {
+        final now = DateTime(2026, 6, 19);
+
+        final selfId = await db
+            .into(db.nodes)
+            .insert(
+              NodesCompanion(
+                deviceUuid: const Value('local-installation-uuid'),
+                bleAddress: const Value(null),
+                isSelf: const Value(true),
+                name: const Value('Mi dispositivo'),
+                color: const Value('#2196F3'),
+                firstSeen: Value(now),
+                lastSeen: Value(now),
+                connectable: const Value(false),
+              ),
+            );
+
+        final remoteId = await insertNode('AA:BB:CC:DD:EE:99', 'Reloj');
+
+        final session = await insertSession();
+
+        await insertSessionNode(session, remoteId);
+
+        when(mockNodeRepository.getSelfNode()).thenAnswer(
+          (_) async => Node(
+            id: selfId,
+            deviceUuid: 'local-installation-uuid',
+            bleAddress: null,
+            isSelf: true,
+            name: 'Mi dispositivo',
+            color: '#2196F3',
+            firstSeen: now,
+            lastSeen: now,
+            deviceType: 'android',
+            connectable: false,
+            estimatedDistance: 0.0,
+          ),
+        );
+
+        when(mockNodeRepository.getNodeById(remoteId)).thenAnswer(
+          (_) async => Node(
+            id: remoteId,
+            bleAddress: 'AA:BB:CC:DD:EE:99',
+            isSelf: false,
+            name: 'Reloj',
+            firstSeen: now,
+            lastSeen: now,
+            rssiHistory: const [-50],
+            connectable: true,
+          ),
+        );
+
+        await db
+            .into(db.connections)
+            .insert(
+              ConnectionsCompanion.insert(
+                fromNodeId: selfId,
+                toNodeId: remoteId,
+                createdAt: now,
+              ),
+            );
+
+        final layout = await repository.buildGraph(session);
+
+        expect(layout.nodes, hasLength(2));
+
+        final selfGraphNode = layout.nodes.firstWhere(
+          (node) => node.id == selfId,
+        );
+
+        final remoteGraphNode = layout.nodes.firstWhere(
+          (node) => node.id == remoteId,
+        );
+
+        expect(selfGraphNode.isSelf, isTrue);
+
+        expect(remoteGraphNode.isSelf, isFalse);
+
+        expect(layout.edges, hasLength(1));
+
+        final edge = layout.edges.single;
+
+        expect(edge.fromId, selfId);
+
+        expect(edge.toId, remoteId);
+
+        expect(edge.edgeType, EdgeType.direct);
+      },
+    );
   });
 }

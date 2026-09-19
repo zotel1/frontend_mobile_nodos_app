@@ -75,8 +75,7 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
   final hasDepth = depth > 0.0; // T5.2: flag para modo 3D activo
   final maxIterations = params['iterations'] as int? ?? 100;
   final k = (params['k'] as num?)?.toDouble() ?? 150.0;
-  final coolingFactor =
-      (params['coolingFactor'] as num?)?.toDouble() ?? 0.95;
+  final coolingFactor = (params['coolingFactor'] as num?)?.toDouble() ?? 0.95;
   final seed = params['seed'] as int?;
 
   if (nodes.isEmpty) {
@@ -147,8 +146,8 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
   }
 
   // ── 2. Bucle principal de Fruchterman-Reingold ──
-  double temperature = (params['temperature'] as num?)?.toDouble() ??
-      (width / 10);
+  double temperature =
+      (params['temperature'] as num?)?.toDouble() ?? (width / 10);
   var converged = false;
   var actualIterations = 0;
 
@@ -174,14 +173,17 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
         // desplace nodos externos hacia afuera artificialmente.
         if (i == selfNodeIdx || j == selfNodeIdx) continue;
 
-        final dx = (nodes[i]['x'] as num).toDouble() -
+        final dx =
+            (nodes[i]['x'] as num).toDouble() -
             (nodes[j]['x'] as num).toDouble();
-        final dy = (nodes[i]['y'] as num).toDouble() -
+        final dy =
+            (nodes[i]['y'] as num).toDouble() -
             (nodes[j]['y'] as num).toDouble();
         double dist2D = dx * dx + dy * dy;
 
         if (hasDepth) {
-          final dz = (nodes[i]['z'] as num).toDouble() -
+          final dz =
+              (nodes[i]['z'] as num).toDouble() -
               (nodes[j]['z'] as num).toDouble();
           dist2D += dz * dz;
         }
@@ -200,7 +202,8 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
 
         // T5.2: Componente Z de la fuerza repulsiva
         if (hasDepth) {
-          final dz = (nodes[i]['z'] as num).toDouble() -
+          final dz =
+              (nodes[i]['z'] as num).toDouble() -
               (nodes[j]['z'] as num).toDouble();
           displacementZ[i] += (dz / dist) * fr;
           displacementZ[j] -= (dz / dist) * fr;
@@ -222,14 +225,17 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
       // El self-node no debe ser atraído hacia ningún otro nodo.
       if (fromIdx == selfNodeIdx || toIdx == selfNodeIdx) continue;
 
-      final dx = (nodes[fromIdx]['x'] as num).toDouble() -
+      final dx =
+          (nodes[fromIdx]['x'] as num).toDouble() -
           (nodes[toIdx]['x'] as num).toDouble();
-      final dy = (nodes[fromIdx]['y'] as num).toDouble() -
+      final dy =
+          (nodes[fromIdx]['y'] as num).toDouble() -
           (nodes[toIdx]['y'] as num).toDouble();
       double dist2D = dx * dx + dy * dy;
 
       if (hasDepth) {
-        final dz = (nodes[fromIdx]['z'] as num).toDouble() -
+        final dz =
+            (nodes[fromIdx]['z'] as num).toDouble() -
             (nodes[toIdx]['z'] as num).toDouble();
         dist2D += dz * dz;
       }
@@ -248,7 +254,8 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
 
       // T5.2: Componente Z de la fuerza atractiva
       if (hasDepth) {
-        final dz = (nodes[fromIdx]['z'] as num).toDouble() -
+        final dz =
+            (nodes[fromIdx]['z'] as num).toDouble() -
             (nodes[toIdx]['z'] as num).toDouble();
         displacementZ[fromIdx] -= (dz / dist) * fa;
         displacementZ[toIdx] += (dz / dist) * fa;
@@ -265,7 +272,8 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
       // en su posición inicial (centro del canvas, 1000,1000,0).
       if (i == selfNodeIdx) continue;
 
-      var disp2D = displacementX[i] * displacementX[i] +
+      var disp2D =
+          displacementX[i] * displacementX[i] +
           displacementY[i] * displacementY[i];
 
       if (hasDepth) {
@@ -280,10 +288,8 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
         // Cap: el desplazamiento no puede exceder la temperatura
         final scale = disp.clamp(0.0, temperature) / disp;
 
-        final nx = (nodes[i]['x'] as num).toDouble() +
-            displacementX[i] * scale;
-        final ny = (nodes[i]['y'] as num).toDouble() +
-            displacementY[i] * scale;
+        final nx = (nodes[i]['x'] as num).toDouble() + displacementX[i] * scale;
+        final ny = (nodes[i]['y'] as num).toDouble() + displacementY[i] * scale;
 
         // ── d. Clampear al canvas con margen ──
         // Evita que los nodos se escapen del área visible.
@@ -292,8 +298,8 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
 
         // T5.2: Clampear Z si el modo 3D está activo
         if (hasDepth) {
-          final nz = (nodes[i]['z'] as num).toDouble() +
-              displacementZ[i] * scale;
+          final nz =
+              (nodes[i]['z'] as num).toDouble() + displacementZ[i] * scale;
           nodes[i]['z'] = nz.clamp(margin, depth - margin);
         }
       }

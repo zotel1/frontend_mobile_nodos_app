@@ -8,6 +8,10 @@ import 'dart:async' as _i5;
 import 'package:dartz/dartz.dart' as _i3;
 import 'package:frontend_mobile_nodos_app/core/errors/failures.dart' as _i6;
 import 'package:frontend_mobile_nodos_app/core/usecases/usecase.dart' as _i8;
+import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart'
+    as _i12;
+import 'package:frontend_mobile_nodos_app/features/nodes/domain/usecases/ensure_local_node.dart'
+    as _i11;
 import 'package:frontend_mobile_nodos_app/features/user/domain/entities/user.dart'
     as _i7;
 import 'package:frontend_mobile_nodos_app/features/user/domain/repositories/user_repository.dart'
@@ -209,4 +213,38 @@ class MockUserRepository extends _i1.Mock implements _i2.UserRepository {
             returnValueForMissingStub: _i5.Future<void>.value(),
           )
           as _i5.Future<void>);
+
+  @override
+  _i5.Future<void> setLocalNodeId(int? nodeId) =>
+      (super.noSuchMethod(
+            Invocation.method(#setLocalNodeId, [nodeId]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+}
+
+/// A class which mocks [EnsureLocalNode].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockEnsureLocalNode extends _i1.Mock implements _i11.EnsureLocalNode {
+  @override
+  _i5.Future<_i3.Either<_i6.Failure, _i12.Node>> call(_i7.User? user) =>
+      (super.noSuchMethod(
+            Invocation.method(#call, [user]),
+            returnValue: _i5.Future<_i3.Either<_i6.Failure, _i12.Node>>.value(
+              _FakeEither_1<_i6.Failure, _i12.Node>(
+                this,
+                Invocation.method(#call, [user]),
+              ),
+            ),
+            returnValueForMissingStub:
+                _i5.Future<_i3.Either<_i6.Failure, _i12.Node>>.value(
+                  _FakeEither_1<_i6.Failure, _i12.Node>(
+                    this,
+                    Invocation.method(#call, [user]),
+                  ),
+                ),
+          )
+          as _i5.Future<_i3.Either<_i6.Failure, _i12.Node>>);
 }

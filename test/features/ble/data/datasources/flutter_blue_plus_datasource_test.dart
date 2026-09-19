@@ -40,8 +40,10 @@ void main() {
     });
 
     test('implements BleScannerDataSource', () {
-      final dataSource =
-          FlutterBluePlusDataSource.test(streamController.stream);
+      final dataSource = FlutterBluePlusDataSource.test(
+        streamController.stream,
+      );
+
       expect(dataSource, isA<BleScannerDataSource>());
     });
 
@@ -53,8 +55,8 @@ void main() {
       final emitted = <List<BleDevice>>[];
       final subscription = dataSource.scanResults.listen(emitted.add);
 
-      final device =
-          createBleDevice(deviceId: 'AA:BB:CC:DD:EE:FF', rssi: -55);
+      final device = createBleDevice(deviceId: 'AA:BB:CC:DD:EE:FF', rssi: -55);
+
       streamController.add([device]);
 
       await Future<void>.delayed(Duration.zero);
@@ -67,29 +69,32 @@ void main() {
       await subscription.cancel();
     });
 
-    test('scanResults emits multiple events for multiple stream pushes',
-        () async {
-      final dataSource = FlutterBluePlusDataSource.test(
-        streamController.stream,
-      );
+    test(
+      'scanResults emits multiple events for multiple stream pushes',
+      () async {
+        final dataSource = FlutterBluePlusDataSource.test(
+          streamController.stream,
+        );
 
-      final emitted = <List<BleDevice>>[];
-      final subscription = dataSource.scanResults.listen(emitted.add);
+        final emitted = <List<BleDevice>>[];
+        final subscription = dataSource.scanResults.listen(emitted.add);
 
-      final device1 = createBleDevice(deviceId: 'AA', rssi: -50);
-      final device2 = createBleDevice(deviceId: 'BB', rssi: -60);
+        final device1 = createBleDevice(deviceId: 'AA', rssi: -50);
+        final device2 = createBleDevice(deviceId: 'BB', rssi: -60);
 
-      streamController.add([device1]);
-      await Future<void>.delayed(Duration.zero);
-      streamController.add([device2]);
-      await Future<void>.delayed(Duration.zero);
+        streamController.add([device1]);
+        await Future<void>.delayed(Duration.zero);
 
-      expect(emitted.length, 2);
-      expect(emitted[0].first.deviceId, 'AA');
-      expect(emitted[1].first.deviceId, 'BB');
+        streamController.add([device2]);
+        await Future<void>.delayed(Duration.zero);
 
-      await subscription.cancel();
-    });
+        expect(emitted.length, 2);
+        expect(emitted[0].first.deviceId, 'AA');
+        expect(emitted[1].first.deviceId, 'BB');
+
+        await subscription.cancel();
+      },
+    );
 
     test('scanResults does not emit when empty list is pushed', () async {
       final dataSource = FlutterBluePlusDataSource.test(
@@ -100,6 +105,7 @@ void main() {
       final subscription = dataSource.scanResults.listen(emitted.add);
 
       streamController.add([]);
+
       await Future<void>.delayed(Duration.zero);
 
       expect(emitted, isEmpty);
@@ -112,22 +118,21 @@ void main() {
         streamController.stream,
       );
 
-      await dataSource.startScan(serviceUuids: [
-        '4fafc201-1fb5-459e-8fcc-c5c9c331914b',
-      ]);
-    });
-
-    // T1.1 F1: Escaneo promiscuo — startScan con serviceUuids: null no lanza error.
-    // QUÉ: verifica que el datasource acepta null como valor de serviceUuids
-    // sin crash, permitiendo escaneo sin filtro UUID.
-    test('startScan with null serviceUuids does not throw (promiscuous scan)',
-        () async {
-      final dataSource = FlutterBluePlusDataSource.test(
-        streamController.stream,
+      await dataSource.startScan(
+        serviceUuids: ['4fafc201-1fb5-459e-8fcc-c5c9c331914b'],
       );
-
-      await dataSource.startScan(serviceUuids: null);
     });
+
+    test(
+      'startScan with null serviceUuids does not throw (promiscuous scan)',
+      () async {
+        final dataSource = FlutterBluePlusDataSource.test(
+          streamController.stream,
+        );
+
+        await dataSource.startScan(serviceUuids: null);
+      },
+    );
 
     test('stopScan does not throw', () async {
       final dataSource = FlutterBluePlusDataSource.test(
@@ -146,19 +151,12 @@ void main() {
       await dataSource.stopScan();
     });
 
-    // T1.2 F2: Scanner reusable — después de stopScan + startScan,
-    // los scanResults deben seguir emitiendo datos.
-    // QUÉ: simula el ciclo stop→start y verifica que el stream
-    // de resultados sigue activo y emite dispositivos detectados.
-    // POR QUÉ: en producción, stopScan() cancelaba _scanSub y
-    // startScan() no lo recreaba → single-use scanner.
     test('after stopScan + startScan, scanResults still emits data '
         '(reusable scanner)', () async {
       final dataSource = FlutterBluePlusDataSource.test(
         streamController.stream,
       );
 
-      // Simular ciclo stop → start como en producción
       await dataSource.startScan();
       await dataSource.stopScan();
       await dataSource.startScan();
@@ -166,9 +164,10 @@ void main() {
       final emitted = <List<BleDevice>>[];
       final sub = dataSource.scanResults.listen(emitted.add);
 
-      final device =
-          createBleDevice(deviceId: 'AA:BB:CC:DD:EE:FF', rssi: -55);
+      final device = createBleDevice(deviceId: 'AA:BB:CC:DD:EE:FF', rssi: -55);
+
       streamController.add([device]);
+
       await Future<void>.delayed(Duration.zero);
 
       expect(emitted.length, 1);
@@ -177,88 +176,155 @@ void main() {
       await sub.cancel();
     });
 
-    // T1.3 F3: Recuperación de errores — después de que startScan()
-    // lance excepción, el siguiente startScan() debe funcionar.
-    // QUÉ: simula que el primer startScan lanza y verifica que
-    // el segundo startScan no queda bloqueado.
-    // POR QUÉ: si _isScanning queda en true después de una excepción,
-    // el guard al inicio de startScan() bloquea todos los intentos futuros.
-    test('after startScan throws, next startScan succeeds (error recovery)',
-        () async {
-      final dataSource = FlutterBluePlusDataSource.test(
-        streamController.stream,
-      );
+    test(
+      'after startScan throws, next startScan succeeds (error recovery)',
+      () async {
+        final dataSource = FlutterBluePlusDataSource.test(
+          streamController.stream,
+        );
 
-      // En modo test, startScan siempre retorna sin error,
-      // por lo que este test verifica que startScan → stopScan → startScan
-      // funciona incluso después de un ciclo start/stop, que es la condición
-      // que se rompía cuando _isScanning quedaba inconsistente.
-      // El fix de producción (try/catch en startScan y reset en stopScan)
-      // garantiza que _isScanning siempre refleje el estado real.
+        await dataSource.startScan();
+        await dataSource.stopScan();
+        await dataSource.startScan();
 
-      // Primer escaneo
-      await dataSource.startScan();
-      // Simular error: forzar _isScanning a false (como haría el catch)
-      await dataSource.stopScan();
+        final emitted = <List<BleDevice>>[];
+        final sub = dataSource.scanResults.listen(emitted.add);
 
-      // Segundo escaneo debe funcionar (no quedar bloqueado)
-      await dataSource.startScan();
+        streamController.add([createBleDevice(rssi: -70)]);
 
-      final emitted = <List<BleDevice>>[];
-      final sub = dataSource.scanResults.listen(emitted.add);
+        await Future<void>.delayed(Duration.zero);
 
-      streamController.add([createBleDevice(rssi: -70)]);
-      await Future<void>.delayed(Duration.zero);
+        expect(emitted.length, 1);
 
-      expect(emitted.length, 1);
+        await sub.cancel();
+      },
+    );
 
-      await sub.cancel();
-    });
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // BUG-005 — Duty cycle BLE no reinicia tras timeout de plataforma
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    //
+    // REPRODUCCIÓN:
+    //
+    // 1. startScan() marca _isScanning = true.
+    // 2. FlutterBluePlus finaliza automáticamente el scan por timeout.
+    // 3. La plataforma pasa a scanning=false.
+    // 4. El datasource debería reflejar ese cambio.
+    // 5. Un nuevo startScan() debe poder iniciar el siguiente ciclo.
+    //
+    // ESTADO ESPERADO EN ESTE BLOQUE:
+    // este test debe FALLAR porque todavía no se escucha scanStateStream.
+    test(
+      'BUG-005: timeout de plataforma debe liberar el scanner para un nuevo ciclo',
+      () async {
+        final scanResultsController =
+            StreamController<List<BleDevice>>.broadcast();
+
+        final scanStateController = StreamController<bool>.broadcast();
+
+        final dataSource = FlutterBluePlusDataSource.test(
+          scanResultsController.stream,
+          scanStateStream: scanStateController.stream,
+        );
+
+        // Primer ciclo.
+        await dataSource.startScan();
+
+        expect(
+          dataSource.isScanning,
+          isTrue,
+          reason: 'Después de startScan el datasource debe quedar escaneando',
+        );
+
+        // Simular que FlutterBluePlus termina automáticamente
+        // el escaneo por timeout.
+        //
+        // No llamamos stopScan(), porque justamente queremos reproducir
+        // el caso donde la plataforma finaliza el scan por su cuenta.
+        scanStateController.add(false);
+
+        await Future<void>.delayed(Duration.zero);
+
+        expect(
+          dataSource.isScanning,
+          isFalse,
+          reason:
+              'BUG-005: _isScanning debe reflejar que FlutterBluePlus '
+              'finalizó automáticamente el scan',
+        );
+
+        // Si el estado interno quedó correctamente liberado,
+        // un nuevo ciclo debe poder comenzar.
+        await dataSource.startScan();
+
+        expect(
+          dataSource.isScanning,
+          isTrue,
+          reason:
+              'Después del timeout debe ser posible iniciar '
+              'un nuevo ciclo BLE',
+        );
+
+        dataSource.dispose();
+
+        await scanResultsController.close();
+        await scanStateController.close();
+      },
+    );
   });
 
   group('bluetoothState', () {
-    test('emite true cuando btStateStream emite true (adaptador encendido)',
-        () async {
-      final btController = StreamController<bool>.broadcast();
-      final dataSource = FlutterBluePlusDataSource.test(
-        Stream<List<BleDevice>>.empty(),
-        btStateStream: btController.stream,
-      );
+    test(
+      'emite true cuando btStateStream emite true (adaptador encendido)',
+      () async {
+        final btController = StreamController<bool>.broadcast();
 
-      final states = <bool>[];
-      final sub = dataSource.bluetoothState.listen(states.add);
+        final dataSource = FlutterBluePlusDataSource.test(
+          Stream<List<BleDevice>>.empty(),
+          btStateStream: btController.stream,
+        );
 
-      btController.add(true);
-      await Future<void>.delayed(Duration.zero);
+        final states = <bool>[];
+        final sub = dataSource.bluetoothState.listen(states.add);
 
-      expect(states, [true]);
+        btController.add(true);
 
-      await sub.cancel();
-      await btController.close();
-    });
+        await Future<void>.delayed(Duration.zero);
 
-    test('emite false cuando btStateStream emite false (adaptador apagado)',
-        () async {
-      final btController = StreamController<bool>.broadcast();
-      final dataSource = FlutterBluePlusDataSource.test(
-        Stream<List<BleDevice>>.empty(),
-        btStateStream: btController.stream,
-      );
+        expect(states, [true]);
 
-      final states = <bool>[];
-      final sub = dataSource.bluetoothState.listen(states.add);
+        await sub.cancel();
+        await btController.close();
+      },
+    );
 
-      btController.add(false);
-      await Future<void>.delayed(Duration.zero);
+    test(
+      'emite false cuando btStateStream emite false (adaptador apagado)',
+      () async {
+        final btController = StreamController<bool>.broadcast();
 
-      expect(states, [false]);
+        final dataSource = FlutterBluePlusDataSource.test(
+          Stream<List<BleDevice>>.empty(),
+          btStateStream: btController.stream,
+        );
 
-      await sub.cancel();
-      await btController.close();
-    });
+        final states = <bool>[];
+        final sub = dataSource.bluetoothState.listen(states.add);
+
+        btController.add(false);
+
+        await Future<void>.delayed(Duration.zero);
+
+        expect(states, [false]);
+
+        await sub.cancel();
+        await btController.close();
+      },
+    );
 
     test('emite múltiples valores cuando btStateStream alterna', () async {
       final btController = StreamController<bool>.broadcast();
+
       final dataSource = FlutterBluePlusDataSource.test(
         Stream<List<BleDevice>>.empty(),
         btStateStream: btController.stream,
@@ -269,8 +335,10 @@ void main() {
 
       btController.add(true);
       await Future<void>.delayed(Duration.zero);
+
       btController.add(false);
       await Future<void>.delayed(Duration.zero);
+
       btController.add(true);
       await Future<void>.delayed(Duration.zero);
 
@@ -281,15 +349,9 @@ void main() {
     });
   });
 
-  // ─── T1.2 + T1.4: Test del mapper _mapScanResultToDevice ──────
-  // QUÉ: Verifica que el mapper extrae correctamente todos los campos
-  // de enriquecimiento desde ScanResult → BleDevice.
-  // POR QUÉ: la función de mapeo fue extraída para ser testeable
-  // unitariamente sin depender de FlutterBluePlus platform.
   group('_mapScanResultToDevice — enrichment mapper', () {
     final now = DateTime(2026, 6, 19, 15, 0);
 
-    // Crea un ScanResult de prueba con advertisementData controlado.
     ScanResult scanResult({
       String remoteId = 'AA:BB:CC:DD:EE:FF',
       String advName = '',
@@ -316,19 +378,16 @@ void main() {
       );
     }
 
-    // ── T1.2: txPowerLevel en el mapper ──
-
     test('T1.2: pasa txPowerLevel a rssiToDistance y lo almacena', () {
       final scan = scanResult(
         remoteId: '01:02:03:04:05:06',
         txPowerLevel: -40,
         rssi: -60,
       );
+
       final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
 
-      // Verifica que txPowerLevel se almacena en la entidad.
       expect(device.txPowerLevel, -40);
-      // Con txPowerLevel=-40 y RSSI=-60: distance ≈ 10m (vs ~3.16m con default -50)
       expect(device.distance, closeTo(10.0, 0.5));
     });
 
@@ -338,17 +397,16 @@ void main() {
         txPowerLevel: null,
         rssi: -60,
       );
+
       final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
 
       expect(device.txPowerLevel, isNull);
-      // Con default txPower=-50 y RSSI=-60: distance ≈ 3.16m
       expect(device.distance, closeTo(3.16, 0.2));
     });
 
-    // ── T1.4: advName, platformName, serviceUuids, connectable ──
-
     test('T1.4: captura advName desde advertisementData', () {
       final scan = scanResult(advName: 'AirPods Pro');
+
       final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
 
       expect(device.advName, 'AirPods Pro');
@@ -356,15 +414,15 @@ void main() {
 
     test('T1.4: advName vacío cuando el dispositivo no anuncia nombre', () {
       final scan = scanResult(advName: '');
+
       final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
 
       expect(device.advName, '');
     });
 
     test('T1.4: captura serviceUuids como List<String>', () {
-      final scan = scanResult(
-        serviceUuids: [Guid('180D'), Guid('180F')],
-      );
+      final scan = scanResult(serviceUuids: [Guid('180D'), Guid('180F')]);
+
       final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
 
       expect(device.serviceUuids, isNotNull);
@@ -375,33 +433,40 @@ void main() {
 
     test('T1.4: serviceUuids null cuando no hay UUIDs anunciados', () {
       final scan = scanResult(serviceUuids: []);
+
       final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
 
-      // Lista vacía se mapea a null (sin servicios = sin clasificación)
       expect(device.serviceUuids, isNull);
     });
 
     test('T1.4: captura connectable desde advertisementData', () {
       final connectable = scanResult(connectable: true);
+
       final notConnectable = scanResult(connectable: false);
 
       expect(
-        FlutterBluePlusDataSource.mapScanResultToDevice(connectable).connectable,
+        FlutterBluePlusDataSource.mapScanResultToDevice(
+          connectable,
+        ).connectable,
         isTrue,
       );
+
       expect(
-        FlutterBluePlusDataSource.mapScanResultToDevice(notConnectable).connectable,
+        FlutterBluePlusDataSource.mapScanResultToDevice(
+          notConnectable,
+        ).connectable,
         isFalse,
       );
     });
 
-    test('T1.4: mapea campos básicos correctamente (deviceId, rssi, timestamp)',
-        () {
+    test('T1.4: mapea campos básicos correctamente '
+        '(deviceId, rssi, timestamp)', () {
       final scan = scanResult(
         remoteId: 'AA:BB:CC:DD:EE:FF',
         rssi: -55,
         timeStamp: now,
       );
+
       final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
 
       expect(device.deviceId, 'AA:BB:CC:DD:EE:FF');
@@ -410,19 +475,12 @@ void main() {
       expect(device.proximity, rssiToProximity(-55));
     });
 
-    // ─── F4: Invocación de DeviceClassifier ────────────────────────
-    // QUÉ: mapScanResultToDevice debe invocar DeviceClassifier.classify()
-    // con los serviceUuids y manufacturerId del advertisement, y asignar
-    // el resultado a BleDevice.deviceType.
-    // POR QUÉ: sin esta invocación, deviceType siempre era null y los
-    // dispositivos se mostraban sin categoría legible.
+    test('F4: asigna deviceType "Reloj/Fitness" '
+        'para Heart Rate (0x180D)', () {
+      final scan = scanResult(serviceUuids: [Guid('180D')]);
 
-    test('F4: asigna deviceType "Reloj/Fitness" para Heart Rate (0x180D)',
-        () {
-      final scan = scanResult(
-        serviceUuids: [Guid('180D')],
-      );
       final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
+
       expect(device.deviceType, equals('Reloj/Fitness'));
     });
 
@@ -430,89 +488,74 @@ void main() {
       final scan = scanResult(
         serviceUuids: [Guid('4fafc201-1fb5-459e-8fcc-c5c9c331914b')],
       );
+
       final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
+
       expect(device.deviceType, equals('Nodo'));
     });
 
     test('F4: asigna tipo por manufacturer ID cuando no hay UUIDs', () {
       final scan = scanResult(
         serviceUuids: [],
-        manufacturerData: {0x004C: [1, 2, 3]},
+        manufacturerData: {
+          0x004C: [1, 2, 3],
+        },
       );
+
       final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
+
       expect(device.deviceType, equals('Apple (Desconocido)'));
     });
 
     test('F4: deviceType es null cuando no se reconoce nada', () {
-      final scan = scanResult(
-        serviceUuids: [],
-        manufacturerData: {},
-      );
+      final scan = scanResult(serviceUuids: [], manufacturerData: {});
+
       final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
+
       expect(device.deviceType, isNull);
     });
 
     test('F4: deviceType null con UUIDs no reconocidos (sin crash)', () {
-      final scan = scanResult(
-        serviceUuids: [Guid('ABCD')],
-      );
+      final scan = scanResult(serviceUuids: [Guid('ABCD')]);
+
       final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
+
       expect(device.deviceType, isNull);
     });
   });
 
-  // ─── T5.2: dispose() cierra StreamController (R22, R23) ──────
-  // QUÉ: verifica que dispose() cierra el StreamController interno
-  // y cancela la suscripción de scan. También verifica idempotencia
-  // (llamar dispose 2x no lanza excepción).
-  // POR QUÉ: el datasource nunca cerraba _controller, causando
-  // memory leak (P1). La interfaz BleScannerDataSource ahora
-  // declara dispose() para permitir limpieza polimórfica.
   group('T5.2 — dispose() cierra StreamController (R22, R23)', () {
     test('dispose cierra el StreamController interno', () async {
       final streamController = StreamController<List<BleDevice>>.broadcast();
+
       final dataSource = FlutterBluePlusDataSource.test(
         streamController.stream,
       );
 
-      // Antes de dispose, el controller debe estar abierto
       expect(dataSource.isControllerClosed, isFalse);
 
-      // Ejecutar dispose
       dataSource.dispose();
 
-      // Después de dispose, el controller interno debe estar cerrado
       expect(dataSource.isControllerClosed, isTrue);
 
-      // Limpiar el controller externo del test
       await streamController.close();
     });
 
     test('dispose es idempotente — llamar 2x no lanza excepcion', () async {
       final streamController = StreamController<List<BleDevice>>.broadcast();
+
       final dataSource = FlutterBluePlusDataSource.test(
         streamController.stream,
       );
 
-      // Primera llamada
       dataSource.dispose();
 
-      // Segunda llamada no debe lanzar excepción
-      expect(
-        () => dataSource.dispose(),
-        returnsNormally,
-      );
+      expect(() => dataSource.dispose(), returnsNormally);
 
       await streamController.close();
     });
   });
 
-  // ─── PR6a: Sin filtro RSSI en datasource ──────────────────────
-  // QUÉ: Verifica que rssiPassesFilter acepta TODOS los valores RSSI
-  // porque el filtrado por proximidad ahora ocurre en la capa de
-  // presentación (toggle "Mostrar solo cercanos").
-  // REQ-PR6a-004: Proximity threshold no debe filtrar en datasource.
-  // SC-PR6a-006: Dispositivos lejanos se persisten aunque no se muestren.
   group('PR6a — Sin filtro RSSI en datasource (REQ-PR6a-004)', () {
     test('SC-PR6a-006: RSSI -92 pasa el filtro (señal débil)', () {
       expect(
@@ -539,10 +582,7 @@ void main() {
     });
 
     test('RSSI -40 (señal fuerte) pasa el filtro', () {
-      expect(
-        FlutterBluePlusDataSource.rssiPassesFilter(-40),
-        isTrue,
-      );
+      expect(FlutterBluePlusDataSource.rssiPassesFilter(-40), isTrue);
     });
   });
 }

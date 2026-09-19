@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -5,57 +6,99 @@ import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
 import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_advertiser_datasource.dart';
 
-/// Implementación real de advertising BLE usando [FlutterBlePeripheral].
+/// Implementación del periférico BLE de Nodos.
 ///
-/// QUÉ hace: inicia/detiene el advertising periférico con los metadatos
-/// de identidad del dispositivo (UUID, nombre, color) para que otros
-/// dispositivos Nodos puedan detectarlo vía escaneo BLE.
+/// El advertising permite descubrir que el dispositivo ejecuta Nodos.
+/// La identidad estable se publica mediante una característica GATT.
 ///
-/// POR QUÉ: reemplaza el stub anterior con llamadas reales al hardware
-/// BLE vía flutter_ble_peripheral. El advertising anuncia el service UUID
-/// Nodos y el manufacturer data con la identidad serializada como JSON.
+/// serviceUuid
+///   └── identityCharacteristicUUID
+///         └── { uuid, name, color }
 class FlutterBlePeripheralDataSource implements BleAdvertiserDataSource {
   final FlutterBlePeripheral _peripheral = FlutterBlePeripheral();
 
-  /// Construye el payload de identidad como Uint8List con JSON codificado.
-  ///
-  /// QUÉ hace: serializa uuid, name y color en un JSON string y lo
-  /// codifica como bytes UTF-8 para incluirlo en el ManufacturerData
-  /// del advertisement BLE.
-  ///
-  /// POR QUÉ es estático y público: permite testear la construcción
-  /// del payload unitariamente sin depender de la plataforma BLE.
-  /// Extract-Before-Mock pattern — la lógica de serialización es
-  /// determinística y no requiere hardware.
+  StreamSubscription<GattSubscription>? _identitySubscription;
+
+  Uint8List? _identityPayload;
+
+  /// Serializa la identidad Nodos como JSON UTF-8.
   @visibleForTesting
   static Uint8List buildIdentityPayload(
-      String deviceUuid, String name, String color) {
+    String deviceUuid,
+    String name,
+    String color,
+  ) {
     final identityJson = jsonEncode({
       'uuid': deviceUuid,
       'name': name,
       'color': color,
     });
+
     return Uint8List.fromList(utf8.encode(identityJson));
   }
 
   @override
   Future<void> startAdvertise(
-      String deviceUuid, String name, String color) async {
-    final manufacturerData = buildIdentityPayload(deviceUuid, name, color);
+    String deviceUuid,
+    String name,
+    String color,
+  ) async {
+    _identityPayload = buildIdentityPayload(deviceUuid, name, color);
 
-    final advertiseData = AdvertiseData(
+    await _identitySubscription?.cancel();
+
+    // Escuchamos específicamente las suscripciones a la característica
+    // de identidad. Cuando otro dispositivo Nodos se suscribe, publicamos
+    // inmediatamente la identidad local.
+    _identitySubscription = _peripheral.onCharacteristicSubscriptionChanged
+        .listen((subscription) async {
+          if (!subscription.subscribed ||
+              subscription.characteristicUuid.toLowerCase() !=
+                  identityCharacteristicUUID.toLowerCase()) {
+            return;
+          }
+
+          final payload = _identityPayload;
+          if (payload == null) return;
+
+          try {
+            await _peripheral.sendData(
+              payload,
+              characteristicUuid: identityCharacteristicUUID,
+            );
+          } catch (error) {
+            debugPrint('Nodos GATT: no se pudo enviar la identidad: $error');
+          }
+        });
+
+    // El advertisement solamente identifica al dispositivo como Nodos.
+    // La identidad completa se obtiene posteriormente mediante GATT.
+    const advertiseData = AndroidAdvertiseData(
+      serviceUuid: serviceUuid,
       serviceUuids: [serviceUuid],
-      manufacturerId: 0x004C, // Apple como placeholder para manufacturer
-      manufacturerData: manufacturerData,
       includeDeviceName: false,
-      localName: name,
     );
 
-    await _peripheral.start(advertiseData: advertiseData);
+    // Una única característica de identidad.
+    //
+    // GattCharacteristic.notify habilita READ + NOTIFY + INDICATE.
+    const gattServer = GattServerSettings(
+      serviceUuid: serviceUuid,
+      characteristics: [GattCharacteristic.notify(identityCharacteristicUUID)],
+    );
+
+    await _peripheral.start(
+      advertiseData: advertiseData,
+      gattServer: gattServer,
+    );
   }
 
   @override
   Future<void> stopAdvertise() async {
+    await _identitySubscription?.cancel();
+    _identitySubscription = null;
+    _identityPayload = null;
+
     await _peripheral.stop();
   }
 }

@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/device_classifier.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_scanner_datasource.dart';
@@ -10,98 +9,181 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_devic
 
 class FlutterBluePlusDataSource implements BleScannerDataSource {
   final StreamController<List<BleDevice>> _controller;
+
   StreamSubscription<Object?>? _scanSub;
+
+  /// BUG-005:
+  /// Suscripción al estado REAL del scanner reportado por FlutterBluePlus.
+  ///
+  /// Permite detectar cuando FlutterBluePlus termina automáticamente
+  /// un escaneo por timeout.
+  StreamSubscription<bool>? _scanStateSub;
+
   bool _isScanning = false;
+
   final bool _isTestMode;
 
   /// Stream del estado del adaptador Bluetooth.
-  /// En producción se deriva de [FlutterBluePlus.adapterState].
-  /// En modo test se inyecta como parámetro opcional.
+  ///
+  /// En producción se deriva de FlutterBluePlus.adapterState.
+  /// En modo test se puede inyectar.
   Stream<bool>? _btStateStream;
 
-  /// Production constructor — binds to [FlutterBluePlus] platform.
+  /// BUG-005:
+  /// Stream que representa el estado real del scanner.
+  ///
+  /// En producción usa FlutterBluePlus.isScanning.
+  /// En tests puede inyectarse para simular:
+  ///
+  /// true  → plataforma escaneando
+  /// false → plataforma detuvo el scan por timeout
+  Stream<bool>? _scanStateStream;
+
+  /// Production constructor.
+  ///
+  /// Conecta el datasource con FlutterBluePlus.
   FlutterBluePlusDataSource()
-      : _controller = StreamController<List<BleDevice>>.broadcast(),
-        _isTestMode = false {
+    : _controller = StreamController<List<BleDevice>>.broadcast(),
+      _isTestMode = false {
     _bindToPlatform();
-    _btStateStream = FlutterBluePlus.adapterState
-        .map((s) => s == BluetoothAdapterState.on);
+
+    _btStateStream = FlutterBluePlus.adapterState.map(
+      (state) => state == BluetoothAdapterState.on,
+    );
+
+    // BUG-005:
+    // FlutterBluePlus es la fuente de verdad del estado real del scanner.
+    //
+    // startScan() utiliza un timeout de 15 segundos. Cuando ese timeout
+    // vence, FlutterBluePlus puede detener el scan internamente sin que
+    // nuestro método stopScan() sea llamado.
+    //
+    // Antes de este fix, _isScanning permanecía en true y bloqueaba
+    // posteriores intentos de startScan().
+    _scanStateStream = FlutterBluePlus.isScanning;
+
+    _bindScanState();
   }
 
-  /// Test constructor — inject pre-built scan results and optional BT state.
+  /// Test constructor.
+  ///
+  /// Permite inyectar:
+  ///
+  /// - stream de resultados BLE;
+  /// - estado Bluetooth;
+  /// - estado real del scanner.
+  ///
+  /// Esto permite reproducir BUG-005 sin depender del hardware Android.
   @visibleForTesting
   FlutterBluePlusDataSource.test(
     Stream<List<BleDevice>> stream, {
     Stream<bool>? btStateStream,
-  })  : _controller = StreamController<List<BleDevice>>.broadcast(),
-        _isTestMode = true,
-        _btStateStream = btStateStream {
+    Stream<bool>? scanStateStream,
+  }) : _controller = StreamController<List<BleDevice>>.broadcast(),
+       _isTestMode = true,
+       _btStateStream = btStateStream,
+       _scanStateStream = scanStateStream {
     stream.listen((results) {
       if (results.isNotEmpty) {
         _controller.add(results);
       }
     });
+
+    // BUG-005:
+    // También sincronizamos el flag interno durante tests.
+    _bindScanState();
   }
 
+  /// Se suscribe a los resultados reales de FlutterBluePlus.
   void _bindToPlatform() {
     _scanSub = FlutterBluePlus.onScanResults.listen((results) {
-      if (results.isEmpty) return;
-      // PR6a: Sin filtro RSSI en datasource — todos los dispositivos
-      // se persisten. El filtrado por proximidad ocurre en la capa
-      // de presentación (toggle "Mostrar solo cercanos").
-      // REQ-PR6a-004.
+      if (results.isEmpty) {
+        return;
+      }
+
+      // PR6a:
+      // No filtramos por RSSI en datasource.
+      // Todos los dispositivos detectados se persisten y el filtrado
+      // visual se realiza posteriormente en presentación.
       final mapped = results.map(mapScanResultToDevice).toList();
+
       if (mapped.isNotEmpty) {
         _controller.add(mapped);
       }
     });
   }
 
+  /// BUG-005:
+  /// Sincroniza [_isScanning] con el estado REAL del scanner.
+  ///
+  /// Problema original:
+  ///
+  /// 1. startScan() establecía `_isScanning = true`.
+  /// 2. FlutterBluePlus iniciaba un scan con timeout de 15 segundos.
+  /// 3. La plataforma finalizaba automáticamente el scan.
+  /// 4. Nuestro stopScan() NO era llamado.
+  /// 5. `_isScanning` seguía en true.
+  /// 6. El siguiente startScan() ejecutaba:
+  ///
+  ///     if (_isScanning) return;
+  ///
+  /// 7. El duty cycle quedaba bloqueado permanentemente.
+  ///
+  /// Con esta suscripción:
+  ///
+  /// plataforma true  → `_isScanning = true`
+  /// plataforma false → `_isScanning = false`
+  ///
+  /// Por lo tanto el siguiente ciclo puede iniciar normalmente.
+  void _bindScanState() {
+    final stream = _scanStateStream;
+
+    if (stream == null) {
+      return;
+    }
+
+    _scanStateSub?.cancel();
+
+    _scanStateSub = stream.listen((isScanning) {
+      _isScanning = isScanning;
+    });
+  }
+
   /// Sin filtro RSSI: todos los dispositivos se persisten.
   ///
-  /// QUÉ cambió (PR6a): antes filtraba con [proximityThresholdFar] (-95 dBm).
-  /// Ahora siempre retorna true — el filtrado se delegó a la capa de
-  /// presentación para que el usuario decida qué dispositivos ver.
+  /// PR6a:
+  /// anteriormente el datasource descartaba señales demasiado débiles.
   ///
-  /// Se mantiene como método público para compatibilidad con tests existentes.
-  /// REQ-PR6a-004.
+  /// Ahora el filtrado se realiza únicamente en presentación.
   @visibleForTesting
   static bool rssiPassesFilter(int rssi) => true;
 
-  /// Convierte un [ScanResult] de flutter_blue_plus en un [BleDevice] de dominio.
-  ///
-  /// QUÉ hace: extrae todos los campos relevantes del advertisement BLE y los
-  /// mapea a la entidad de dominio, incluyendo txPowerLevel para cálculo de
-  /// distancia más preciso, advName/platformName para identidad, y
-  /// serviceUuids/connectable para clasificación.
-  ///
-  /// POR QUÉ es estático y público: permite testear el mapeo unitariamente
-  /// sin depender de FlutterBluePlus platform (Extract-Before-Mock).
+  /// Convierte un ScanResult de FlutterBluePlus en BleDevice de dominio.
   @visibleForTesting
   static BleDevice mapScanResultToDevice(ScanResult r) {
-    // Extraer service UUIDs como List<String> para el classifier
     final serviceUuidsStrings = r.advertisementData.serviceUuids.isNotEmpty
         ? r.advertisementData.serviceUuids
-            .map((g) => g.toString())
-            .toList()
+              .map((guid) => guid.toString())
+              .toList()
         : <String>[];
 
-    // Extraer manufacturer ID del primer entry en manufacturerData
     final manufacturerId = r.advertisementData.manufacturerData.isNotEmpty
         ? r.advertisementData.manufacturerData.keys.first
         : null;
 
-    // F4: Clasificar el dispositivo usando los service UUIDs y
-    // manufacturer ID. El classifier es estático y sync (~1μs).
-    final deviceType =
-        DeviceClassifier.classify(serviceUuidsStrings, manufacturerId);
+    final deviceType = DeviceClassifier.classify(
+      serviceUuidsStrings,
+      manufacturerId,
+    );
 
     return BleDevice(
       deviceId: r.device.remoteId.toString(),
       deviceUuid: null,
       rssi: r.rssi,
-      distance: rssiToDistance(r.rssi,
-          txPowerLevel: r.advertisementData.txPowerLevel),
+      distance: rssiToDistance(
+        r.rssi,
+        txPowerLevel: r.advertisementData.txPowerLevel,
+      ),
       proximity: rssiToProximity(r.rssi),
       timestamp: r.timeStamp,
       advName: r.advertisementData.advName,
@@ -116,37 +198,51 @@ class FlutterBluePlusDataSource implements BleScannerDataSource {
   @override
   Stream<List<BleDevice>> get scanResults => _controller.stream;
 
-  /// Expone el estado del adaptador Bluetooth como stream de bool.
-  ///
-  /// QUÉ hace: retorna true cuando el adaptador está encendido (`on`),
-  /// false en cualquier otro estado.
-  ///
-  /// POR QUÉ: permite a la capa de presentación reaccionar al estado real
-  /// del hardware en lugar de asumir que siempre está activo.
+  /// Estado del adaptador Bluetooth.
   @override
-  Stream<bool> get bluetoothState =>
-      _btStateStream ?? Stream.value(true);
+  Stream<bool> get bluetoothState => _btStateStream ?? Stream.value(true);
+
+  /// BUG-005:
+  /// Getter visible para tests.
+  ///
+  /// Permite verificar que el flag interno representa el estado real
+  /// de FlutterBluePlus después de un timeout.
+  @visibleForTesting
+  bool get isScanning => _isScanning;
 
   @override
   Future<void> startScan({List<String>? serviceUuids}) async {
-    if (_isScanning) return;
+    // Evitar iniciar dos scans simultáneamente.
+    //
+    // BUG-005:
+    // Este guard ahora funciona correctamente porque _isScanning
+    // es actualizado también por FlutterBluePlus.isScanning.
+    if (_isScanning) {
+      return;
+    }
+
     _isScanning = true;
-    if (_isTestMode) return;
 
-    // F2: Recrear listener de plataforma si fue cancelado en stopScan().
-    // _bindToPlatform() tiene guard interno (if (_scanSub != null) return)
-    // por lo que es seguro llamarlo incluso con listener activo.
-    if (_scanSub == null) _bindToPlatform();
+    // En test mode no existe plataforma real.
+    // El estado posterior puede ser controlado mediante scanStateStream.
+    if (_isTestMode) {
+      return;
+    }
 
-    // F3: try/catch — resetea _isScanning si la plataforma lanza error
-    // para no dejar el scanner en estado muerto.
+    // Recrear listener si stopScan() lo canceló previamente.
+    if (_scanSub == null) {
+      _bindToPlatform();
+    }
+
     try {
       await FlutterBluePlus.startScan(
-        withServices: serviceUuids?.map((u) => Guid(u)).toList() ?? [],
+        withServices: serviceUuids?.map((uuid) => Guid(uuid)).toList() ?? [],
         timeout: const Duration(seconds: 15),
         androidUsesFineLocation: false,
       );
     } catch (_) {
+      // Si FlutterBluePlus falla al iniciar el scan, liberar inmediatamente
+      // el guard para permitir un próximo intento.
       _isScanning = false;
       rethrow;
     }
@@ -154,52 +250,49 @@ class FlutterBluePlusDataSource implements BleScannerDataSource {
 
   @override
   Future<void> stopScan() async {
-    if (!_isScanning) return;
+    if (!_isScanning) {
+      return;
+    }
+
     await _scanSub?.cancel();
     _scanSub = null;
-    if (!_isTestMode) {
-      await FlutterBluePlus.stopScan();
+
+    try {
+      if (!_isTestMode) {
+        await FlutterBluePlus.stopScan();
+      }
+    } finally {
+      // Debe resetearse incluso si stopScan() de plataforma lanza.
+      _isScanning = false;
     }
-    // F3: Reset explícito después del stop de plataforma.
-    // Garantiza que incluso si la plataforma lanza, _isScanning
-    // refleje el estado real para el próximo startScan().
-    _isScanning = false;
   }
 
   /// Expone si el StreamController interno está cerrado.
-  ///
-  /// QUÉ: permite a los tests verificar que dispose() efectivamente
-  /// cerró el controller sin necesidad de acceder al campo privado.
   @visibleForTesting
   bool get isControllerClosed => _controller.isClosed;
 
-  /// Libera los recursos del datasource: cierra el StreamController
-  /// y cancela la suscripción de escaneo BLE.
+  /// Libera todos los recursos del datasource.
   ///
-  /// QUÉ: llama _controller.close() (con try/catch para idempotencia)
-  /// y _scanSub?.cancel() para detener el listener de plataforma.
+  /// Cancela:
   ///
-  /// POR QUÉ: el StreamController nunca se cerraba, causando un
-  /// memory leak (P1). El try/catch garantiza que llamar dispose()
-  /// dos veces no lance StateError (idempotente).
-  ///
-  /// CUÁNDO usarlo: cuando el datasource ya no se necesita (ej. al
-  /// cerrar la sesión de escaneo o al desmontar la feature de BLE).
+  /// - resultados BLE;
+  /// - estado real del scanner;
+  /// - StreamController interno.
   @override
   void dispose() {
-    // Cancelar suscripción de scan BLE (puede ser null en test mode).
     _scanSub?.cancel();
     _scanSub = null;
 
-    // Cerrar StreamController. Usamos try/catch en lugar de chequear
-    // _controller.isClosed porque:
-    //   - Evita race condition entre el chequeo y el close().
-    //   - El comportamiento ante un close() fallido es el mismo (no-op).
-    //   - La primera llamada siempre cierra; la segunda atrapa StateError.
+    _scanStateSub?.cancel();
+    _scanStateSub = null;
+
+    _isScanning = false;
+
     try {
       _controller.close();
     } catch (_) {
-      // Controller ya cerrado — no-op. Esto hace al método idempotente.
+      // Controller ya cerrado.
+      // Dispose debe ser idempotente.
     }
   }
 }

@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:convert';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_identity.dart';
 
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -86,10 +86,7 @@ class BleConnectionError extends BleConnectionState {
   final String message;
   final bool retryable;
 
-  const BleConnectionError({
-    required this.message,
-    required this.retryable,
-  });
+  const BleConnectionError({required this.message, required this.retryable});
 
   @override
   List<Object?> get props => [message, retryable];
@@ -110,21 +107,28 @@ class ConnectionInserted extends BleConnectionState {
 
 /// Identidad remota cargada exitosamente vía GATT read.
 ///
-/// [remoteId] es la dirección BLE del dispositivo remoto.
-/// [name] y [color] son los valores leídos de la característica de identidad.
+/// [remoteId] identifica la conexión BLE actual.
+/// [uuid] identifica persistentemente a la instalación remota de Nodos.
+/// [name] y [color] son los metadatos configurados por el usuario remoto.
+///
+/// El UUID lógico no debe confundirse con [remoteId]:
+/// la dirección BLE puede variar, mientras que el UUID Nodos representa
+/// la identidad persistente de la instalación.
 class RemoteIdentityLoaded extends BleConnectionState {
   final String remoteId;
+  final String uuid;
   final String name;
   final String color;
 
   const RemoteIdentityLoaded({
     required this.remoteId,
+    required this.uuid,
     required this.name,
     required this.color,
   });
 
   @override
-  List<Object?> get props => [remoteId, name, color];
+  List<Object?> get props => [remoteId, uuid, name, color];
 }
 
 /// No se pudo leer la identidad remota vía GATT.
@@ -155,8 +159,7 @@ class RemoteIdentityUnavailable extends BleConnectionState {
 ///
 /// Depende de [BleConnectionRepository] para operaciones GATT y persistencia,
 /// y de [NodeRepository] para lookup de nodeId por bleAddress.
-class BleConnectionBloc
-    extends Bloc<BleConnectionEvent, BleConnectionState> {
+class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
   final BleConnectionRepository _connectionRepo;
   final NodeRepository _nodeRepository;
   StreamSubscription<bool>? _stateSubscription;
@@ -164,9 +167,9 @@ class BleConnectionBloc
   BleConnectionBloc({
     required BleConnectionRepository connectionRepository,
     required NodeRepository nodeRepository,
-  })  : _connectionRepo = connectionRepository,
-        _nodeRepository = nodeRepository,
-        super(const BleConnectionInitial()) {
+  }) : _connectionRepo = connectionRepository,
+       _nodeRepository = nodeRepository,
+       super(const BleConnectionInitial()) {
     on<ConnectToDevice>(_onConnect);
     on<DisconnectDevice>(_onDisconnect);
     on<_ConnectionStateChanged>(_onConnectionStateChanged);
@@ -187,10 +190,12 @@ class BleConnectionBloc
     try {
       final permission = await Permission.bluetoothConnect.request();
       if (!permission.isGranted) {
-        emit(const BleConnectionError(
-          message: 'Permiso BLUETOOTH_CONNECT requerido',
-          retryable: false,
-        ));
+        emit(
+          const BleConnectionError(
+            message: 'Permiso BLUETOOTH_CONNECT requerido',
+            retryable: false,
+          ),
+        );
         return;
       }
     } catch (_) {
@@ -207,14 +212,16 @@ class BleConnectionBloc
       _stateSubscription = _connectionRepo
           .connectionState(event.remoteId)
           .listen((connected) {
-        if (!isClosed) {
-          add(_ConnectionStateChanged(
-            remoteId: event.remoteId,
-            connected: connected,
-            myNodeId: event.myNodeId,
-          ));
-        }
-      });
+            if (!isClosed) {
+              add(
+                _ConnectionStateChanged(
+                  remoteId: event.remoteId,
+                  connected: connected,
+                  myNodeId: event.myNodeId,
+                ),
+              );
+            }
+          });
 
       // Emitir BleConnected — la lógica post-conexión ocurre
       // en _onConnectionStateChanged cuando el stream emita true.
@@ -242,8 +249,7 @@ class BleConnectionBloc
 
     // ── 1. Insertar fila en connections ──
     try {
-      final remoteNode =
-          await _nodeRepository.getNodeByBleAddress(remoteId);
+      final remoteNode = await _nodeRepository.getNodeByBleAddress(remoteId);
       if (remoteNode != null && remoteNode.id != null) {
         await _connectionRepo.saveConnection(event.myNodeId, remoteNode.id!);
         emit(ConnectionInserted(remoteId: remoteId));
@@ -262,16 +268,16 @@ class BleConnectionBloc
       );
 
       if (bytes != null && bytes.isNotEmpty) {
-        final jsonStr = utf8.decode(bytes);
-        final data = jsonDecode(jsonStr) as Map<String, dynamic>;
-        final name = data['name'] as String? ?? 'Desconocido';
-        final color = data['color'] as String? ?? '#2196F3';
+        final identity = NodosIdentity.fromBytes(bytes);
 
-        emit(RemoteIdentityLoaded(
-          remoteId: remoteId,
-          name: name,
-          color: color,
-        ));
+        emit(
+          RemoteIdentityLoaded(
+            remoteId: remoteId,
+            uuid: identity.uuid,
+            name: identity.name,
+            color: identity.color,
+          ),
+        );
         return;
       }
     } catch (_) {

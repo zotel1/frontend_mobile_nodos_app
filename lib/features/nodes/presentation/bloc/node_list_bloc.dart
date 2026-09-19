@@ -1,13 +1,14 @@
 import 'dart:async';
 
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+
+import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/usecases/observe_nodes.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/usecases/update_node_metadata.dart';
-import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 
 // ── Events ──
 
@@ -40,6 +41,7 @@ class RefreshNodes extends NodeListEvent {
 ///
 /// QUÉ resuelve: convierte cada [BleDevice] detectado por [BleBloc]
 /// en una entidad [Node] y la persiste mediante [NodeRepository.upsertNode].
+///
 /// POR QUÉ: sin este evento, los resultados del escaneo BLE nunca se
 /// convierten en nodos visibles en la UI — el flujo de datos se rompe
 /// entre el datasource BLE y el repositorio de nodos.
@@ -55,13 +57,22 @@ class SyncBleDevices extends NodeListEvent {
   List<Object> get props => [devices];
 }
 
-/// Elimina todos los nodos de la base de datos y re-suscribe el stream.
+/// Limpia los nodos visibles de la sesión actual sin borrar persistencia.
 ///
-/// QUÉ resuelve: pipeline para limpiar el contador de nodos a 0
-/// cuando se apaga Bluetooth (R5.17). La re-suscripción al stream
-/// Drift emite una lista vacía → NodeListEmpty.
-/// POR QUÉ: sin este evento, los nodos persisten en BD aunque BT
-/// esté apagado, mostrando datos stale en la UI.
+/// QUÉ resuelve: cuando Bluetooth se apaga, la UI debe dejar de mostrar
+/// dispositivos cercanos y el contador debe volver a 0.
+///
+/// IMPORTANTE:
+/// Este evento NO elimina filas de la tabla nodes.
+///
+/// POR QUÉ:
+/// Los nodos forman parte de relaciones persistentes almacenadas en
+/// connections. Borrar nodes provocaría que las foreign keys con
+/// ON DELETE CASCADE eliminaran también conexiones permanentes.
+///
+/// BUG-002:
+/// ClearNodes representa una limpieza de estado de presentación,
+/// no una operación destructiva sobre SQLite.
 class ClearNodes extends NodeListEvent {
   const ClearNodes();
 }
@@ -70,6 +81,9 @@ class ClearNodes extends NodeListEvent {
 ///
 /// QUÉ resuelve: persiste el nombre asignado manualmente por el usuario
 /// desde el bottom sheet de metadata (R5.5).
+///
+/// Este evento se conserva para edición manual. La identidad obtenida
+/// mediante el protocolo Nodos utiliza [UpdateNodeIdentity].
 class UpdateNodeName extends NodeListEvent {
   final int nodeId;
   final String name;
@@ -84,6 +98,9 @@ class UpdateNodeName extends NodeListEvent {
 ///
 /// QUÉ resuelve: persiste el color asignado manualmente por el usuario
 /// desde el color picker del bottom sheet de metadata (R5.6).
+///
+/// Este evento se conserva para edición manual. La identidad obtenida
+/// mediante el protocolo Nodos utiliza [UpdateNodeIdentity].
 class UpdateNodeColor extends NodeListEvent {
   final int nodeId;
   final String color;
@@ -92,6 +109,38 @@ class UpdateNodeColor extends NodeListEvent {
 
   @override
   List<Object> get props => [nodeId, color];
+}
+
+/// Reconcilia la identidad estable de un nodo obtenida mediante
+/// el protocolo Nodos.
+///
+/// A diferencia de [UpdateNodeName] y [UpdateNodeColor], este evento
+/// representa una actualización atómica proveniente de BLE:
+///
+/// - [nodeId] identifica la fila detectada actualmente.
+/// - [deviceUuid] identifica de forma estable al dispositivo Nodos.
+/// - [name] contiene el nombre publicado por el dispositivo remoto.
+/// - [color] contiene el color publicado por el dispositivo remoto.
+///
+/// El repositorio puede determinar que [nodeId] corresponde a una fila
+/// temporal o duplicada de otro Node que ya posee [deviceUuid]. En ese
+/// caso, [NodeRepository.reconcileNodeIdentity] es responsable de
+/// reconciliar ambas filas preservando relaciones e historial.
+class UpdateNodeIdentity extends NodeListEvent {
+  final int nodeId;
+  final String deviceUuid;
+  final String name;
+  final String color;
+
+  const UpdateNodeIdentity({
+    required this.nodeId,
+    required this.deviceUuid,
+    required this.name,
+    required this.color,
+  });
+
+  @override
+  List<Object> get props => [nodeId, deviceUuid, name, color];
 }
 
 // ── States ──
@@ -135,24 +184,28 @@ class NodeListError extends NodeListState {
 
 // ── BLoC ──
 
-/// BLoC que gestiona el estado de la lista de nodos detectados.
+/// BLoC que gestiona el estado de los nodos detectados.
 ///
 /// Responsabilidades:
-/// - Recibir eventos [LoadNodes] y [RefreshNodes] para suscribirse
-///   al stream [watchNodes] del repositorio.
+/// - Recibir [LoadNodes] y [RefreshNodes] para trabajar con el stream
+///   reactivo de nodos.
 /// - Procesar [SyncBleDevices] para convertir resultados de escaneo BLE
-///   en entidades [Node] persistentes (puente BLE→Node).
-/// - Emitir estados [NodeListLoaded], [NodeListEmpty], [NodeListError]
-///   según el resultado del stream o del handler de sincronización.
+///   en entidades [Node] persistentes.
+/// - Procesar actualizaciones manuales de metadata.
+/// - Procesar [UpdateNodeIdentity] para reconciliar la identidad estable
+///   obtenida mediante el protocolo Nodos.
+/// - Emitir [NodeListLoaded], [NodeListEmpty] y [NodeListError] según
+///   las actualizaciones recibidas desde Drift.
 ///
 /// Dependencias:
-/// - [ObserveNodes]: use case que expone el stream de nodos desde Drift.
-/// - [UpdateNodeMetadata]: use case para actualizar nombre/color de un nodo.
-/// - [NodeRepository]: repositorio para persistir nodos (usado por SyncBleDevices).
+/// - [ObserveNodes]: expone el stream de nodos desde Drift.
+/// - [UpdateNodeMetadata]: actualiza manualmente nombre/color.
+/// - [NodeRepository]: persiste nodos BLE y reconcilia identidad Nodos.
 class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
   final ObserveNodes observeNodes;
   final UpdateNodeMetadata updateNodeMetadata;
   final NodeRepository _nodeRepository;
+
   StreamSubscription<List<Node>>? _nodesSubscription;
 
   NodeListBloc({
@@ -168,42 +221,46 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
     on<ClearNodes>(_onClearNodes);
     on<UpdateNodeName>(_onUpdateNodeName);
     on<UpdateNodeColor>(_onUpdateNodeColor);
+    on<UpdateNodeIdentity>(_onUpdateNodeIdentity);
     on<_NodesUpdated>(_onNodesUpdated);
     on<_NodesUpdatedEmpty>(_onNodesUpdatedEmpty);
     on<_NodesLoadError>(_onNodesLoadError);
   }
 
   Future<void> _onLoadNodes(
-      LoadNodes event, Emitter<NodeListState> emit) async {
+    LoadNodes event,
+    Emitter<NodeListState> emit,
+  ) async {
     _ensureSubscription();
   }
 
-  void _onNodeDetected(
-      NodeDetected event, Emitter<NodeListState> emit) {
+  void _onNodeDetected(NodeDetected event, Emitter<NodeListState> emit) {
     emit(NodeListLoaded([event.node]));
   }
 
   /// El stream Drift .watch() ya es reactivo — los cambios en la BD
   /// se emiten automáticamente sin necesidad de cancelar y recrear
-  /// la suscripción. Este handler es un no-op intencional.
+  /// la suscripción.
+  ///
+  /// Este handler es un no-op intencional.
   Future<void> _onRefreshNodes(
-      RefreshNodes event, Emitter<NodeListState> emit) async {}
+    RefreshNodes event,
+    Emitter<NodeListState> emit,
+  ) async {}
 
   /// Convierte dispositivos BLE detectados en entidades [Node] y las persiste.
   ///
-  /// QUÉ hace: itera cada [BleDevice], lo convierte a [Node] aplicando
-  /// reglas de mapeo (deviceId→bleAddress, rssi→rssiHistory), y llama
-  /// [NodeRepository.upsertNode] para persistir.
+  /// QUÉ hace:
+  /// itera cada [BleDevice], lo convierte a [Node] aplicando reglas de
+  /// mapeo y llama [NodeRepository.upsertNode].
   ///
-  /// POR QUÉ esta implementación:
-  /// - Dedup por bleAddress: Drift maneja inserción/reemplazo por clave única.
-  /// - rssiHistory limitado a 20: evita crecimiento ilimitado de la lista.
-  /// - RSSI >= 0 ignorado: señal inválida según especificación BLE.
-  /// - firstSeen preservado: nodos existentes mantienen su timestamp original.
-  ///
-  /// QUÉ problema resuelve: cierra la brecha entre el escaneo BLE (BleBloc)
-  /// y la UI de nodos (NodeListBloc). Sin este handler, los dispositivos
-  /// detectados nunca se convierten en nodos visibles.
+  /// Reglas:
+  /// - deviceId → bleAddress.
+  /// - RSSI >= 0 se considera inválido y se ignora.
+  /// - rssiHistory se limita a 20 muestras.
+  /// - dispositivos repetidos dentro del mismo batch se deduplican.
+  /// - suggestedName se conserva desde el primer avistamiento del batch.
+  /// - Drift resuelve posteriormente la persistencia/deduplicación.
   Future<void> _onSyncBleDevices(
     SyncBleDevices event,
     Emitter<NodeListState> emit,
@@ -211,41 +268,47 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
     if (event.devices.isEmpty) return;
 
     // Mapa local de nodos procesados en este batch para soportar
-    // dedup dentro del mismo lote (mismo deviceId aparece varias veces).
+    // deduplicación cuando el mismo deviceId aparece varias veces.
     final processed = <String, Node>{};
 
     for (final device in event.devices) {
-      // Ignorar dispositivos con señal inválida (RSSI >= 0).
+      // RSSI >= 0 no representa una medición válida para este flujo.
       if (device.rssi >= 0) continue;
 
       final existing = processed[device.deviceId];
 
       if (existing != null) {
-        // Mismo deviceId ya procesado en este batch: append RSSI.
-        // Preservar suggestedName del primer avistamiento (freeze).
+        // El mismo deviceId ya apareció en este batch.
+        // Agregamos la nueva medición RSSI y preservamos la metadata
+        // capturada durante la primera aparición.
         final updatedHistory = [...existing.rssiHistory, device.rssi];
+
         if (updatedHistory.length > 20) {
           updatedHistory.removeAt(0);
         }
-          processed[device.deviceId] = Node(
-            id: existing.id,
-            bleAddress: existing.bleAddress,
-            name: existing.name,
-            color: existing.color,
-            firstSeen: existing.firstSeen,
-            lastSeen: DateTime.now(),
-            rssiHistory: updatedHistory,
-            suggestedName: existing.suggestedName,
-            deviceType: device.deviceType ?? existing.deviceType,
-            connectable: device.connectable,
-            estimatedDistance: device.rssi < 0
-                ? rssiToDistance(device.rssi, txPowerLevel: device.txPowerLevel)
-                : null,
-          );
+
+        processed[device.deviceId] = Node(
+          id: existing.id,
+          deviceUuid: existing.deviceUuid,
+          bleAddress: existing.bleAddress,
+          isSelf: existing.isSelf,
+          name: existing.name,
+          color: existing.color,
+          firstSeen: existing.firstSeen,
+          lastSeen: DateTime.now(),
+          rssiHistory: updatedHistory,
+          suggestedName: existing.suggestedName,
+          deviceType: device.deviceType ?? existing.deviceType,
+          connectable: device.connectable,
+          estimatedDistance: device.rssi < 0
+              ? rssiToDistance(device.rssi, txPowerLevel: device.txPowerLevel)
+              : null,
+        );
       } else {
-        // Nuevo nodo (o primera aparición en este batch).
-        // T1.6: mapear advName → suggestedName y deviceType.
-        // El freeze on first detection se maneja en el datasource Drift.
+        // Nuevo nodo o primera aparición de este dispositivo en el batch.
+        //
+        // deviceUuid todavía es null porque la identidad estable Nodos se
+        // obtiene posteriormente mediante GATT.
         processed[device.deviceId] = Node(
           bleAddress: device.deviceId,
           name: null,
@@ -253,15 +316,15 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
           firstSeen: DateTime.now(),
           lastSeen: DateTime.now(),
           rssiHistory: [device.rssi],
-              suggestedName: device.advName != null && device.advName!.isNotEmpty
-                  ? device.advName
-                  : null,
-              deviceType: device.deviceType,
-              connectable: device.connectable,
-              estimatedDistance: device.rssi < 0
-                  ? rssiToDistance(device.rssi, txPowerLevel: device.txPowerLevel)
-                  : null,
-            );
+          suggestedName: device.advName != null && device.advName!.isNotEmpty
+              ? device.advName
+              : null,
+          deviceType: device.deviceType,
+          connectable: device.connectable,
+          estimatedDistance: device.rssi < 0
+              ? rssiToDistance(device.rssi, txPowerLevel: device.txPowerLevel)
+              : null,
+        );
       }
     }
 
@@ -270,59 +333,87 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
       await _nodeRepository.upsertNode(node);
     }
 
-    // Asegurar que la suscripción al stream Drift existe.
-    // Si ya existe, no se cancela ni recrea — .watch() emite
-    // reactivamente los cambios sin intervención.
+    // Asegurar que existe una suscripción al stream reactivo de Drift.
     _ensureSubscription();
   }
 
-  /// Elimina todos los nodos y re-suscribe el stream para emitir vacío.
+  /// Limpia el estado visible de nodos sin destruir datos persistentes.
   ///
-  /// QUÉ hace: llama a [NodeRepository.clearAllNodes()] para borrar
-  /// todas las filas de la tabla nodes, luego re-suscribe al stream
-  /// Drift que emitirá lista vacía → NodeListEmpty.
-  /// POR QUÉ: pipeline R5.17 — cuando BT se apaga, los nodos deben
-  /// desaparecer de la UI y el contador debe llegar a 0.
+  /// QUÉ hace:
+  /// 1. cancela el watcher Drift activo;
+  /// 2. elimina la referencia a la suscripción;
+  /// 3. emite [NodeListEmpty].
+  ///
+  /// NO llama clearAllNodes() porque los nodos pueden participar en
+  /// relaciones persistentes almacenadas en connections.
   Future<void> _onClearNodes(
-      ClearNodes event, Emitter<NodeListState> emit) async {
-    await _nodeRepository.clearAllNodes();
-    // El stream Drift .watch() emitirá automáticamente la lista vacía
-    // sin necesidad de cancelar y recrear la suscripción.
+    ClearNodes event,
+    Emitter<NodeListState> emit,
+  ) async {
+    await _nodesSubscription?.cancel();
+    _nodesSubscription = null;
+
+    emit(const NodeListEmpty());
   }
 
-  /// Actualiza el nombre de un nodo y re-emite la lista desde el stream.
+  /// Actualiza manualmente el nombre de un nodo.
   ///
-  /// QUÉ hace: delega al use case [UpdateNodeMetadata] pasando solo
-  /// el nombre, luego re-suscribe al stream Drift para emitir la
-  /// lista actualizada con el nuevo nombre.
+  /// Drift notificará automáticamente el cambio mediante watchNodes().
   Future<void> _onUpdateNodeName(
-      UpdateNodeName event, Emitter<NodeListState> emit) async {
+    UpdateNodeName event,
+    Emitter<NodeListState> emit,
+  ) async {
     await updateNodeMetadata(
       UpdateNodeMetadataParams(id: event.nodeId, name: event.name),
     );
-    // El stream Drift .watch() emitirá automáticamente la lista actualizada.
   }
 
-  /// Actualiza el color de un nodo y re-emite la lista desde el stream.
+  /// Actualiza manualmente el color de un nodo.
   ///
-  /// QUÉ hace: delega al use case [UpdateNodeMetadata] pasando solo
-  /// el color, luego re-suscribe al stream Drift para emitir la
-  /// lista actualizada con el nuevo color.
+  /// Drift notificará automáticamente el cambio mediante watchNodes().
   Future<void> _onUpdateNodeColor(
-      UpdateNodeColor event, Emitter<NodeListState> emit) async {
+    UpdateNodeColor event,
+    Emitter<NodeListState> emit,
+  ) async {
     await updateNodeMetadata(
       UpdateNodeMetadataParams(id: event.nodeId, color: event.color),
     );
-    // El stream Drift .watch() emitirá automáticamente la lista actualizada.
+  }
+
+  /// Reconcilia atómicamente la identidad estable de un nodo remoto.
+  ///
+  /// Este flujo se utiliza cuando la característica GATT de identidad
+  /// devuelve uuid, nombre y color del dispositivo Nodos.
+  ///
+  /// Los tres valores se envían al repositorio en una única operación.
+  /// Esto es importante porque el repositorio puede descubrir que el nodo
+  /// identificado temporalmente por [UpdateNodeIdentity.nodeId] es un
+  /// duplicado de otro nodo que ya posee el mismo deviceUuid.
+  ///
+  /// En ese caso, [NodeRepository.reconcileNodeIdentity] puede fusionar
+  /// ambas filas preservando conexiones e historial de sesiones.
+  ///
+  /// No se emite manualmente un nuevo estado: Drift notificará los cambios
+  /// mediante el stream observado por [_ensureSubscription].
+  Future<void> _onUpdateNodeIdentity(
+    UpdateNodeIdentity event,
+    Emitter<NodeListState> emit,
+  ) async {
+    await _nodeRepository.reconcileNodeIdentity(
+      event.nodeId,
+      deviceUuid: event.deviceUuid,
+      name: event.name,
+      color: event.color,
+    );
   }
 
   /// Crea la suscripción al stream Drift exactamente UNA vez.
   ///
-  /// La suscripción no se cancela ni recrea porque Drift .watch()
-  /// emite reactivamente ante cualquier cambio en la tabla nodes.
-  /// Si la suscripción ya existe, este método es un no-op.
+  /// Drift .watch() emite reactivamente ante cualquier modificación de
+  /// nodes. Si la suscripción ya existe, este método es un no-op.
   void _ensureSubscription() {
     if (_nodesSubscription != null) return;
+
     _nodesSubscription = observeNodes().listen(
       (nodes) {
         if (!isClosed) {
@@ -346,12 +437,13 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
   }
 
   void _onNodesUpdatedEmpty(
-      _NodesUpdatedEmpty event, Emitter<NodeListState> emit) {
+    _NodesUpdatedEmpty event,
+    Emitter<NodeListState> emit,
+  ) {
     emit(const NodeListEmpty());
   }
 
-  void _onNodesLoadError(
-      _NodesLoadError event, Emitter<NodeListState> emit) {
+  void _onNodesLoadError(_NodesLoadError event, Emitter<NodeListState> emit) {
     emit(NodeListError(event.message));
   }
 

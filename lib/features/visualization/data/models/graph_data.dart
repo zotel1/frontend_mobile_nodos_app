@@ -23,18 +23,21 @@ Map<String, dynamic> layoutResultToParams(
   int? seed,
 }) {
   // T5.3: incluir z en la serialización para el pipeline 3D
-  final nodesMap = result.nodes.map((node) => {
-    'id': node.id,
-    'x': node.x,
-    'y': node.y,
-    'z': node.z,
-    'isSelf': node.isSelf, // REQ-GL-02: self-node identity para FR
-  }).toList();
+  final nodesMap = result.nodes
+      .map(
+        (node) => {
+          'id': node.id,
+          'x': node.x,
+          'y': node.y,
+          'z': node.z,
+          'isSelf': node.isSelf, // REQ-GL-02: self-node identity para FR
+        },
+      )
+      .toList();
 
-  final edgesMap = result.edges.map((edge) => {
-    'fromId': edge.fromId,
-    'toId': edge.toId,
-  }).toList();
+  final edgesMap = result.edges
+      .map((edge) => {'fromId': edge.fromId, 'toId': edge.toId})
+      .toList();
 
   return {
     'nodes': nodesMap,
@@ -79,20 +82,22 @@ LayoutResult paramsToLayoutResult(
       // F3: preservar metadata visual (connectionCount, suggestedName,
       // isSelf, connectable) que se perdía en el round-trip del Isolate.
       // PR2: preservar userColor y estimatedDistance (R5.6, R5.15).
-      updatedNodes.add(GraphNode(
-        id: id,
-        x: (rn['x'] as num).toDouble(),
-        y: (rn['y'] as num).toDouble(),
-        z: (rn['z'] as num?)?.toDouble() ?? 0.0,
-        proximity: originalNode.proximity,
-        name: originalNode.name,
-        connectionCount: originalNode.connectionCount,
-        suggestedName: originalNode.suggestedName,
-        isSelf: originalNode.isSelf,
-        connectable: originalNode.connectable,
-        userColor: originalNode.userColor,
-        estimatedDistance: originalNode.estimatedDistance,
-      ));
+      updatedNodes.add(
+        GraphNode(
+          id: id,
+          x: (rn['x'] as num).toDouble(),
+          y: (rn['y'] as num).toDouble(),
+          z: (rn['z'] as num?)?.toDouble() ?? 0.0,
+          proximity: originalNode.proximity,
+          name: originalNode.name,
+          connectionCount: originalNode.connectionCount,
+          suggestedName: originalNode.suggestedName,
+          isSelf: originalNode.isSelf,
+          connectable: originalNode.connectable,
+          userColor: originalNode.userColor,
+          estimatedDistance: originalNode.estimatedDistance,
+        ),
+      );
     }
     // Si el nodo no existe en el original, se ignora (no debería ocurrir)
   }

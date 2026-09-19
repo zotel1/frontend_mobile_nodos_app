@@ -26,7 +26,9 @@ abstract class BleConnectionRepository {
   /// Lee una característica GATT del dispositivo conectado.
   /// Retorna los bytes leídos o null si no está disponible.
   Future<List<int>?> readCharacteristic(
-      String remoteId, String characteristicUuid);
+    String remoteId,
+    String characteristicUuid,
+  );
 
   /// Inserta una fila en la tabla connections (R5.2).
   /// Usa insertOrIgnore para evitar duplicados.

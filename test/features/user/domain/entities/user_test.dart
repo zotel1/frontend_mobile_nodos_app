@@ -12,6 +12,7 @@ void main() {
         color: '#2196F3',
         deviceType: 'Android',
         createdAt: now,
+        localNodeId: 42,
       );
 
       final user2 = User(
@@ -20,6 +21,7 @@ void main() {
         color: '#2196F3',
         deviceType: 'Android',
         createdAt: now,
+        localNodeId: 42,
       );
 
       expect(user1, equals(user2));
@@ -32,36 +34,96 @@ void main() {
         color: '#2196F3',
         deviceType: 'Android',
         createdAt: now,
+        localNodeId: 42,
       );
 
       final user2 = User(
         uuid: '550e8400-e29b-41d4-a716-446655440000',
-        name: 'Other', // different
+        name: 'Other',
         color: '#2196F3',
         deviceType: 'Android',
         createdAt: now,
+        localNodeId: 42,
       );
 
       expect(user1, isNot(equals(user2)));
     });
 
-    test('is immutable — const constructable', () {
-      final user = User(
+    test('localNodeId participates in equality', () {
+      final user1 = User(
         uuid: '550e8400-e29b-41d4-a716-446655440000',
         name: 'Usuario',
         color: '#2196F3',
         deviceType: 'Android',
         createdAt: now,
+        localNodeId: 42,
       );
 
-      expect(user.uuid, '550e8400-e29b-41d4-a716-446655440000');
-      expect(user.name, 'Usuario');
-      expect(user.color, '#2196F3');
-      expect(user.deviceType, 'Android');
+      final user2 = User(
+        uuid: '550e8400-e29b-41d4-a716-446655440000',
+        name: 'Usuario',
+        color: '#2196F3',
+        deviceType: 'Android',
+        createdAt: now,
+        localNodeId: 99,
+      );
+
+      expect(user1, isNot(equals(user2)));
     });
+
+    test(
+      'is immutable — constructable with persistent local node identity',
+      () {
+        final user = User(
+          uuid: '550e8400-e29b-41d4-a716-446655440000',
+          name: 'Usuario',
+          color: '#2196F3',
+          deviceType: 'Android',
+          createdAt: now,
+          localNodeId: 42,
+        );
+
+        expect(user.uuid, '550e8400-e29b-41d4-a716-446655440000');
+
+        expect(user.name, 'Usuario');
+
+        expect(user.color, '#2196F3');
+
+        expect(user.deviceType, 'Android');
+
+        expect(user.localNodeId, 42);
+      },
+    );
 
     test('props list contains all fields', () {
       final user = User(
+        id: 1,
+        uuid: '550e8400-e29b-41d4-a716-446655440000',
+        name: 'Usuario',
+        color: '#2196F3',
+        deviceType: 'Android',
+        createdAt: now,
+        localNodeId: 42,
+      );
+
+      expect(user.props.length, 7);
+
+      expect(
+        user.props,
+        equals([
+          1,
+          '550e8400-e29b-41d4-a716-446655440000',
+          'Usuario',
+          '#2196F3',
+          'Android',
+          now,
+          42,
+        ]),
+      );
+    });
+
+    test('localNodeId defaults to null before EnsureLocalNode runs', () {
+      final user = User(
         uuid: '550e8400-e29b-41d4-a716-446655440000',
         name: 'Usuario',
         color: '#2196F3',
@@ -69,14 +131,7 @@ void main() {
         createdAt: now,
       );
 
-      expect(user.props.length, 6);
-      expect(user.props, containsAll([
-        '550e8400-e29b-41d4-a716-446655440000',
-        'Usuario',
-        '#2196F3',
-        'Android',
-        now,
-      ]));
+      expect(user.localNodeId, isNull);
     });
   });
 }

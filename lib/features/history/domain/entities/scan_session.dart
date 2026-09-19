@@ -30,8 +30,7 @@ class ScanSession extends Equatable {
   });
 
   /// Duración de la sesión si tiene [endedAt].
-  Duration? get duration =>
-      endedAt?.difference(startedAt);
+  Duration? get duration => endedAt?.difference(startedAt);
 
   @override
   List<Object?> get props => [id, startedAt, endedAt, nodeCount, nodes];

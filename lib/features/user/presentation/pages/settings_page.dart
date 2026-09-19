@@ -45,14 +45,13 @@ class _SettingsPageState extends State<SettingsPage> {
       body: BlocBuilder<UserBloc, UserState>(
         builder: (context, state) {
           return switch (state) {
-            UserLoading() =>
-              const Center(child: CircularProgressIndicator()),
+            UserLoading() => const Center(child: CircularProgressIndicator()),
             UserError(:final message) => Center(
-                child: Text(
-                  'Error: $message',
-                  style: const TextStyle(color: Colors.red, fontSize: 16),
-                ),
+              child: Text(
+                'Error: $message',
+                style: const TextStyle(color: Colors.red, fontSize: 16),
               ),
+            ),
             UserLoaded(:final user) => _buildLoadedState(user),
             _ => const Center(child: Text('Cargando perfil...')),
           };
@@ -64,8 +63,9 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _buildLoadedState(User user) {
     final userBloc = context.read<UserBloc>();
     // Obtiene el themeMode actual del estado para reflejarlo en el toggle.
-    final currentThemeMode =
-        (userBloc.state is UserLoaded) ? (userBloc.state as UserLoaded).themeMode : AppThemeMode.system;
+    final currentThemeMode = (userBloc.state is UserLoaded)
+        ? (userBloc.state as UserLoaded).themeMode
+        : AppThemeMode.system;
 
     // QUÉ: Inicializa el controller SOLO si está vacío, para preservar
     // ediciones no guardadas frente a reemisiones de UserLoaded.

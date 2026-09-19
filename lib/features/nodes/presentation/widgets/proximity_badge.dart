@@ -11,17 +11,13 @@ class ProximityBadge extends StatelessWidget {
   final ProximityLevel proximity;
   final double size;
 
-  const ProximityBadge({
-    super.key,
-    required this.proximity,
-    this.size = 14,
-  });
+  const ProximityBadge({super.key, required this.proximity, this.size = 14});
 
   Color get _color => switch (proximity) {
-        ProximityLevel.close => Colors.green,
-        ProximityLevel.medium => Colors.amber,
-        ProximityLevel.far => Colors.red,
-      };
+    ProximityLevel.close => Colors.green,
+    ProximityLevel.medium => Colors.amber,
+    ProximityLevel.far => Colors.red,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -31,10 +27,7 @@ class ProximityBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: _color,
         shape: BoxShape.circle,
-        border: Border.all(
-          color: _color.withValues(alpha: 0.8),
-          width: 1,
-        ),
+        border: Border.all(color: _color.withValues(alpha: 0.8), width: 1),
       ),
     );
   }

@@ -27,7 +27,10 @@ class AppBlocObserver extends BlocObserver {
   /// POR QUÉ: saber qué evento causó qué transición es esencial para
   /// diagnosticar bugs de lógica de estado.
   @override
-  void onTransition(Bloc<Object?, Object?> bloc, Transition<Object?, Object?> transition) {
+  void onTransition(
+    Bloc<Object?, Object?> bloc,
+    Transition<Object?, Object?> transition,
+  ) {
     super.onTransition(bloc, transition);
     if (kDebugMode) {
       debugPrint(
@@ -49,9 +52,7 @@ class AppBlocObserver extends BlocObserver {
   void onError(BlocBase<Object?> bloc, Object error, StackTrace stackTrace) {
     super.onError(bloc, error, stackTrace);
     if (kDebugMode) {
-      debugPrint(
-        '[BLoC ERROR] ${bloc.runtimeType}: $error',
-      );
+      debugPrint('[BLoC ERROR] ${bloc.runtimeType}: $error');
     }
     // En producción, aquí se integraría con Crashlytics o
     // un sistema de reporte de errores.

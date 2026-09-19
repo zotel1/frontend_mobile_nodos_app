@@ -26,8 +26,10 @@ double rssiToDistance(int rssi, {int? txPowerLevel}) {
     return double.infinity;
   }
   final effectiveTxPower = txPowerLevel ?? txPower;
-  return pow(10, (effectiveTxPower - rssi) / (10 * pathLossExponent))
-      .toDouble();
+  return pow(
+    10,
+    (effectiveTxPower - rssi) / (10 * pathLossExponent),
+  ).toDouble();
 }
 
 /// Classifies an RSSI reading into a [ProximityLevel].

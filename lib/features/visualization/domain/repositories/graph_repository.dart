@@ -8,19 +8,25 @@ import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities
 abstract class GraphRepository {
   /// Construye el grafo completo para una sesión de escaneo.
   ///
-  /// Retorna un [LayoutResult] con nodos posicionados inicialmente
-  /// (posiciones iniciales circulares) y aristas derivadas de las
-  /// co-detecciones dentro de la sesión.
+  /// Los dispositivos detectados se obtienen desde scan_session_nodes.
   ///
-  /// [myDeviceUuid] permite identificar el nodo que representa al
-  /// dispositivo del usuario. Si la dirección BLE de algún nodo coincide
-  /// con este UUID, se marca con `isSelf = true` para renderizado especial.
+  /// ARCH-001:
+  /// el dispositivo local se obtiene desde el Node persistente marcado
+  /// con isSelf=true. Ya no se crea un GraphNode sintético con id=-1.
   ///
-  /// [userName] y [userColor] se usan para inyectar un self-node sintético
-  /// (REQ-SN-01) con la identidad del perfil del usuario, incluso cuando
-  /// no hay nodos externos detectados.
-  Future<LayoutResult> buildGraph(int scanSessionId,
-      {String? myDeviceUuid, String? userName, String? userColor});
+  /// El self-node puede formar parte del grafo aunque no exista dentro de
+  /// scan_session_nodes, ya que representa al dispositivo local y no un
+  /// dispositivo descubierto durante el escaneo.
+  ///
+  /// [myDeviceUuid], [userName] y [userColor] se mantienen temporalmente
+  /// por compatibilidad con consumidores existentes. La identidad principal
+  /// del self-node proviene ahora de la persistencia.
+  Future<LayoutResult> buildGraph(
+    int scanSessionId, {
+    String? myDeviceUuid,
+    String? userName,
+    String? userColor,
+  });
 
   /// Obtiene las aristas para una sesión específica.
   ///

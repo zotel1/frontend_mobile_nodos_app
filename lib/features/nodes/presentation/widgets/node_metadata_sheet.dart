@@ -96,9 +96,9 @@ class _NodeMetadataSheetState extends State<NodeMetadataSheet> {
           // Título del sheet
           Text(
             'Identificar nodo',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
 
@@ -119,8 +119,8 @@ class _NodeMetadataSheetState extends State<NodeMetadataSheet> {
           Text(
             'Color',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 8),
           ColorPicker(

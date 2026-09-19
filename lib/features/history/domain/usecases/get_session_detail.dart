@@ -30,7 +30,8 @@ class GetSessionDetail {
   const GetSessionDetail(this._repository);
 
   Future<Either<Failure, List<SessionNode>>> call(
-      GetSessionDetailParams params) async {
+    GetSessionDetailParams params,
+  ) async {
     return _repository.getSessionDetail(params.sessionId);
   }
 }

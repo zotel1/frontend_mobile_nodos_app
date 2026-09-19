@@ -51,6 +51,7 @@ import 'package:frontend_mobile_nodos_app/features/history/presentation/bloc/his
 import 'package:frontend_mobile_nodos_app/features/scan_session/domain/repositories/scan_session_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/scan_session/data/datasources/scan_session_drift_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/scan_session/presentation/bloc/scan_session_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/nodes/domain/usecases/ensure_local_node.dart';
 
 final sl = GetIt.instance;
 
@@ -109,12 +110,8 @@ Future<void> initDependencies() async {
       sessionRepository: sl<ScanSessionRepository>(),
     ),
   );
-  sl.registerLazySingleton<NodeRepository>(
-    () => NodeRepositoryImpl(sl()),
-  );
-  sl.registerLazySingleton<UserRepository>(
-    () => UserRepositoryImpl(sl()),
-  );
+  sl.registerLazySingleton<NodeRepository>(() => NodeRepositoryImpl(sl()));
+  sl.registerLazySingleton<UserRepository>(() => UserRepositoryImpl(sl()));
 
   // ── History repository ──
   // Depende de HistoryDriftDataSource, no de AppDatabase.
@@ -137,9 +134,20 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton(() => StopBleScan(sl()));
   sl.registerLazySingleton(() => StartBleAdvertise(sl()));
   sl.registerLazySingleton(() => StopBleAdvertise(sl()));
+  //sl.registerLazySingleton(() => ObserveNodes(sl()));
+  //sl.registerLazySingleton(() => GetNodeDetail(sl()));
+  //sl.registerLazySingleton(() => UpdateNodeMetadata(sl()));
   sl.registerLazySingleton(() => ObserveNodes(sl()));
   sl.registerLazySingleton(() => GetNodeDetail(sl()));
   sl.registerLazySingleton(() => UpdateNodeMetadata(sl()));
+
+  sl.registerLazySingleton(
+    () => EnsureLocalNode(
+      nodeRepository: sl<NodeRepository>(),
+      userRepository: sl<UserRepository>(),
+    ),
+  );
+
   sl.registerLazySingleton(() => GetUserProfile(sl()));
   sl.registerLazySingleton(() => UpdateUserName(sl()));
   sl.registerLazySingleton(() => UpdateUserColor(sl()));
@@ -174,20 +182,20 @@ Future<void> initDependencies() async {
       nodeRepository: sl(),
     ),
   );
+
   sl.registerFactory<UserBloc>(
     () => UserBloc(
       getProfile: sl(),
       updateName: sl(),
       updateColor: sl(),
-      userRepository: sl(),
-      prefs: sl(),
+      ensureLocalNode: sl<EnsureLocalNode>(),
+      userRepository: sl<UserRepository>(),
+      prefs: sl<SharedPreferences>(),
     ),
   );
+
   sl.registerFactory<VisualizationBloc>(
-    () => VisualizationBloc(
-      buildGraph: sl(),
-      calculateLayout: sl(),
-    ),
+    () => VisualizationBloc(buildGraph: sl(), calculateLayout: sl()),
   );
 
   // HistoryBloc: gestiona historial de sesiones y estadísticas.
@@ -203,7 +211,5 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton<ScanSessionRepository>(
     () => ScanSessionRepositoryImpl(sl<AppDatabase>()),
   );
-  sl.registerFactory<ScanSessionBloc>(
-    () => ScanSessionBloc(repository: sl()),
-  );
+  sl.registerFactory<ScanSessionBloc>(() => ScanSessionBloc(repository: sl()));
 }

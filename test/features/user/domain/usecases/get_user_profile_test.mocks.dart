@@ -65,4 +65,13 @@ class MockUserRepository extends _i1.Mock implements _i2.UserRepository {
             returnValueForMissingStub: _i3.Future<void>.value(),
           )
           as _i3.Future<void>);
+
+  @override
+  _i3.Future<void> setLocalNodeId(int? nodeId) =>
+      (super.noSuchMethod(
+            Invocation.method(#setLocalNodeId, [nodeId]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
 }

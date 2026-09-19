@@ -49,6 +49,33 @@ class MockNodeRepository extends _i1.Mock implements _i2.NodeRepository {
           as _i3.Future<_i4.Node?>);
 
   @override
+  _i3.Future<_i4.Node?> getNodeByBleAddress(String? bleAddress) =>
+      (super.noSuchMethod(
+            Invocation.method(#getNodeByBleAddress, [bleAddress]),
+            returnValue: _i3.Future<_i4.Node?>.value(),
+            returnValueForMissingStub: _i3.Future<_i4.Node?>.value(),
+          )
+          as _i3.Future<_i4.Node?>);
+
+  @override
+  _i3.Future<_i4.Node?> getNodeByDeviceUuid(String? deviceUuid) =>
+      (super.noSuchMethod(
+            Invocation.method(#getNodeByDeviceUuid, [deviceUuid]),
+            returnValue: _i3.Future<_i4.Node?>.value(),
+            returnValueForMissingStub: _i3.Future<_i4.Node?>.value(),
+          )
+          as _i3.Future<_i4.Node?>);
+
+  @override
+  _i3.Future<_i4.Node?> getSelfNode() =>
+      (super.noSuchMethod(
+            Invocation.method(#getSelfNode, []),
+            returnValue: _i3.Future<_i4.Node?>.value(),
+            returnValueForMissingStub: _i3.Future<_i4.Node?>.value(),
+          )
+          as _i3.Future<_i4.Node?>);
+
+  @override
   _i3.Future<void> upsertNode(_i4.Node? node) =>
       (super.noSuchMethod(
             Invocation.method(#upsertNode, [node]),
@@ -78,13 +105,4 @@ class MockNodeRepository extends _i1.Mock implements _i2.NodeRepository {
             returnValueForMissingStub: _i3.Future<void>.value(),
           )
           as _i3.Future<void>);
-
-  @override
-  _i3.Future<_i4.Node?> getNodeByBleAddress(String? bleAddress) =>
-      (super.noSuchMethod(
-            Invocation.method(#getNodeByBleAddress, [bleAddress]),
-            returnValue: _i3.Future<_i4.Node?>.value(),
-            returnValueForMissingStub: _i3.Future<_i4.Node?>.value(),
-          )
-          as _i3.Future<_i4.Node?>);
 }

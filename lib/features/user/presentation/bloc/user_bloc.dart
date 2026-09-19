@@ -10,6 +10,7 @@ import 'package:frontend_mobile_nodos_app/features/user/domain/usecases/get_user
 import 'package:frontend_mobile_nodos_app/features/user/domain/usecases/update_user_color.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/usecases/update_user_name.dart';
 import 'package:frontend_mobile_nodos_app/core/usecases/usecase.dart';
+import 'package:frontend_mobile_nodos_app/features/nodes/domain/usecases/ensure_local_node.dart';
 
 // ── Events ──
 
@@ -93,6 +94,7 @@ class UserLoading extends UserState {
 
 class UserLoaded extends UserState {
   final User user;
+
   /// Modo de tema actual. Por defecto [AppThemeMode.system] (deferido al SO).
   final AppThemeMode themeMode;
 
@@ -117,6 +119,14 @@ class UserBloc extends Bloc<UserEvent, UserState> {
   final GetUserProfile getProfile;
   final UpdateUserName updateName;
   final UpdateUserColor updateColor;
+
+  /// Garantiza que cada User cargado tenga un Node persistente real
+  /// que represente al dispositivo local dentro del grafo.
+  ///
+  /// ARCH-001: UserLoaded solo debe emitirse después de asegurar
+  /// User.localNodeId → Nodes.id.
+  final EnsureLocalNode ensureLocalNode;
+
   /// Repositorio inyectado para auto-crear el perfil default
   /// cuando la DB está vacía (primera ejecución).
   /// QUÉ: usado por _onLoadProfile para persistir el User default
@@ -132,6 +142,7 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     required this.getProfile,
     required this.updateName,
     required this.updateColor,
+    required this.ensureLocalNode,
     required UserRepository userRepository,
     required SharedPreferences prefs,
   }) : _userRepository = userRepository,
@@ -182,11 +193,11 @@ class UserBloc extends Bloc<UserEvent, UserState> {
   /// "Error: No user profile found" en primera ejecución porque
   /// la DB de usuarios estaba vacía.
   Future<void> _onLoadProfile(
-      LoadProfile event, Emitter<UserState> emit) async {
-    // PR4: Capturar themeMode. Si hay estado previo UserLoaded, preservarlo.
-    // Si es UserInitial (primera carga), leer de SharedPreferences.
-    // Si no hay valor guardado, usar AppThemeMode.system.
+    LoadProfile event,
+    Emitter<UserState> emit,
+  ) async {
     final AppThemeMode currentThemeMode;
+
     if (state is UserLoaded) {
       currentThemeMode = (state as UserLoaded).themeMode;
     } else {
@@ -197,22 +208,27 @@ class UserBloc extends Bloc<UserEvent, UserState> {
 
     final result = await getProfile(const NoParams());
 
-    // PR4: Usar result.fold() para diferenciar tipos de Failure.
-    // Solo CacheFailure('No user profile found') dispara la creación
-    // automática de perfil default.
-    return result.fold(
-      (failure) async {
-        // PR4: Solo crear perfil default si es "no encontrado".
-        // DatabaseFailure y UnexpectedFailure → UserError.
-        if (failure is CacheFailure &&
-            failure.message == 'No user profile found') {
-          await _createDefaultProfile(emit, currentThemeMode);
-        } else {
-          emit(UserError(failure.message));
-        }
-      },
-      (user) => emit(UserLoaded(user, themeMode: currentThemeMode)),
+    if (result.isLeft()) {
+      final failure = result.fold(
+        (left) => left,
+        (_) => throw StateError('Resultado inconsistente en GetUserProfile.'),
+      );
+
+      if (failure is CacheFailure &&
+          failure.message == 'No user profile found') {
+        await _createDefaultProfile(emit, currentThemeMode);
+        return;
+      }
+
+      emit(UserError(failure.message));
+      return;
+    }
+
+    final user = result.getOrElse(
+      () => throw StateError('Se esperaba un User válido.'),
     );
+
+    await _emitLoadedWithLocalNode(user, currentThemeMode, emit);
   }
 
   /// Crea un perfil default con UUID persistente.
@@ -228,10 +244,11 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     Emitter<UserState> emit,
     AppThemeMode themeMode,
   ) async {
-    // PR4: Reusar UUID persistido o generar uno nuevo.
     var uuid = _prefs.getString('device_uuid');
+
     if (uuid == null || uuid.isEmpty) {
       uuid = generateUuidV4();
+
       await _prefs.setString('device_uuid', uuid);
     }
 
@@ -242,14 +259,17 @@ class UserBloc extends Bloc<UserEvent, UserState> {
       deviceType: 'android',
       createdAt: DateTime.now(),
     );
+
     await _userRepository.createUser(defaultUser);
 
-    // Recargar perfil para obtener los datos persistidos.
-    final reloadResult = await getProfile(const NoParams());
-    reloadResult.fold(
-      (failure) => emit(UserError(failure.message)),
-      (user) => emit(UserLoaded(user, themeMode: themeMode)),
-    );
+    final persistedUser = await _userRepository.getUserProfile();
+
+    if (persistedUser == null) {
+      emit(const UserError('No se pudo recuperar el perfil recién creado.'));
+      return;
+    }
+
+    await _emitLoadedWithLocalNode(persistedUser, themeMode, emit);
   }
 
   /// Crea o asegura el perfil del usuario con los valores del onboarding.
@@ -267,8 +287,9 @@ class UserBloc extends Bloc<UserEvent, UserState> {
   /// Después de crear/actualizar, recarga el perfil completo desde
   /// la DB para emitir UserLoaded con los datos persistidos.
   Future<void> _onCreateProfile(
-      CreateUserProfile event, Emitter<UserState> emit) async {
-    // Capturar themeMode actual para preservarlo
+    CreateUserProfile event,
+    Emitter<UserState> emit,
+  ) async {
     final currentThemeMode = state is UserLoaded
         ? (state as UserLoaded).themeMode
         : AppThemeMode.system;
@@ -276,22 +297,21 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     emit(const UserLoading());
 
     try {
-      // PR4: Reusar UUID persistido o generar uno nuevo
       var uuid = _prefs.getString('device_uuid');
+
       if (uuid == null || uuid.isEmpty) {
         uuid = generateUuidV4();
+
         await _prefs.setString('device_uuid', uuid);
       }
 
-      // Verificar si ya existe un perfil (LoadProfile pudo crearlo antes)
       final existing = await _userRepository.getUserProfile();
 
       if (existing != null) {
-        // Perfil ya existe: actualizar con los valores del onboarding
         await _userRepository.updateName(event.name);
+
         await _userRepository.updateColor(event.color);
       } else {
-        // Perfil no existe: crear desde cero
         final user = User(
           uuid: uuid,
           name: event.name,
@@ -299,20 +319,87 @@ class UserBloc extends Bloc<UserEvent, UserState> {
           deviceType: 'android',
           createdAt: DateTime.now(),
         );
+
         await _userRepository.createUser(user);
       }
 
-      // Recargar perfil para obtener datos persistidos (con id asignado)
-      final reloadResult = await getProfile(const NoParams());
-      reloadResult.fold(
-        (failure) => emit(UserError(failure.message)),
-        (user) => emit(UserLoaded(user, themeMode: currentThemeMode)),
-      );
+      final persistedUser = await _userRepository.getUserProfile();
+
+      if (persistedUser == null) {
+        emit(
+          const UserError('No se pudo recuperar el perfil después de crearlo.'),
+        );
+        return;
+      }
+
+      await _emitLoadedWithLocalNode(persistedUser, currentThemeMode, emit);
     } catch (e) {
       emit(UserError('Error al crear perfil: $e'));
     }
   }
 
+  /// Emite UserLoaded únicamente después de garantizar que el perfil
+  /// tenga asociado un self-node persistente real.
+  ///
+  /// ARCH-001:
+  ///
+  /// 1. EnsureLocalNode crea o recupera el Node local.
+  /// 2. Persiste User.localNodeId.
+  /// 3. Recarga User desde Drift.
+  /// 4. Recién entonces emite UserLoaded.
+  ///
+  /// De esta manera ningún consumidor de UserLoaded necesita conocer
+  /// cómo se crea el nodo local ni preocuparse por estados intermedios.
+  Future<void> _emitLoadedWithLocalNode(
+  User user,
+  AppThemeMode themeMode,
+  Emitter<UserState> emit,
+) async {
+  final ensureResult = await ensureLocalNode(user);
+
+  if (ensureResult.isLeft()) {
+    final message = ensureResult.fold(
+      (failure) => failure.message,
+      (_) => 'Error desconocido al crear el nodo local.',
+    );
+
+    emit(
+      UserError(
+        'No se pudo inicializar la identidad local: $message',
+      ),
+    );
+    return;
+  }
+
+  final localNode = ensureResult.getOrElse(
+    () => throw StateError(
+      'EnsureLocalNode retornó un resultado inconsistente.',
+    ),
+  );
+
+  if (localNode.id == null) {
+    emit(
+      const UserError(
+        'El nodo local no tiene un ID persistente.',
+      ),
+    );
+    return;
+  }
+
+  // EnsureLocalNode ya persistió Users.localNodeId.
+  // Para el estado en memoria podemos reflejar inmediatamente
+  // esa asociación sin una consulta extra.
+  final loadedUser = user.copyWith(
+    localNodeId: localNode.id,
+  );
+
+  emit(
+    UserLoaded(
+      loadedUser,
+      themeMode: themeMode,
+    ),
+  );
+}
   /// Lee el modo de tema desde SharedPreferences.
   ///
   /// QUÉ: convierte el string guardado bajo 'theme_mode' en un
@@ -326,50 +413,65 @@ class UserBloc extends Bloc<UserEvent, UserState> {
   }
 
   Future<void> _onUpdateName(
-      UpdateUserNameEvent event, Emitter<UserState> emit) async {
-    // T-PR1-004: Capturar themeMode actual ANTES de emitir UserLoading.
-    // QUÉ problema resuelve: antes _onUpdateName emitía UserLoaded(user)
-    // sin el parámetro themeMode, lo que reseteaba el tema a system.
-    // Si el usuario estaba en modo oscuro y cambiaba su nombre, el tema
-    // volvía a system. Ahora preserva el themeMode del estado anterior.
+    UpdateUserNameEvent event,
+    Emitter<UserState> emit,
+  ) async {
     final currentThemeMode = state is UserLoaded
         ? (state as UserLoaded).themeMode
         : AppThemeMode.system;
 
     emit(const UserLoading());
+
     final result = await updateName(UpdateUserNameParams(name: event.name));
+
     if (result.isLeft()) {
-      emit(UserError(result.fold((l) => l.message, (_) => '')));
+      emit(UserError(result.fold((failure) => failure.message, (_) => '')));
       return;
     }
-    // Reload profile to get updated user data.
-    final profileResult = await getProfile(const NoParams());
-    profileResult.fold(
-      (failure) => emit(UserError(failure.message)),
-      (user) => emit(UserLoaded(user, themeMode: currentThemeMode)),
-    );
+
+    final persistedUser = await _userRepository.getUserProfile();
+
+    if (persistedUser == null) {
+      emit(
+        const UserError(
+          'No se pudo recuperar el perfil después de actualizar el nombre.',
+        ),
+      );
+      return;
+    }
+
+    await _emitLoadedWithLocalNode(persistedUser, currentThemeMode, emit);
   }
 
   Future<void> _onUpdateColor(
-      UpdateUserColorEvent event, Emitter<UserState> emit) async {
-    // T-PR1-004: Capturar themeMode actual antes de emitir UserLoading.
-    // Mismo bug que _onUpdateName — el tema se reseteaba a system al
-    // cambiar el color, perdiendo la preferencia del usuario.
+    UpdateUserColorEvent event,
+    Emitter<UserState> emit,
+  ) async {
     final currentThemeMode = state is UserLoaded
         ? (state as UserLoaded).themeMode
         : AppThemeMode.system;
 
     emit(const UserLoading());
+
     final result = await updateColor(UpdateUserColorParams(color: event.color));
+
     if (result.isLeft()) {
-      emit(UserError(result.fold((l) => l.message, (_) => '')));
+      emit(UserError(result.fold((failure) => failure.message, (_) => '')));
       return;
     }
-    final profileResult = await getProfile(const NoParams());
-    profileResult.fold(
-      (failure) => emit(UserError(failure.message)),
-      (user) => emit(UserLoaded(user, themeMode: currentThemeMode)),
-    );
+
+    final persistedUser = await _userRepository.getUserProfile();
+
+    if (persistedUser == null) {
+      emit(
+        const UserError(
+          'No se pudo recuperar el perfil después de actualizar el color.',
+        ),
+      );
+      return;
+    }
+
+    await _emitLoadedWithLocalNode(persistedUser, currentThemeMode, emit);
   }
 
   /// Actualiza el modo de tema y lo persiste en SharedPreferences.
@@ -377,8 +479,7 @@ class UserBloc extends Bloc<UserEvent, UserState> {
   /// Guarda el valor como string ('system', 'light', 'dark') bajo la
   /// clave 'theme_mode' para que sobreviva a reinicios de la app.
   /// Si el estado actual no es [UserLoaded], ignora el evento.
-  void _onUpdateThemeMode(
-      UpdateThemeMode event, Emitter<UserState> emit) {
+  void _onUpdateThemeMode(UpdateThemeMode event, Emitter<UserState> emit) {
     final currentState = state;
     if (currentState is UserLoaded) {
       _prefs.setString('theme_mode', event.mode.name);

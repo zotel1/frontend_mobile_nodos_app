@@ -119,10 +119,7 @@ class GraphPainter extends CustomPainter {
 
     if (dist == 0) return Offset(midX, midY);
 
-    return Offset(
-      midX - dy / dist * curvature,
-      midY + dx / dist * curvature,
-    );
+    return Offset(midX - dy / dist * curvature, midY + dx / dist * curvature);
   }
 
   /// Capa 2: Anillos de proximidad concéntricos alrededor de cada nodo.
@@ -139,21 +136,15 @@ class GraphPainter extends CustomPainter {
       final ring1Paint = Paint()
         ..color = Color(node.color).withAlpha((baseAlpha * 255).round())
         ..style = PaintingStyle.fill;
-      canvas.drawCircle(
-        Offset(node.x, node.y),
-        node.radius * 1.5,
-        ring1Paint,
-      );
+      canvas.drawCircle(Offset(node.x, node.y), node.radius * 1.5, ring1Paint);
 
       // Segundo anillo (×2 radio)
       final ring2Paint = Paint()
-        ..color = Color(node.color).withAlpha(((baseAlpha * 0.66) * 255).round())
+        ..color = Color(
+          node.color,
+        ).withAlpha(((baseAlpha * 0.66) * 255).round())
         ..style = PaintingStyle.fill;
-      canvas.drawCircle(
-        Offset(node.x, node.y),
-        node.radius * 2,
-        ring2Paint,
-      );
+      canvas.drawCircle(Offset(node.x, node.y), node.radius * 2, ring2Paint);
     }
   }
 
@@ -245,7 +236,11 @@ class GraphPainter extends CustomPainter {
   /// QUÉ problema resuelve: los nodos desconocidos necesitan un borde
   /// visualmente distinto del borde sólido de los nodos conocidos.
   void _drawDashedCircle(
-      Canvas canvas, Offset center, double radius, Paint paint) {
+    Canvas canvas,
+    Offset center,
+    double radius,
+    Paint paint,
+  ) {
     final path = Path()
       ..addOval(Rect.fromCircle(center: center, radius: radius));
     final metrics = path.computeMetrics();
@@ -341,7 +336,8 @@ class GraphPainter extends CustomPainter {
     if (selectedNode == null) return;
 
     final paint = Paint()
-      ..color = const Color(0xFF2196F3) // azul material
+      ..color =
+          const Color(0xFF2196F3) // azul material
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3.0;
 
