@@ -4,9 +4,15 @@ import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.da
 /// Eventos para el VisualizationBloc.
 ///
 /// Define las acciones que el usuario o el sistema pueden disparar
-/// sobre la visualización del grafo. Cada evento representa una
-/// intención: construir el grafo, seleccionar un nodo, o cerrar el
-/// tooltip.
+/// sobre la visualización del grafo.
+///
+/// Incluye:
+///
+/// - construcción/actualización del grafo;
+/// - selección de nodos;
+/// - visualización de detalles;
+/// - movimiento interactivo de nodos;
+/// - reintento después de errores.
 abstract class VisualizationEvent extends Equatable {
   const VisualizationEvent();
 
@@ -14,20 +20,11 @@ abstract class VisualizationEvent extends Equatable {
   List<Object?> get props => [];
 }
 
-/// Solicita construir y posicionar un grafo para la sesión de escaneo activa.
+/// Solicita construir o actualizar el grafo para la sesión activa.
 ///
-/// Se dispara cuando la lista de nodos cambia (nuevos detectados,
-/// eliminados por timeout). El BLoC aplica debounce de 1s para
-/// evitar reconstrucciones excesivas durante escaneos BLE rápidos.
-///
-/// [scanSessionId] identifica la sesión activa para BuildGraph.
-/// [nodes] provee contexto de cantidad de nodos disponibles.
-/// [myDeviceUuid] UUID del dispositivo propio, para marcar el self-node
-/// en el grafo (R5.13). Opcional — si es null, ningún nodo se marca isSelf.
-/// [userName] y [userColor] se mantienen temporalmente por compatibilidad.
-/// El self-node real se obtiene desde persistencia mediante isSelf=true.
-/// [userColor] color hex del perfil para el anillo del self-node (REQ-VR-01).
-/// Agregado en PR2.
+/// Las actualizaciones BLE no implican necesariamente recalcular
+/// posiciones. VisualizationBloc determina posteriormente si cambió
+/// realmente la topología del grafo.
 class BuildGraphRequested extends VisualizationEvent {
   final int scanSessionId;
   final List<Node> nodes;
@@ -53,10 +50,10 @@ class BuildGraphRequested extends VisualizationEvent {
   ];
 }
 
-/// El usuario tocó un nodo en el grafo.
+/// El usuario realizó un toque simple sobre un nodo.
 ///
-/// Cambia el estado para mostrar el tooltip con información
-/// detallada del nodo seleccionado.
+/// Mantiene la semántica existente:
+/// seleccionar el nodo para mostrar su menú/acciones.
 class NodeSelected extends VisualizationEvent {
   final int nodeId;
 
@@ -66,31 +63,89 @@ class NodeSelected extends VisualizationEvent {
   List<Object?> get props => [nodeId];
 }
 
-/// El usuario cerró el tooltip tocando fuera del grafo o el botón de cierre.
-///
-/// Restaura el estado de grafo sin selección activa.
+/// El usuario cerró la selección activa.
 class NodeDeselected extends VisualizationEvent {
   const NodeDeselected();
+}
+
+/// El usuario realizó doble toque sobre un nodo.
+///
+/// Si el nodo no tenía sus detalles visibles, los muestra.
+///
+/// Si el mismo nodo ya tenía sus detalles visibles, los oculta.
+///
+/// Si los detalles pertenecían a otro nodo, cambia directamente
+/// al nuevo nodo.
+class NodeDetailsToggled extends VisualizationEvent {
+  final int nodeId;
+
+  const NodeDetailsToggled(this.nodeId);
 
   @override
-  List<Object?> get props => [];
+  List<Object?> get props => [nodeId];
+}
+
+/// Cierra cualquier detalle de nodo actualmente visible.
+///
+/// Es independiente de [NodeDeselected]:
+///
+/// - NodeDeselected controla la selección funcional de un toque;
+/// - NodeDetailsDismissed controla exclusivamente la información
+///   solicitada mediante doble toque.
+class NodeDetailsDismissed extends VisualizationEvent {
+  const NodeDetailsDismissed();
+}
+
+/// Comienza el movimiento manual de un nodo.
+///
+/// Se dispara después de mantener presionado un nodo.
+///
+/// [nodeId] identifica el nodo que queda temporalmente "agarrado".
+class NodeDragStarted extends VisualizationEvent {
+  final int nodeId;
+
+  const NodeDragStarted(this.nodeId);
+
+  @override
+  List<Object?> get props => [nodeId];
+}
+
+/// Actualiza la posición del nodo que está siendo arrastrado.
+///
+/// Las coordenadas pertenecen al espacio lógico del canvas 2000×2000,
+/// no al espacio físico de la pantalla.
+///
+/// Esto permite que el movimiento funcione correctamente aunque exista
+/// zoom o desplazamiento del InteractiveViewer.
+class NodeDragUpdated extends VisualizationEvent {
+  final int nodeId;
+  final double x;
+  final double y;
+
+  const NodeDragUpdated({
+    required this.nodeId,
+    required this.x,
+    required this.y,
+  });
+
+  @override
+  List<Object?> get props => [nodeId, x, y];
+}
+
+/// Finaliza el movimiento manual de un nodo.
+///
+/// El nodo deja de estar fijado al dedo y la simulación física
+/// puede continuar relajando el resto del grafo.
+class NodeDragEnded extends VisualizationEvent {
+  final int nodeId;
+
+  const NodeDragEnded(this.nodeId);
+
+  @override
+  List<Object?> get props => [nodeId];
 }
 
 /// Reintenta la construcción del grafo después de un error.
-///
-/// QUÉ: el usuario presionó "Reintentar" en la UI de error del grafo.
-/// Redispra [BuildGraphRequested] con los mismos parámetros que
-/// causaron el error original.
-///
-/// POR QUÉ: T-PR1-012 — antes no existía este evento. Cuando el grafo
-/// fallaba (GraphError), la UI mostraba el error pero no ofrecía forma
-/// de reintentar. El usuario quedaba atrapado viendo un mensaje de error.
-///
-/// PR7: [myDeviceUuid] se agregó para preservar el UUID del dispositivo
-/// propio en el reintento, manteniendo el self-node correctamente marcado.
-///
-/// [lastSessionId] y [lastNodes] son los parámetros originales del
-/// [BuildGraphRequested] que falló.
 class RetryGraphBuild extends VisualizationEvent {
   final int lastSessionId;
   final List<Node> lastNodes;

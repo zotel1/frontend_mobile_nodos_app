@@ -1,436 +1,1812 @@
 /**
- * graph_3d.js — Visualizador 3D de grafo de nodos BLE usando Three.js
+ * graph_3d.js
  *
- * Renderiza nodos como esferas y aristas como líneas en un espacio 3D.
- * Incluye OrbitControls inline para rotación/zoom/pan táctil.
- * Expone window.loadGraphData(json) para recibir datos desde Dart.
- * Emite nodeId vía JavaScriptChannel('onNodeTapped') al tocar un nodo.
+ * Visualizador 3D del grafo de Nodos App usando Three.js.
  *
- * Three.js UMD build (v0.160) debe cargarse antes como three.min.js
+ * Responsabilidades:
+ * - renderizar los mismos nodos y conexiones de la vista 2D;
+ * - mantener color, tamaño, self-node y selección;
+ * - distinguir conexiones directas y transitivas;
+ * - representar dirección mediante flechas;
+ * - permitir rotación, zoom y pan;
+ * - detectar taps reales sin confundirlos con gestos de cámara;
+ * - ajustar automáticamente la cámara al grafo.
+ *
+ * Three.js UMD build debe cargarse previamente mediante three.min.js.
  */
 (function () {
   'use strict';
 
-  // ─── OrbitControls inline (minimal, touch-aware) ────────────────────
-  const STATE = { NONE: -1, ROTATE: 0, DOLLY: 1, PAN: 2 };
-  const EPS = 0.000001;
-  const _v = new THREE.Vector3();
-  const _q = new THREE.Quaternion();
+  // ─────────────────────────────────────────────────────────────
+  // CONSTANTES VISUALES
+  // ─────────────────────────────────────────────────────────────
+
+  const BACKGROUND_COLOR = 0x1a1a2e;
+
+  const DIRECT_EDGE_COLOR = 0x7e8a9a;
+  const TRANSITIVE_EDGE_COLOR = 0x667080;
+
+  const SELECTION_COLOR = 0xff2d9a;
+  const SELF_FALLBACK_COLOR = '#42A5F5';
+
+  const STATE = {
+    NONE: -1,
+    ROTATE: 0,
+    DOLLY: 1,
+    PAN: 2
+  };
+
+  // Distancia máxima en píxeles entre pointer-down y pointer-up
+  // para considerar el gesto como un tap.
+  const TAP_MOVE_THRESHOLD = 10;
+
+  // ─────────────────────────────────────────────────────────────
+  // ORBIT CONTROLS
+  // ─────────────────────────────────────────────────────────────
 
   function OrbitControls(camera, domElement) {
     this.camera = camera;
     this.domElement = domElement;
+
     this.target = new THREE.Vector3(0, 0, 0);
+
     this.enableDamping = true;
     this.dampingFactor = 0.08;
+
     this.rotateSpeed = 0.5;
     this.zoomSpeed = 1.2;
     this.panSpeed = 0.7;
+
     this.minDistance = 50;
     this.maxDistance = 2000;
 
     this._state = STATE.NONE;
+
     this._spherical = new THREE.Spherical();
     this._sphericalDelta = new THREE.Spherical();
-    this._scale = 1;
+
     this._panOffset = new THREE.Vector3();
+
+    this._start = null;
+    this._pinchDist = null;
 
     const scope = this;
 
-    function onMouseDown(e) {
-      e.preventDefault();
-      const btn = e.button === 0 ? STATE.ROTATE : e.button === 1 ? STATE.DOLLY : STATE.PAN;
-      scope._state = btn;
-      scope._start = { x: e.clientX, y: e.clientY };
+    function onMouseDown(event) {
+      event.preventDefault();
+
+      if (event.button === 0) {
+        scope._state = STATE.ROTATE;
+      } else if (event.button === 1) {
+        scope._state = STATE.DOLLY;
+      } else {
+        scope._state = STATE.PAN;
+      }
+
+      scope._start = {
+        x: event.clientX,
+        y: event.clientY
+      };
     }
 
-    function onMouseMove(e) {
-      if (scope._state === STATE.NONE) return;
-      const dx = e.clientX - scope._start.x;
-      const dy = e.clientY - scope._start.y;
-      scope._start = { x: e.clientX, y: e.clientY };
+    function onMouseMove(event) {
+      if (
+        scope._state === STATE.NONE ||
+        !scope._start
+      ) {
+        return;
+      }
+
+      const dx =
+        event.clientX - scope._start.x;
+
+      const dy =
+        event.clientY - scope._start.y;
+
+      scope._start = {
+        x: event.clientX,
+        y: event.clientY
+      };
 
       if (scope._state === STATE.ROTATE) {
-        scope._sphericalDelta.theta -= (2 * Math.PI * dx) / scope.domElement.clientHeight * scope.rotateSpeed;
-        scope._sphericalDelta.phi -= (2 * Math.PI * dy) / scope.domElement.clientHeight * scope.rotateSpeed;
+        const height =
+          Math.max(scope.domElement.clientHeight, 1);
+
+        scope._sphericalDelta.theta -=
+          (2 * Math.PI * dx / height) *
+          scope.rotateSpeed;
+
+        scope._sphericalDelta.phi -=
+          (2 * Math.PI * dy / height) *
+          scope.rotateSpeed;
       } else if (scope._state === STATE.PAN) {
-        scope._panOffset.x -= dx * scope.panSpeed;
-        scope._panOffset.y += dy * scope.panSpeed;
+        scope._panOffset.x -=
+          dx * scope.panSpeed;
+
+        scope._panOffset.y +=
+          dy * scope.panSpeed;
       } else if (scope._state === STATE.DOLLY) {
-        scope._sphericalDelta.radius -= dy * scope.zoomSpeed;
-        if (scope._sphericalDelta.radius < 0) scope._sphericalDelta.radius = 0;
+        scope._sphericalDelta.radius -=
+          dy * scope.zoomSpeed;
       }
     }
 
-    function onMouseUp() { scope._state = STATE.NONE; }
-
-    function onMouseWheel(e) {
-      e.preventDefault();
-      scope._sphericalDelta.radius += e.deltaY * 0.01 * scope.zoomSpeed;
-    }
-
-    // Touch handlers
-    function onTouchStart(e) {
-      if (e.touches.length === 1) {
-        scope._state = STATE.ROTATE;
-        scope._start = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      } else if (e.touches.length === 2) {
-        scope._state = STATE.PAN;
-        const dx = e.touches[1].clientX - e.touches[0].clientX;
-        const dy = e.touches[1].clientY - e.touches[0].clientY;
-        scope._pinchDist = Math.sqrt(dx * dx + dy * dy);
-      }
-    }
-
-    function onTouchMove(e) {
-      e.preventDefault();
-      if (scope._state === STATE.ROTATE && e.touches.length === 1) {
-        const dx = e.touches[0].clientX - scope._start.x;
-        const dy = e.touches[0].clientY - scope._start.y;
-        scope._start = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-        scope._sphericalDelta.theta -= (2 * Math.PI * dx) / scope.domElement.clientHeight * scope.rotateSpeed;
-        scope._sphericalDelta.phi -= (2 * Math.PI * dy) / scope.domElement.clientHeight * scope.rotateSpeed;
-      } else if (scope._state === STATE.PAN && e.touches.length === 2) {
-        const dx = e.touches[0].clientX - scope._start.x;
-        const dy = e.touches[0].clientY - scope._start.y;
-        scope._start = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-        scope._panOffset.x -= dx * scope.panSpeed;
-        scope._panOffset.y += dy * scope.panSpeed;
-        // Pinch zoom
-        const ndx = e.touches[1].clientX - e.touches[0].clientX;
-        const ndy = e.touches[1].clientY - e.touches[0].clientY;
-        const nd = Math.sqrt(ndx * ndx + ndy * ndy);
-        if (scope._pinchDist) {
-          scope._sphericalDelta.radius -= (nd - scope._pinchDist) * 0.02 * scope.zoomSpeed;
-        }
-        scope._pinchDist = nd;
-      }
-    }
-
-    function onTouchEnd(e) {
+    function onMouseUp() {
       scope._state = STATE.NONE;
+      scope._start = null;
+    }
+
+    function onMouseWheel(event) {
+      event.preventDefault();
+
+      scope._sphericalDelta.radius +=
+        event.deltaY *
+        0.01 *
+        scope.zoomSpeed;
+    }
+
+    function onTouchStart(event) {
+      if (event.touches.length === 1) {
+        scope._state = STATE.ROTATE;
+
+        scope._start = {
+          x: event.touches[0].clientX,
+          y: event.touches[0].clientY
+        };
+
+        scope._pinchDist = null;
+
+        return;
+      }
+
+      if (event.touches.length === 2) {
+        scope._state = STATE.PAN;
+
+        const first = event.touches[0];
+        const second = event.touches[1];
+
+        scope._start = {
+          x: (first.clientX + second.clientX) / 2,
+          y: (first.clientY + second.clientY) / 2
+        };
+
+        const dx =
+          second.clientX - first.clientX;
+
+        const dy =
+          second.clientY - first.clientY;
+
+        scope._pinchDist =
+          Math.sqrt(dx * dx + dy * dy);
+      }
+    }
+
+    function onTouchMove(event) {
+      event.preventDefault();
+
+      if (
+        scope._state === STATE.ROTATE &&
+        event.touches.length === 1 &&
+        scope._start
+      ) {
+        const touch = event.touches[0];
+
+        const dx =
+          touch.clientX - scope._start.x;
+
+        const dy =
+          touch.clientY - scope._start.y;
+
+        scope._start = {
+          x: touch.clientX,
+          y: touch.clientY
+        };
+
+        const height =
+          Math.max(scope.domElement.clientHeight, 1);
+
+        scope._sphericalDelta.theta -=
+          (2 * Math.PI * dx / height) *
+          scope.rotateSpeed;
+
+        scope._sphericalDelta.phi -=
+          (2 * Math.PI * dy / height) *
+          scope.rotateSpeed;
+
+        return;
+      }
+
+      if (
+        scope._state === STATE.PAN &&
+        event.touches.length === 2
+      ) {
+        const first = event.touches[0];
+        const second = event.touches[1];
+
+        const centerX =
+          (first.clientX + second.clientX) / 2;
+
+        const centerY =
+          (first.clientY + second.clientY) / 2;
+
+        if (scope._start) {
+          const dx =
+            centerX - scope._start.x;
+
+          const dy =
+            centerY - scope._start.y;
+
+          scope._panOffset.x -=
+            dx * scope.panSpeed;
+
+          scope._panOffset.y +=
+            dy * scope.panSpeed;
+        }
+
+        scope._start = {
+          x: centerX,
+          y: centerY
+        };
+
+        const pinchDx =
+          second.clientX - first.clientX;
+
+        const pinchDy =
+          second.clientY - first.clientY;
+
+        const pinchDistance =
+          Math.sqrt(
+            pinchDx * pinchDx +
+            pinchDy * pinchDy
+          );
+
+        if (
+          scope._pinchDist != null &&
+          scope._pinchDist > 0
+        ) {
+          scope._sphericalDelta.radius -=
+            (pinchDistance - scope._pinchDist) *
+            0.02 *
+            scope.zoomSpeed;
+        }
+
+        scope._pinchDist =
+          pinchDistance;
+      }
+    }
+
+    function onTouchEnd() {
+      scope._state = STATE.NONE;
+      scope._start = null;
       scope._pinchDist = null;
     }
 
-    domElement.addEventListener('mousedown', onMouseDown);
-    domElement.addEventListener('mousemove', onMouseMove);
-    domElement.addEventListener('mouseup', onMouseUp);
-    domElement.addEventListener('wheel', onMouseWheel, { passive: false });
-    domElement.addEventListener('touchstart', onTouchStart, { passive: false });
-    domElement.addEventListener('touchmove', onTouchMove, { passive: false });
-    domElement.addEventListener('touchend', onTouchEnd);
-    domElement.addEventListener('touchcancel', onTouchEnd);
+    domElement.addEventListener(
+      'mousedown',
+      onMouseDown
+    );
+
+    domElement.addEventListener(
+      'mousemove',
+      onMouseMove
+    );
+
+    domElement.addEventListener(
+      'mouseup',
+      onMouseUp
+    );
+
+    domElement.addEventListener(
+      'mouseleave',
+      onMouseUp
+    );
+
+    domElement.addEventListener(
+      'wheel',
+      onMouseWheel,
+      { passive: false }
+    );
+
+    domElement.addEventListener(
+      'touchstart',
+      onTouchStart,
+      { passive: false }
+    );
+
+    domElement.addEventListener(
+      'touchmove',
+      onTouchMove,
+      { passive: false }
+    );
+
+    domElement.addEventListener(
+      'touchend',
+      onTouchEnd
+    );
+
+    domElement.addEventListener(
+      'touchcancel',
+      onTouchEnd
+    );
   }
 
   OrbitControls.prototype.update = function () {
-    const offset = new THREE.Vector3();
-    const position = this.camera.position;
-    offset.copy(position).sub(this.target);
-    this._spherical.setFromVector3(offset);
+    const offset =
+      new THREE.Vector3();
 
-    this._spherical.theta += this._sphericalDelta.theta;
-    this._spherical.phi += this._sphericalDelta.phi;
-    this._spherical.radius *= 1 + this._sphericalDelta.radius * 0.01;
-    this._spherical.radius = Math.max(this.minDistance, Math.min(this.maxDistance, this._spherical.radius));
-    this._spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, this._spherical.phi));
+    const position =
+      this.camera.position;
 
-    offset.setFromSpherical(this._spherical);
-    this.target.add(this._panOffset);
-    position.copy(this.target).add(offset);
-    this.camera.lookAt(this.target);
+    offset
+      .copy(position)
+      .sub(this.target);
+
+    this._spherical.setFromVector3(
+      offset
+    );
+
+    this._spherical.theta +=
+      this._sphericalDelta.theta;
+
+    this._spherical.phi +=
+      this._sphericalDelta.phi;
+
+    this._spherical.radius *=
+      1 +
+      this._sphericalDelta.radius *
+      0.01;
+
+    this._spherical.radius =
+      Math.max(
+        this.minDistance,
+        Math.min(
+          this.maxDistance,
+          this._spherical.radius
+        )
+      );
+
+    this._spherical.phi =
+      Math.max(
+        0.1,
+        Math.min(
+          Math.PI - 0.1,
+          this._spherical.phi
+        )
+      );
+
+    offset.setFromSpherical(
+      this._spherical
+    );
+
+    this.target.add(
+      this._panOffset
+    );
+
+    position
+      .copy(this.target)
+      .add(offset);
+
+    this.camera.lookAt(
+      this.target
+    );
 
     if (this.enableDamping) {
-      this._sphericalDelta.theta *= (1 - this.dampingFactor);
-      this._sphericalDelta.phi *= (1 - this.dampingFactor);
-      this._sphericalDelta.radius *= (1 - this.dampingFactor);
-      this._panOffset.multiplyScalar(1 - this.dampingFactor);
+      const damping =
+        1 - this.dampingFactor;
+
+      this._sphericalDelta.theta *=
+        damping;
+
+      this._sphericalDelta.phi *=
+        damping;
+
+      this._sphericalDelta.radius *=
+        damping;
+
+      this._panOffset.multiplyScalar(
+        damping
+      );
     } else {
-      this._sphericalDelta.set(0, 0, 0);
-      this._panOffset.set(0, 0, 0);
+      this._sphericalDelta.theta = 0;
+      this._sphericalDelta.phi = 0;
+      this._sphericalDelta.radius = 0;
+
+      this._panOffset.set(
+        0,
+        0,
+        0
+      );
     }
   };
 
-  // ─── Escena Three.js ─────────────────────────────────────────────────
-  let scene, camera, renderer, controls, group;
+  // ─────────────────────────────────────────────────────────────
+  // ESCENA
+  // ─────────────────────────────────────────────────────────────
+
+  let scene;
+  let camera;
+  let renderer;
+  let controls;
+  let group;
+
+  let emptyOverlay = null;
 
   function initScene() {
-    const container = document.getElementById('container');
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    const container =
+      document.getElementById('container');
 
-    // Renderer
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(w, h);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setClearColor(0x1a1a2e, 1);
-    container.appendChild(renderer.domElement);
+    const width =
+      Math.max(window.innerWidth, 1);
 
-    // Scene
-    scene = new THREE.Scene();
+    const height =
+      Math.max(window.innerHeight, 1);
 
-    // Camera
-    camera = new THREE.PerspectiveCamera(45, w / h, 1, 5000);
-    camera.position.set(0, -800, 600);
-    camera.lookAt(0, 0, 0);
+    renderer =
+      new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: false
+      });
 
-    // Iluminación
-    scene.add(new THREE.AmbientLight(0x404060, 1.5));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-    dirLight.position.set(500, 500, 500);
-    scene.add(dirLight);
+    renderer.setSize(
+      width,
+      height
+    );
 
-    // OrbitControls
-    controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, 0, 0);
+    renderer.setPixelRatio(
+      Math.min(
+        window.devicePixelRatio || 1,
+        2
+      )
+    );
+
+    renderer.setClearColor(
+      BACKGROUND_COLOR,
+      1
+    );
+
+    container.appendChild(
+      renderer.domElement
+    );
+
+    scene =
+      new THREE.Scene();
+
+    camera =
+      new THREE.PerspectiveCamera(
+        45,
+        width / height,
+        1,
+        8000
+      );
+
+    camera.position.set(
+      0,
+      -800,
+      600
+    );
+
+    camera.lookAt(
+      0,
+      0,
+      0
+    );
+
+    // Iluminación suave.
+    const ambientLight =
+      new THREE.AmbientLight(
+        0xffffff,
+        1.15
+      );
+
+    scene.add(
+      ambientLight
+    );
+
+    const directionalLight =
+      new THREE.DirectionalLight(
+        0xffffff,
+        0.85
+      );
+
+    directionalLight.position.set(
+      500,
+      -300,
+      700
+    );
+
+    scene.add(
+      directionalLight
+    );
+
+    controls =
+      new OrbitControls(
+        camera,
+        renderer.domElement
+      );
+
+    controls.target.set(
+      0,
+      0,
+      0
+    );
+
     controls.update();
 
-    // Grupo principal para nodos y aristas
-    group = new THREE.Group();
-    scene.add(group);
+    group =
+      new THREE.Group();
 
-    // Raycaster para detección de tap
-    const raycaster = new THREE.Raycaster();
-    raycaster.params.Points.threshold = 10;
+    scene.add(
+      group
+    );
 
-    function onTap(e) {
-      e.preventDefault();
-      const rect = renderer.domElement.getBoundingClientRect();
-      const x = ((e.clientX || (e.touches && e.touches[0].clientX)) - rect.left) / rect.width * 2 - 1;
-      const y = -((e.clientY || (e.touches && e.touches[0].clientY)) - rect.top) / rect.height * 2 + 1;
-      const mouse = new THREE.Vector2(x, y);
+    configurePicking();
 
-      raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObjects(group.children, true);
+    window.addEventListener(
+      'resize',
+      onResize
+    );
 
-      if (intersects.length > 0) {
-        let obj = intersects[0].object;
-        while (obj && obj.userData.nodeId == null) {
-          obj = obj.parent;
-        }
-        if (obj && obj.userData.nodeId != null) {
-          // Enviar nodeId a Dart vía JavaScriptChannel
-          if (window.onNodeTapped && window.onNodeTapped.postMessage) {
-            window.onNodeTapped.postMessage(String(obj.userData.nodeId));
-          }
-        }
-      }
-    }
-
-    renderer.domElement.addEventListener('click', onTap);
-    renderer.domElement.addEventListener('touchend', function (e) {
-      // Solo procesar tap si no hubo arrastre (orbit control)
-      if (controls._state === STATE.NONE) onTap(e);
-    });
-
-    // Resize
-    window.addEventListener('resize', function () {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-
-    // Loop de render
-    function animate() {
-      requestAnimationFrame(animate);
-      controls.update();
-      renderer.render(scene, camera);
-    }
     animate();
   }
 
-  // ─── API pública: carga datos del grafo ──────────────────────────────
-  /**
-   * @param {Object} data — { nodes: [{id,x,y,z,radius,color,label,isSelf}], edges: [{fromId,toId,thickness}] }
-   */
-  // Overlay para mensaje de estado vacío (R6.3)
-  let emptyOverlay = null;
-
-  function showEmptyMessage(visible) {
-    if (!emptyOverlay) {
-      emptyOverlay = document.createElement('div');
-      emptyOverlay.id = 'empty-overlay';
-      emptyOverlay.style.cssText =
-        'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);' +
-        'color:#9e9e9e;font-size:20px;font-family:sans-serif;' +
-        'pointer-events:none;z-index:10;text-align:center;';
-      emptyOverlay.textContent = 'Sin nodos detectados';
-      document.getElementById('container').appendChild(emptyOverlay);
-    }
-    emptyOverlay.style.display = visible ? 'block' : 'none';
-  }
-
-  window.loadGraphData = function (data) {
-    try {
-    if (!renderer) initScene();
-    if (!data || !data.nodes || data.nodes.length === 0) {
-      _log('loadGraphData: sin nodos, mostrando mensaje de estado vacío');
-      showEmptyMessage(true);
-      // Limpiar escena anterior si existía
-      while (group.children.length > 0) {
-        group.remove(group.children[0]);
-      }
+  function onResize() {
+    if (
+      !camera ||
+      !renderer
+    ) {
       return;
     }
-    showEmptyMessage(false);
 
-    _log('loadGraphData: renderizando ' + data.nodes.length + ' nodos y ' + 
-         (data.edges ? data.edges.length : 0) + ' aristas');
+    const width =
+      Math.max(window.innerWidth, 1);
 
-    // Limpiar escena anterior
-    while (group.children.length > 0) {
-      const child = group.children[0];
-      if (child.geometry) child.geometry.dispose();
-      if (child.material) {
-        if (Array.isArray(child.material)) {
-          child.material.forEach(function (m) { m.dispose(); });
-        } else {
-          child.material.dispose();
+    const height =
+      Math.max(window.innerHeight, 1);
+
+    camera.aspect =
+      width / height;
+
+    camera.updateProjectionMatrix();
+
+    renderer.setSize(
+      width,
+      height
+    );
+  }
+
+  function animate() {
+    requestAnimationFrame(
+      animate
+    );
+
+    if (controls) {
+      controls.update();
+    }
+
+    if (
+      renderer &&
+      scene &&
+      camera
+    ) {
+      renderer.render(
+        scene,
+        camera
+      );
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // PICKING / TAP
+  // ─────────────────────────────────────────────────────────────
+
+  function configurePicking() {
+    const raycaster =
+      new THREE.Raycaster();
+
+    let pointerStart = null;
+    let pointerMoved = false;
+
+    function getPoint(
+      clientX,
+      clientY
+    ) {
+      const rect =
+        renderer.domElement
+          .getBoundingClientRect();
+
+      return new THREE.Vector2(
+        (
+          (clientX - rect.left) /
+          rect.width
+        ) * 2 - 1,
+
+        -(
+          (
+            clientY - rect.top
+          ) /
+          rect.height
+        ) * 2 + 1
+      );
+    }
+
+    function selectAt(
+      clientX,
+      clientY
+    ) {
+      const pointer =
+        getPoint(
+          clientX,
+          clientY
+        );
+
+      raycaster.setFromCamera(
+        pointer,
+        camera
+      );
+
+      // Solo los objetos marcados como pickable
+      // pueden convertirse en selección.
+      const candidates = [];
+
+      group.traverse(function (object) {
+        if (
+          object.userData &&
+          object.userData.pickable === true
+        ) {
+          candidates.push(object);
+        }
+      });
+
+      const intersections =
+        raycaster.intersectObjects(
+          candidates,
+          false
+        );
+
+      if (
+        intersections.length === 0
+      ) {
+        return;
+      }
+
+      const object =
+        intersections[0].object;
+
+      const nodeId =
+        object.userData.nodeId;
+
+      if (
+        nodeId == null
+      ) {
+        return;
+      }
+
+      if (
+        window.onNodeTapped &&
+        window.onNodeTapped.postMessage
+      ) {
+        window.onNodeTapped.postMessage(
+          String(nodeId)
+        );
+      }
+    }
+
+    renderer.domElement.addEventListener(
+      'pointerdown',
+      function (event) {
+        if (
+          event.pointerType === 'mouse' &&
+          event.button !== 0
+        ) {
+          return;
+        }
+
+        pointerStart = {
+          x: event.clientX,
+          y: event.clientY
+        };
+
+        pointerMoved = false;
+      }
+    );
+
+    renderer.domElement.addEventListener(
+      'pointermove',
+      function (event) {
+        if (!pointerStart) {
+          return;
+        }
+
+        const dx =
+          event.clientX -
+          pointerStart.x;
+
+        const dy =
+          event.clientY -
+          pointerStart.y;
+
+        if (
+          Math.sqrt(
+            dx * dx +
+            dy * dy
+          ) >
+          TAP_MOVE_THRESHOLD
+        ) {
+          pointerMoved = true;
         }
       }
+    );
+
+    renderer.domElement.addEventListener(
+      'pointerup',
+      function (event) {
+        if (!pointerStart) {
+          return;
+        }
+
+        if (!pointerMoved) {
+          selectAt(
+            event.clientX,
+            event.clientY
+          );
+        }
+
+        pointerStart = null;
+        pointerMoved = false;
+      }
+    );
+
+    renderer.domElement.addEventListener(
+      'pointercancel',
+      function () {
+        pointerStart = null;
+        pointerMoved = false;
+      }
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // EMPTY STATE
+  // ─────────────────────────────────────────────────────────────
+
+  function showEmptyMessage(
+    visible
+  ) {
+    if (!emptyOverlay) {
+      emptyOverlay =
+        document.createElement('div');
+
+      emptyOverlay.id =
+        'empty-overlay';
+
+      emptyOverlay.style.cssText =
+        'position:absolute;' +
+        'top:50%;' +
+        'left:50%;' +
+        'transform:translate(-50%,-50%);' +
+        'color:#9e9e9e;' +
+        'font-size:18px;' +
+        'font-family:sans-serif;' +
+        'pointer-events:none;' +
+        'z-index:10;' +
+        'text-align:center;';
+
+      emptyOverlay.textContent =
+        'Sin nodos detectados';
+
+      document
+        .getElementById('container')
+        .appendChild(emptyOverlay);
+    }
+
+    emptyOverlay.style.display =
+      visible
+        ? 'block'
+        : 'none';
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // CLEANUP
+  // ─────────────────────────────────────────────────────────────
+
+  function disposeMaterial(
+    material
+  ) {
+    if (!material) {
+      return;
+    }
+
+    if (
+      Array.isArray(material)
+    ) {
+      material.forEach(
+        disposeMaterial
+      );
+
+      return;
+    }
+
+    material.dispose();
+  }
+
+  function disposeObject(
+    object
+  ) {
+    // Primero liberar descendientes.
+    while (
+      object.children &&
+      object.children.length > 0
+    ) {
+      const child =
+        object.children[0];
+
+      object.remove(child);
+
+      disposeObject(child);
+    }
+
+    if (object.geometry) {
+      object.geometry.dispose();
+    }
+
+    if (object.material) {
+      disposeMaterial(
+        object.material
+      );
+    }
+  }
+
+  function clearGraph() {
+    if (!group) {
+      return;
+    }
+
+    while (
+      group.children.length > 0
+    ) {
+      const child =
+        group.children[0];
+
       group.remove(child);
+
+      disposeObject(child);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // EDGES
+  // ─────────────────────────────────────────────────────────────
+
+  function renderEdges(
+    data,
+    nodeMap
+  ) {
+    if (!data.edges) {
+      return;
     }
 
-    // Crear aristas con TubeGeometry para visibilidad garantizada.
-    // THREE.Line tiene linewidth fijo de 1px en WebGL sin importar el valor
-    // seteado. TubeGeometry produce tubos cilíndricos visibles a cualquier
-    // zoom y distancia. PR7: reemplaza THREE.Line → THREE.TubeGeometry.
-    if (data.edges) {
-      const nodeMap = {};
-      data.nodes.forEach(function (n) { nodeMap[n.id] = n; });
+    data.edges.forEach(
+      function (edge) {
+        const from =
+          nodeMap[edge.fromId];
 
-      data.edges.forEach(function (e) {
-        const from = nodeMap[e.fromId];
-        const to = nodeMap[e.toId];
-        if (!from || !to) return;
+        const to =
+          nodeMap[edge.toId];
 
-        const start = new THREE.Vector3(from.x, from.y, from.z || 0);
-        const end = new THREE.Vector3(to.x, to.y, to.z || 0);
+        if (
+          !from ||
+          !to ||
+          from.id === to.id
+        ) {
+          return;
+        }
 
-        // Crear curva CatmullRom entre ambos puntos para TubeGeometry
-        const curve = new THREE.CatmullRomCurve3([start, end]);
-        const tubeRadius = 2.0; // grosor del tubo
-        const tubularSegments = 16; // segmentos a lo largo del tubo
-        const radialSegments = 8; // segmentos alrededor de la sección
-        const geometry = new THREE.TubeGeometry(
-            curve, tubularSegments, tubeRadius, radialSegments, false);
-        const material = new THREE.MeshPhongMaterial({
-          color: 0x4fc3f7,
-          transparent: true,
-          opacity: 0.35,
-          emissive: 0x000000,
-        });
-        const tube = new THREE.Mesh(geometry, material);
-        group.add(tube);
-      });
-    }
+        const startCenter =
+          new THREE.Vector3(
+            from.x,
+            from.y,
+            from.z || 0
+          );
 
-    // Crear nodos como esferas
-    data.nodes.forEach(function (n) {
-      const geometry = new THREE.SphereGeometry(n.radius || 15, 32, 16);
-      const material = new THREE.MeshPhongMaterial({
-        color: new THREE.Color(n.color || '#4CAF50'),
-        shininess: 30,
-        emissive: new THREE.Color(n.isSelf ? '#1a237e' : '#000000'),
-        emissiveIntensity: n.isSelf ? 0.6 : 0,
-      });
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(n.x, n.y, n.z || 0);
-      mesh.userData.nodeId = n.id;
-      mesh.userData.label = n.label;
+        const endCenter =
+          new THREE.Vector3(
+            to.x,
+            to.y,
+            to.z || 0
+          );
 
-      // Anillo de glow para self node (REQ-VR-01)
-      // Usa userColor del perfil en lugar de color hardcodeado.
-      // Fallback a #42a5f5 si userColor no está disponible.
-      if (n.isSelf) {
-        const ringGeo = new THREE.TorusGeometry((n.radius || 15) * 1.25, 3, 16, 32);
-        const ringColor = n.userColor || '#42a5f5';
-        const ringMat = new THREE.MeshBasicMaterial({
-          color: new THREE.Color(ringColor),
-          transparent: true,
-          opacity: 0.7
-        });
-        const ring = new THREE.Mesh(ringGeo, ringMat);
-        mesh.add(ring);
+        const direction =
+          new THREE.Vector3()
+            .subVectors(
+              endCenter,
+              startCenter
+            );
+
+        const distance =
+          direction.length();
+
+        if (distance <= 0.001) {
+          return;
+        }
+
+        direction.normalize();
+
+        const fromRadius =
+          Math.max(
+            Number(from.radius) || 15,
+            1
+          );
+
+        const toRadius =
+          Math.max(
+            Number(to.radius) || 15,
+            1
+          );
+
+        const start =
+          startCenter
+            .clone()
+            .add(
+              direction
+                .clone()
+                .multiplyScalar(
+                  fromRadius + 2
+                )
+            );
+
+        // Dejamos espacio para la punta de flecha.
+        const arrowLength =
+          Math.max(
+            7,
+            Math.min(
+              toRadius * 0.45,
+              14
+            )
+          );
+
+        const end =
+          endCenter
+            .clone()
+            .add(
+              direction
+                .clone()
+                .multiplyScalar(
+                  -(toRadius + arrowLength)
+                )
+            );
+
+        const isTransitive =
+          edge.edgeType ===
+          'transitive';
+
+        renderEdgeLine(
+          start,
+          end,
+          isTransitive
+        );
+
+        renderArrowHead(
+          endCenter,
+          direction,
+          toRadius,
+          arrowLength,
+          isTransitive
+        );
       }
+    );
+  }
 
-      group.add(mesh);
-    });
+  /// Línea estructural de una arista.
+  ///
+  /// THREE.Line es intencional:
+  /// buscamos una conexión fina que no compita visualmente con los nodos.
+  function renderEdgeLine(
+    start,
+    end,
+    isTransitive
+  ) {
+    const geometry =
+      new THREE.BufferGeometry()
+        .setFromPoints([
+          start,
+          end
+        ]);
 
-    // ── Cámara auto-fit (REQ-CA-01) ──
-    // Calcula BoundingBox + BoundingSphere a partir de todos los nodos
-    // para ajustar cámara, far plane y controls.target dinámicamente.
-    if (data.nodes.length > 0) {
-      // 1. BoundingBox: min/max de x, y, z
-      let minX = Infinity, minY = Infinity, minZ = Infinity;
-      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-      let selfNode = null;
+    const color =
+      isTransitive
+        ? TRANSITIVE_EDGE_COLOR
+        : DIRECT_EDGE_COLOR;
 
-      data.nodes.forEach(function (n) {
-        if (n.x < minX) minX = n.x;
-        if (n.y < minY) minY = n.y;
-        const nz = n.z || 0;
-        if (nz < minZ) minZ = nz;
-        if (n.x > maxX) maxX = n.x;
-        if (n.y > maxY) maxY = n.y;
-        if (nz > maxZ) maxZ = nz;
-        if (n.isSelf) selfNode = n;
+    let material;
+
+    if (isTransitive) {
+      material =
+        new THREE.LineDashedMaterial({
+          color: color,
+          transparent: true,
+          opacity: 0.38,
+          dashSize: 8,
+          gapSize: 7
+        });
+    } else {
+      material =
+        new THREE.LineBasicMaterial({
+          color: color,
+          transparent: true,
+          opacity: 0.62
+        });
+    }
+
+    const line =
+      new THREE.Line(
+        geometry,
+        material
+      );
+
+    if (isTransitive) {
+      line.computeLineDistances();
+    }
+
+    group.add(
+      line
+    );
+  }
+
+  /// Crea la flecha `from → to`.
+  ///
+  /// ConeGeometry utiliza Y como eje longitudinal, por lo que orientamos
+  /// el cono desde (0,1,0) hacia la dirección de la conexión.
+  function renderArrowHead(
+    targetCenter,
+    direction,
+    targetRadius,
+    arrowLength,
+    isTransitive
+  ) {
+    const arrowRadius =
+      Math.max(
+        2.5,
+        Math.min(
+          arrowLength * 0.38,
+          5
+        )
+      );
+
+    const geometry =
+      new THREE.ConeGeometry(
+        arrowRadius,
+        arrowLength,
+        12
+      );
+
+    const color =
+      isTransitive
+        ? TRANSITIVE_EDGE_COLOR
+        : DIRECT_EDGE_COLOR;
+
+    const material =
+      new THREE.MeshBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity:
+          isTransitive
+            ? 0.42
+            : 0.68
       });
 
-      // 2. BoundingSphere: centro = promedio min/max, radio = max distancia
-      const cx = (minX + maxX) / 2;
-      const cy = (minY + maxY) / 2;
-      const cz = (minZ + maxZ) / 2;
-      const center = new THREE.Vector3(cx, cy, cz);
+    const cone =
+      new THREE.Mesh(
+        geometry,
+        material
+      );
 
-      let maxDist = 0;
-      data.nodes.forEach(function (n) {
-        const dx = n.x - cx;
-        const dy = n.y - cy;
-        const dz = (n.z || 0) - cz;
-        const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (d > maxDist) maxDist = d;
-      });
+    const centerDistance =
+      targetRadius +
+      arrowLength / 2 +
+      1;
 
-      // 3. maxDistance: radio × 4, mínimo 2000
-      const maxDistance = Math.max(maxDist * 4, 2000);
+    cone.position.copy(
+      targetCenter
+        .clone()
+        .add(
+          direction
+            .clone()
+            .multiplyScalar(
+              -centerDistance
+            )
+        )
+    );
 
-      // 4. camera.far: maxDistance × 1.5, tope 8000 (mobile Z-buffer)
-      camera.far = Math.min(maxDistance * 1.5, 8000);
-      camera.updateProjectionMatrix();
+    const defaultAxis =
+      new THREE.Vector3(
+        0,
+        1,
+        0
+      );
 
-      // 5. Posicionar cámara: distancia = radio × 2.5, mínimo 500
-      const camDistance = Math.max(maxDist * 2.5, 500);
-      camera.position.set(0, -camDistance, camDistance * 0.75);
+    cone.quaternion.setFromUnitVectors(
+      defaultAxis,
+      direction
+    );
 
-      // 6. controls.target = posición del self-node (REQ-CA-01 S1-S3)
-      //    Si no hay self-node, usar centroide.
-      if (selfNode) {
-        controls.target.set(selfNode.x, selfNode.y, selfNode.z || 0);
-      } else {
-        controls.target.copy(center);
+    group.add(
+      cone
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // NODES
+  // ─────────────────────────────────────────────────────────────
+
+  function renderNodes(
+    data
+  ) {
+    data.nodes.forEach(
+      function (node) {
+        const radius =
+          Math.max(
+            Number(node.radius) || 15,
+            1
+          );
+
+        const geometry =
+          new THREE.SphereGeometry(
+            radius,
+            32,
+            20
+          );
+
+        const material =
+          new THREE.MeshPhongMaterial({
+            color:
+              new THREE.Color(
+                node.color ||
+                '#4CAF50'
+              ),
+
+            shininess: 18,
+
+            specular:
+              new THREE.Color(
+                '#303744'
+              )
+          });
+
+        const mesh =
+          new THREE.Mesh(
+            geometry,
+            material
+          );
+
+        mesh.position.set(
+          node.x,
+          node.y,
+          node.z || 0
+        );
+
+        // Solo la esfera principal participa del picking.
+        mesh.userData.pickable = true;
+        mesh.userData.nodeId = node.id;
+        mesh.userData.label = node.label;
+
+        group.add(
+          mesh
+        );
+
+        if (node.isSelf) {
+          renderSelfIndicator(
+            node,
+            radius
+          );
+        }
+
+        if (
+          data.selectedNodeId != null &&
+          node.id === data.selectedNodeId
+        ) {
+          renderSelectionIndicator(
+            node,
+            radius
+          );
+        }
       }
-      controls.update();
+    );
+  }
 
-      _log('Camera auto-fit: radius=' + Math.round(maxDist) +
-           ' maxDist=' + Math.round(maxDistance) +
-           ' far=' + Math.round(camera.far) +
-           ' camDist=' + Math.round(camDistance));
-    }
-    } catch (err) {
-      _log('loadGraphData ERROR: ' + (err && err.message ? err.message : String(err)));
-    }
-  };
+  // ─────────────────────────────────────────────────────────────
+  // SELF NODE
+  // ─────────────────────────────────────────────────────────────
 
-  // Mantener referencia para el bridge de comunicación Dart→JS
+  function renderSelfIndicator(
+    node,
+    radius
+  ) {
+    const center =
+      new THREE.Vector3(
+        node.x,
+        node.y,
+        node.z || 0
+      );
+
+    const selfColor =
+      new THREE.Color(
+        node.userColor ||
+        SELF_FALLBACK_COLOR
+      );
+
+    // Halo esférico translúcido.
+    const haloGeometry =
+      new THREE.SphereGeometry(
+        radius + 7,
+        28,
+        18
+      );
+
+    const haloMaterial =
+      new THREE.MeshBasicMaterial({
+        color: selfColor,
+        transparent: true,
+        opacity: 0.10,
+        depthWrite: false,
+        side: THREE.DoubleSide
+      });
+
+    const halo =
+      new THREE.Mesh(
+        haloGeometry,
+        haloMaterial
+      );
+
+    halo.position.copy(
+      center
+    );
+
+    group.add(
+      halo
+    );
+
+    // Anillo de identidad.
+    const ringGeometry =
+      new THREE.TorusGeometry(
+        radius + 5,
+        1.8,
+        10,
+        48
+      );
+
+    const ringMaterial =
+      new THREE.MeshBasicMaterial({
+        color: selfColor,
+        transparent: true,
+        opacity: 0.90
+      });
+
+    const ring =
+      new THREE.Mesh(
+        ringGeometry,
+        ringMaterial
+      );
+
+    ring.position.copy(
+      center
+    );
+
+    // Orientación diagonal para que el aro siga siendo visible
+    // desde la perspectiva inicial.
+    ring.rotation.x =
+      Math.PI / 2.7;
+
+    ring.rotation.y =
+      Math.PI / 7;
+
+    group.add(
+      ring
+    );
+
+    // Pequeño marcador superior equivalente al 2D.
+    const markerGeometry =
+      new THREE.SphereGeometry(
+        Math.max(
+          radius * 0.12,
+          2.5
+        ),
+        16,
+        10
+      );
+
+    const markerMaterial =
+      new THREE.MeshBasicMaterial({
+        color: selfColor
+      });
+
+    const marker =
+      new THREE.Mesh(
+        markerGeometry,
+        markerMaterial
+      );
+
+    marker.position.set(
+      node.x,
+      node.y,
+      (node.z || 0) +
+        radius +
+        6
+    );
+
+    group.add(
+      marker
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // SELECTION
+  // ─────────────────────────────────────────────────────────────
+
+  function renderSelectionIndicator(
+    node,
+    radius
+  ) {
+    const center =
+      new THREE.Vector3(
+        node.x,
+        node.y,
+        node.z || 0
+      );
+
+    // Halo magenta exterior.
+    const haloGeometry =
+      new THREE.SphereGeometry(
+        radius + 12,
+        32,
+        20
+      );
+
+    const haloMaterial =
+      new THREE.MeshBasicMaterial({
+        color:
+          SELECTION_COLOR,
+
+        transparent: true,
+
+        opacity: 0.12,
+
+        depthWrite: false,
+
+        side:
+          THREE.DoubleSide
+      });
+
+    const halo =
+      new THREE.Mesh(
+        haloGeometry,
+        haloMaterial
+      );
+
+    halo.position.copy(
+      center
+    );
+
+    group.add(
+      halo
+    );
+
+    // Aro principal.
+    const ringGeometry =
+      new THREE.TorusGeometry(
+        radius + 8,
+        2.4,
+        12,
+        64
+      );
+
+    const ringMaterial =
+      new THREE.MeshBasicMaterial({
+        color:
+          SELECTION_COLOR,
+
+        transparent: true,
+
+        opacity: 0.95
+      });
+
+    const ring =
+      new THREE.Mesh(
+        ringGeometry,
+        ringMaterial
+      );
+
+    ring.position.copy(
+      center
+    );
+
+    ring.rotation.x =
+      Math.PI / 2.7;
+
+    ring.rotation.y =
+      Math.PI / 7;
+
+    group.add(
+      ring
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // CAMERA
+  // ─────────────────────────────────────────────────────────────
+
+  function fitCamera(
+    nodes
+  ) {
+    if (
+      !nodes ||
+      nodes.length === 0
+    ) {
+      return;
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let minZ = Infinity;
+
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let maxZ = -Infinity;
+
+    let selfNode = null;
+
+    nodes.forEach(
+      function (node) {
+        const x =
+          Number(node.x) || 0;
+
+        const y =
+          Number(node.y) || 0;
+
+        const z =
+          Number(node.z) || 0;
+
+        const radius =
+          Math.max(
+            Number(node.radius) || 15,
+            1
+          );
+
+        minX =
+          Math.min(
+            minX,
+            x - radius
+          );
+
+        minY =
+          Math.min(
+            minY,
+            y - radius
+          );
+
+        minZ =
+          Math.min(
+            minZ,
+            z - radius
+          );
+
+        maxX =
+          Math.max(
+            maxX,
+            x + radius
+          );
+
+        maxY =
+          Math.max(
+            maxY,
+            y + radius
+          );
+
+        maxZ =
+          Math.max(
+            maxZ,
+            z + radius
+          );
+
+        if (node.isSelf) {
+          selfNode = node;
+        }
+      }
+    );
+
+    const center =
+      new THREE.Vector3(
+        (minX + maxX) / 2,
+        (minY + maxY) / 2,
+        (minZ + maxZ) / 2
+      );
+
+    let radius = 0;
+
+    nodes.forEach(
+      function (node) {
+        const position =
+          new THREE.Vector3(
+            Number(node.x) || 0,
+            Number(node.y) || 0,
+            Number(node.z) || 0
+          );
+
+        const nodeRadius =
+          Math.max(
+            Number(node.radius) || 15,
+            1
+          );
+
+        radius =
+          Math.max(
+            radius,
+            position.distanceTo(
+              center
+            ) +
+            nodeRadius
+          );
+      }
+    );
+
+    // Un solo nodo también necesita un encuadre razonable.
+    radius =
+      Math.max(
+        radius,
+        80
+      );
+
+    const verticalFov =
+      THREE.MathUtils.degToRad(
+        camera.fov
+      );
+
+    const fitHeightDistance =
+      radius /
+      Math.tan(
+        verticalFov / 2
+      );
+
+    const horizontalFov =
+      2 *
+      Math.atan(
+        Math.tan(
+          verticalFov / 2
+        ) *
+        camera.aspect
+      );
+
+    const fitWidthDistance =
+      radius /
+      Math.tan(
+        horizontalFov / 2
+      );
+
+    // Margen para labels/halos y para que el grafo no toque
+    // los extremos de la pantalla.
+    const cameraDistance =
+      Math.max(
+        fitHeightDistance,
+        fitWidthDistance
+      ) * 1.25;
+
+    const target =
+      selfNode
+        ? new THREE.Vector3(
+            Number(selfNode.x) || 0,
+            Number(selfNode.y) || 0,
+            Number(selfNode.z) || 0
+          )
+        : center.clone();
+
+    controls.target.copy(
+      target
+    );
+
+    // Dirección isométrica inicial.
+    const cameraDirection =
+      new THREE.Vector3(
+        0.15,
+        -1,
+        0.72
+      ).normalize();
+
+    camera.position.copy(
+      target
+        .clone()
+        .add(
+          cameraDirection.multiplyScalar(
+            cameraDistance
+          )
+        )
+    );
+
+    controls.minDistance =
+      Math.max(
+        radius * 0.25,
+        30
+      );
+
+    controls.maxDistance =
+      Math.max(
+        radius * 8,
+        cameraDistance * 4,
+        1000
+      );
+
+    camera.near =
+      Math.max(
+        cameraDistance / 1000,
+        0.5
+      );
+
+    camera.far =
+      Math.max(
+        controls.maxDistance * 1.5,
+        cameraDistance * 8,
+        5000
+      );
+
+    camera.updateProjectionMatrix();
+
+    camera.lookAt(
+      target
+    );
+
+    controls.update();
+
+    _log(
+      'Camera auto-fit: ' +
+      'radius=' +
+      Math.round(radius) +
+      ' camDist=' +
+      Math.round(cameraDistance) +
+      ' maxDistance=' +
+      Math.round(
+        controls.maxDistance
+      )
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // API PÚBLICA
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * Contrato recibido desde Flutter:
+   *
+   * {
+   *   selectedNodeId: number | null,
+   *
+   *   nodes: [{
+   *     id,
+   *     x,
+   *     y,
+   *     z,
+   *     radius,
+   *     color,
+   *     label,
+   *     isSelf,
+   *     userColor,
+   *     estimatedDistance
+   *   }],
+   *
+   *   edges: [{
+   *     fromId,
+   *     toId,
+   *     thickness,
+   *     edgeType
+   *   }]
+   * }
+   */
+  window.loadGraphData =
+    function (data) {
+      try {
+        if (!renderer) {
+          initScene();
+        }
+
+        if (
+          !data ||
+          !Array.isArray(data.nodes) ||
+          data.nodes.length === 0
+        ) {
+          _log(
+            'loadGraphData: sin nodos'
+          );
+
+          showEmptyMessage(
+            true
+          );
+
+          clearGraph();
+
+          return;
+        }
+
+        showEmptyMessage(
+          false
+        );
+
+        _log(
+          'loadGraphData: renderizando ' +
+          data.nodes.length +
+          ' nodos y ' +
+          (
+            Array.isArray(data.edges)
+              ? data.edges.length
+              : 0
+          ) +
+          ' aristas; selected=' +
+          (
+            data.selectedNodeId != null
+              ? data.selectedNodeId
+              : 'none'
+          )
+        );
+
+        clearGraph();
+
+        const nodeMap = {};
+
+        data.nodes.forEach(
+          function (node) {
+            if (
+              node.id != null
+            ) {
+              nodeMap[node.id] =
+                node;
+            }
+          }
+        );
+
+        // Back-to-front conceptual:
+        // conexiones primero, nodos después.
+        renderEdges(
+          data,
+          nodeMap
+        );
+
+        renderNodes(
+          data
+        );
+
+        fitCamera(
+          data.nodes
+        );
+      } catch (error) {
+        _log(
+          'loadGraphData ERROR: ' +
+          (
+            error &&
+            error.message
+              ? error.message
+              : String(error)
+          )
+        );
+      }
+    };
+
+  // Mantener referencia global para el bridge/debug.
   window.THREE = THREE;
 
-  /// Envía un mensaje de log al canal onConsoleLog de Dart.
-  /// Si el canal no está disponible (tests), usa console.log como fallback.
-  function _log(msg) {
-    if (window.onConsoleLog && window.onConsoleLog.postMessage) {
-      window.onConsoleLog.postMessage(String(msg));
+  // ─────────────────────────────────────────────────────────────
+  // LOG
+  // ─────────────────────────────────────────────────────────────
+
+  function _log(
+    message
+  ) {
+    if (
+      window.onConsoleLog &&
+      window.onConsoleLog.postMessage
+    ) {
+      window.onConsoleLog.postMessage(
+        String(message)
+      );
     } else {
-      console.log(msg);
+      console.log(
+        message
+      );
     }
   }
 })();

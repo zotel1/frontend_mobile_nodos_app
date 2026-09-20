@@ -191,6 +191,8 @@ class NodeListError extends NodeListState {
 ///   reactivo de nodos.
 /// - Procesar [SyncBleDevices] para convertir resultados de escaneo BLE
 ///   en entidades [Node] persistentes.
+/// - Mantener un historial corto de RSSI entre ciclos de escaneo.
+/// - Estabilizar la estimación de distancia mediante la mediana del RSSI.
 /// - Procesar actualizaciones manuales de metadata.
 /// - Procesar [UpdateNodeIdentity] para reconciliar la identidad estable
 ///   obtenida mediante el protocolo Nodos.
@@ -202,6 +204,8 @@ class NodeListError extends NodeListState {
 /// - [UpdateNodeMetadata]: actualiza manualmente nombre/color.
 /// - [NodeRepository]: persiste nodos BLE y reconcilia identidad Nodos.
 class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
+  static const int _maxRssiSamples = 20;
+
   final ObserveNodes observeNodes;
   final UpdateNodeMetadata updateNodeMetadata;
   final NodeRepository _nodeRepository;
@@ -234,7 +238,10 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
     _ensureSubscription();
   }
 
-  void _onNodeDetected(NodeDetected event, Emitter<NodeListState> emit) {
+  void _onNodeDetected(
+    NodeDetected event,
+    Emitter<NodeListState> emit,
+  ) {
     emit(NodeListLoaded([event.node]));
   }
 
@@ -250,91 +257,142 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
 
   /// Convierte dispositivos BLE detectados en entidades [Node] y las persiste.
   ///
-  /// QUÉ hace:
-  /// itera cada [BleDevice], lo convierte a [Node] aplicando reglas de
-  /// mapeo y llama [NodeRepository.upsertNode].
+  /// Para cada dispositivo:
   ///
-  /// Reglas:
-  /// - deviceId → bleAddress.
-  /// - RSSI >= 0 se considera inválido y se ignora.
-  /// - rssiHistory se limita a 20 muestras.
-  /// - dispositivos repetidos dentro del mismo batch se deduplican.
-  /// - suggestedName se conserva desde el primer avistamiento del batch.
-  /// - Drift resuelve posteriormente la persistencia/deduplicación.
+  /// 1. recupera el Node persistido por bleAddress;
+  /// 2. conserva su historial RSSI anterior;
+  /// 3. agrega las nuevas muestras del batch;
+  /// 4. conserva solamente las últimas [_maxRssiSamples];
+  /// 5. obtiene un RSSI representativo mediante la mediana;
+  /// 6. calcula la distancia estimada a partir de esa señal estabilizada;
+  /// 7. persiste el Node actualizado.
+  ///
+  /// La mediana reduce especialmente bien el efecto de muestras BLE
+  /// aberrantes aisladas.
   Future<void> _onSyncBleDevices(
     SyncBleDevices event,
     Emitter<NodeListState> emit,
   ) async {
     if (event.devices.isEmpty) return;
 
-    // Mapa local de nodos procesados en este batch para soportar
-    // deduplicación cuando el mismo deviceId aparece varias veces.
-    final processed = <String, Node>{};
+    // Agrupar primero las lecturas válidas por deviceId.
+    //
+    // Esto permite consultar Drift una sola vez por dispositivo dentro
+    // de este evento y combinar todas las muestras recibidas en el batch.
+    final devicesById = <String, List<BleDevice>>{};
 
     for (final device in event.devices) {
-      // RSSI >= 0 no representa una medición válida para este flujo.
       if (device.rssi >= 0) continue;
 
-      final existing = processed[device.deviceId];
-
-      if (existing != null) {
-        // El mismo deviceId ya apareció en este batch.
-        // Agregamos la nueva medición RSSI y preservamos la metadata
-        // capturada durante la primera aparición.
-        final updatedHistory = [...existing.rssiHistory, device.rssi];
-
-        if (updatedHistory.length > 20) {
-          updatedHistory.removeAt(0);
-        }
-
-        processed[device.deviceId] = Node(
-          id: existing.id,
-          deviceUuid: existing.deviceUuid,
-          bleAddress: existing.bleAddress,
-          isSelf: existing.isSelf,
-          name: existing.name,
-          color: existing.color,
-          firstSeen: existing.firstSeen,
-          lastSeen: DateTime.now(),
-          rssiHistory: updatedHistory,
-          suggestedName: existing.suggestedName,
-          deviceType: device.deviceType ?? existing.deviceType,
-          connectable: device.connectable,
-          estimatedDistance: device.rssi < 0
-              ? rssiToDistance(device.rssi, txPowerLevel: device.txPowerLevel)
-              : null,
-        );
-      } else {
-        // Nuevo nodo o primera aparición de este dispositivo en el batch.
-        //
-        // deviceUuid todavía es null porque la identidad estable Nodos se
-        // obtiene posteriormente mediante GATT.
-        processed[device.deviceId] = Node(
-          bleAddress: device.deviceId,
-          name: null,
-          color: null,
-          firstSeen: DateTime.now(),
-          lastSeen: DateTime.now(),
-          rssiHistory: [device.rssi],
-          suggestedName: device.advName != null && device.advName!.isNotEmpty
-              ? device.advName
-              : null,
-          deviceType: device.deviceType,
-          connectable: device.connectable,
-          estimatedDistance: device.rssi < 0
-              ? rssiToDistance(device.rssi, txPowerLevel: device.txPowerLevel)
-              : null,
-        );
-      }
+      devicesById.putIfAbsent(device.deviceId, () => []).add(device);
     }
 
-    // Persistir todos los nodos procesados.
-    for (final node in processed.values) {
+    if (devicesById.isEmpty) return;
+
+    for (final entry in devicesById.entries) {
+      final deviceId = entry.key;
+      final samples = entry.value;
+
+      if (samples.isEmpty) continue;
+
+      final latestDevice = samples.last;
+
+      // Recuperamos el Node persistido para no perder el historial RSSI
+      // acumulado durante ciclos anteriores de escaneo.
+      final persisted = await _nodeRepository.getNodeByBleAddress(deviceId);
+
+      final combinedHistory = <int>[
+        ...?persisted?.rssiHistory,
+        ...samples.map((device) => device.rssi),
+      ];
+
+      // Conservamos solamente una ventana reciente.
+      final rssiHistory = combinedHistory.length <= _maxRssiSamples
+          ? List<int>.from(combinedHistory)
+          : combinedHistory.sublist(
+              combinedHistory.length - _maxRssiSamples,
+            );
+
+      final filteredRssi = _medianRssi(rssiHistory);
+
+      final estimatedDistance = filteredRssi != null
+          ? rssiToDistance(filteredRssi)
+          : null;
+
+      final now = DateTime.now();
+
+      Node node;
+
+      if (persisted != null) {
+        // Nodo ya conocido:
+        // preservamos identidad y metadata persistentes, actualizando
+        // únicamente la información proveniente del escaneo actual.
+        node = persisted.copyWith(
+          bleAddress: deviceId,
+          lastSeen: now,
+          rssiHistory: rssiHistory,
+          deviceType: latestDevice.deviceType,
+          connectable: latestDevice.connectable,
+          estimatedDistance: estimatedDistance,
+        );
+      } else {
+        // Primera aparición del dispositivo.
+        //
+        // deviceUuid permanece null hasta que el protocolo de identidad
+        // Nodos pueda obtenerlo mediante GATT.
+        node = Node(
+          bleAddress: deviceId,
+          name: null,
+          color: null,
+          firstSeen: now,
+          lastSeen: now,
+          rssiHistory: rssiHistory,
+          suggestedName:
+              latestDevice.advName != null &&
+                  latestDevice.advName!.isNotEmpty
+              ? latestDevice.advName
+              : null,
+          deviceType: latestDevice.deviceType,
+          connectable: latestDevice.connectable,
+          estimatedDistance: estimatedDistance,
+        );
+      }
+
       await _nodeRepository.upsertNode(node);
     }
 
-    // Asegurar que existe una suscripción al stream reactivo de Drift.
+    // Drift notificará las modificaciones mediante su stream reactivo.
     _ensureSubscription();
+  }
+
+  /// Obtiene un RSSI representativo a partir de un historial de muestras.
+  ///
+  /// Se utiliza la mediana porque es mucho menos sensible que la media
+  /// aritmética a lecturas BLE aberrantes aisladas.
+  ///
+  /// Ejemplo:
+  ///
+  /// [-52, -51, -53, -82, -52]
+  ///
+  /// La media se desplaza por -82.
+  /// La mediana permanece en -52.
+  ///
+  /// Para una cantidad par de muestras se utiliza el promedio de las
+  /// dos muestras centrales, redondeado al entero más cercano.
+  int? _medianRssi(List<int> samples) {
+    if (samples.isEmpty) return null;
+
+    final sorted = List<int>.from(samples)..sort();
+    final middle = sorted.length ~/ 2;
+
+    if (sorted.length.isOdd) {
+      return sorted[middle];
+    }
+
+    final lower = sorted[middle - 1];
+    final upper = sorted[middle];
+
+    return ((lower + upper) / 2).round();
   }
 
   /// Limpia el estado visible de nodos sin destruir datos persistentes.
@@ -364,7 +422,10 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
     Emitter<NodeListState> emit,
   ) async {
     await updateNodeMetadata(
-      UpdateNodeMetadataParams(id: event.nodeId, name: event.name),
+      UpdateNodeMetadataParams(
+        id: event.nodeId,
+        name: event.name,
+      ),
     );
   }
 
@@ -376,7 +437,10 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
     Emitter<NodeListState> emit,
   ) async {
     await updateNodeMetadata(
-      UpdateNodeMetadataParams(id: event.nodeId, color: event.color),
+      UpdateNodeMetadataParams(
+        id: event.nodeId,
+        color: event.color,
+      ),
     );
   }
 
@@ -432,7 +496,10 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
     );
   }
 
-  void _onNodesUpdated(_NodesUpdated event, Emitter<NodeListState> emit) {
+  void _onNodesUpdated(
+    _NodesUpdated event,
+    Emitter<NodeListState> emit,
+  ) {
     emit(NodeListLoaded(event.nodes));
   }
 
@@ -443,7 +510,10 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
     emit(const NodeListEmpty());
   }
 
-  void _onNodesLoadError(_NodesLoadError event, Emitter<NodeListState> emit) {
+  void _onNodesLoadError(
+    _NodesLoadError event,
+    Emitter<NodeListState> emit,
+  ) {
     emit(NodeListError(event.message));
   }
 

@@ -2854,8 +2854,10 @@ class $$NodesTableTableManager
               ),
           withReferenceMapper: (p0) => p0
               .map(
-                (e) =>
-                    (e.readTable(table), $$NodesTableReferences(db, table, e)),
+                (e) => (
+                  e.readTable<$NodesTable, NodeRow>(table),
+                  $$NodesTableReferences(db, table, e),
+                ),
               )
               .toList(),
           prefetchHooksCallback:
@@ -3210,8 +3212,10 @@ class $$UsersTableTableManager
               ),
           withReferenceMapper: (p0) => p0
               .map(
-                (e) =>
-                    (e.readTable(table), $$UsersTableReferences(db, table, e)),
+                (e) => (
+                  e.readTable<$UsersTable, User>(table),
+                  $$UsersTableReferences(db, table, e),
+                ),
               )
               .toList(),
           prefetchHooksCallback: ({localNodeId = false}) {
@@ -3574,7 +3578,7 @@ class $$ConnectionsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$ConnectionsTable, Connection>(table),
                   $$ConnectionsTableReferences(db, table, e),
                 ),
               )
@@ -3878,7 +3882,7 @@ class $$ScanSessionsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$ScanSessionsTable, ScanSession>(table),
                   $$ScanSessionsTableReferences(db, table, e),
                 ),
               )
@@ -4241,7 +4245,7 @@ class $$ScanSessionNodesTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$ScanSessionNodesTable, ScanSessionNode>(table),
                   $$ScanSessionNodesTableReferences(db, table, e),
                 ),
               )
