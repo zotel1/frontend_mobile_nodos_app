@@ -1,53 +1,91 @@
 import 'dart:math';
+
 import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 
-/// Proximity levels classified from RSSI signal strength.
+/// Niveles de proximidad derivados de la intensidad de señal BLE.
+///
+/// IMPORTANTE:
+/// RSSI permite estimar proximidad de forma razonable, pero no representa
+/// una medición física precisa de distancia.
 enum ProximityLevel { close, medium, far }
 
-/// Converts BLE RSSI value to estimated distance in meters.
+/// Convierte un RSSI BLE en una distancia aproximada expresada en metros.
 ///
-/// Uses the simplified log-distance path loss model:
-///   distance = 10 ^ ((txPower - rssi) / (10 * pathLossExponent))
+/// Utiliza el modelo log-distance:
 ///
-/// Where:
-/// - [txPower] is the assumed RSSI at 1 meter (from app_config.dart).
-/// - [pathLossExponent] is the n factor in the Friis formula (n=2.0 for
-///   free-space, higher for indoor environments).
+///   distance = 10 ^ ((measuredPower - rssi) / (10 * n))
 ///
-/// For rssi >= 0 (invalid/no signal), returns [double.infinity].
+/// donde:
 ///
-/// Si se provee [txPowerLevel], se usa ese valor en lugar de la constante
-/// [txPower] de configuración. Esto permite calcular distancia con la
-/// potencia de transmisión real anunciada por el dispositivo BLE, que
-/// puede diferir del valor asumido (-50 dBm).
+/// - [rssi] es la intensidad de señal recibida;
+/// - [txPower] representa el RSSI de referencia asumido a 1 metro;
+/// - [pathLossExponent] representa la pérdida de señal del entorno.
+///
+/// IMPORTANTE:
+///
+/// El Tx Power anunciado por un dispositivo BLE NO se utiliza directamente
+/// como RSSI calibrado a 1 metro.
+///
+/// Algunos dispositivos anuncian Tx Power y otros no, y ese valor describe
+/// la potencia de transmisión del dispositivo. No necesariamente equivale
+/// al RSSI que nuestro teléfono debería recibir a exactamente 1 metro.
+///
+/// Utilizarlo directamente como measuredPower puede producir estimaciones
+/// extremadamente incorrectas entre dispositivos diferentes.
+///
+/// Por esa razón Nodos App utiliza una referencia común configurada en
+/// [app_config.dart].
+///
+/// La distancia obtenida debe interpretarse exclusivamente como una
+/// estimación orientativa.
+///
+/// Para RSSI inválido (>= 0) devuelve [double.infinity].
 double rssiToDistance(int rssi, {int? txPowerLevel}) {
-  // Clamp: rssi >= 0 indicates invalid/no signal reading.
   if (rssi >= 0) {
     return double.infinity;
   }
-  final effectiveTxPower = txPowerLevel ?? txPower;
-  return pow(
-    10,
-    (effectiveTxPower - rssi) / (10 * pathLossExponent),
-  ).toDouble();
+
+  // No utilizamos txPowerLevel como measuredPower@1m.
+  //
+  // Se conserva el parámetro temporalmente para mantener compatibilidad
+  // con los callers existentes mientras estabilizamos el pipeline BLE.
+  final effectiveTxPower = txPower;
+
+  final exponent = (effectiveTxPower - rssi) / (10.0 * pathLossExponent);
+
+  final distance = pow(10.0, exponent).toDouble();
+
+  // Protección ante cualquier resultado matemáticamente inválido.
+  if (!distance.isFinite || distance.isNaN || distance < 0) {
+    return double.infinity;
+  }
+
+  return distance;
 }
 
-/// Classifies an RSSI reading into a [ProximityLevel].
+/// Clasifica un RSSI BLE en un nivel de proximidad.
 ///
-/// Thresholds:
-/// - rssi > -70 → [ProximityLevel.close]
-/// - -70 >= rssi >= -85 → [ProximityLevel.medium]
-/// - rssi < -85 → [ProximityLevel.far]
-/// - rssi >= 0 → [ProximityLevel.far] (invalid signal)
+/// La clasificación depende directamente de RSSI y no de la distancia
+/// estimada, porque RSSI → metros tiene un margen de error considerable.
+///
+/// Rangos actuales:
+///
+/// - RSSI > -70 dBm          → cerca
+/// - RSSI entre -70 y -85    → media
+/// - RSSI < -85 dBm          → lejos
+/// - RSSI >= 0               → lejos / lectura inválida
 ProximityLevel rssiToProximity(int rssi) {
   if (rssi >= 0) {
     return ProximityLevel.far;
   }
+
   if (rssi > -70) {
     return ProximityLevel.close;
   }
+
   if (rssi >= -85) {
     return ProximityLevel.medium;
   }
+
   return ProximityLevel.far;
 }
