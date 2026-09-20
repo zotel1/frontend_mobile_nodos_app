@@ -7,76 +7,83 @@ import 'package:frontend_mobile_nodos_app/features/visualization/domain/algorith
 /// Implementación concreta de [LayoutAlgorithm] usando Fruchterman-Reingold.
 ///
 /// Algoritmo dirigido por fuerzas que trata los nodos como partículas
-/// que se repelen (Coulomb) y las aristas como resortes que atraen
-/// (Hooke). Pensado para grafos de co-detección BLE con 5–50 nodos.
+/// que se repelen y las aristas como resortes que atraen.
 ///
-/// Elegido sobre Kamada-Kawai (O(n³) inmanejable para >20 nodos) y
-/// Eades (convergencia inestable sin enfriamiento). FR ofrece balance
-/// O(|V|²+|E|) por iteración con convergencia garantizada por
-/// temperatura decreciente (cooling factor 0.95).
+/// Está pensado para grafos BLE pequeños/medianos y se ejecuta en un
+/// Isolate mediante [compute] para no bloquear el hilo principal.
 ///
-/// Implementa [LayoutAlgorithm.calculate] que recibe y retorna
-/// [Map<String, dynamic>] compatibles con el límite de Isolate.
-/// La función top-level [calculateFRLayout] se mantiene para
-/// compatibilidad con [compute] de Flutter en la capa de datos.
+/// Soporta:
+/// - layout 2D;
+/// - layout 3D opcional mediante `depth`;
+/// - reutilización de posiciones previas;
+/// - nodo local (`isSelf`) anclado;
+/// - ejecución determinista mediante `seed` para tests.
 ///
-/// T5.2: Extendido a 3D. Las distancias ahora incluyen dz.
-/// Si no se proporciona `depth`, Z se mantiene en 0 (comportamiento 2D).
+/// El nodo local participa en el sistema de fuerzas, pero su posición
+/// no se modifica. De esta manera actúa como ancla física del grafo.
 class FruchtermanReingold implements LayoutAlgorithm {
   const FruchtermanReingold();
 
   @override
   Future<Map<String, dynamic>> calculate(Map<String, dynamic> params) async {
-    // Ejecuta el algoritmo FR en un Isolate separado para no bloquear
-    // el hilo principal de la UI. compute() spawn ea un Isolate, envía
-    // params, ejecuta calculateFRLayout, y retorna el resultado.
     return compute(calculateFRLayout, params);
   }
 }
 
-/// Calcula el layout del grafo usando el algoritmo de Fruchterman-Reingold.
+/// Calcula el layout usando Fruchterman-Reingold.
 ///
-/// (documentación existente preservada)
+/// Estructura esperada:
 ///
-/// Recibe un [params] con la estructura:
 /// ```dart
 /// {
-///   'nodes': [{id, x, y, z?}, ...],   // x,y,z=0 → posición aleatoria
+///   'nodes': [{id, x, y, z?, isSelf?}, ...],
 ///   'edges': [{fromId, toId}, ...],
 ///   'width': 2000.0,
 ///   'height': 2000.0,
-///   'depth': 2000.0,                    // opcional, 3D; fallback a height
+///   'depth': 2000.0,       // opcional; 0 = modo 2D
 ///   'iterations': 100,
-///   'k': 150.0,                      // distancia ideal entre nodos
-///   'temperature': 200.0,            // desplazamiento máximo inicial
+///   'k': 150.0,
+///   'temperature': 200.0,
 ///   'coolingFactor': 0.95,
-///   'seed': 42,                      // opcional, para tests deterministas
+///   'seed': 42,            // opcional
 /// }
 /// ```
 ///
-/// T5.2: Extendido a 3D. Las distancias ahora incluyen dz.
-/// Si no se proporciona `depth`, Z se mantiene en 0 (comportamiento 2D).
+/// El nodo marcado con `isSelf == true` permanece anclado, pero participa
+/// normalmente en las fuerzas repulsivas y atractivas.
 ///
-/// Retorna un Map con nodos reposicionados, aristas, iteraciones reales
-/// y flag de convergencia. Esta función es top-level para ser compatible
-/// con [compute] de Flutter, que requiere una función accesible desde
-/// un Isolate separado.
+/// Esta función es top-level porque debe poder ejecutarse mediante
+/// [compute] en un Isolate separado.
 Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
-  // ── Parámetros ──
+  // ─────────────────────────────────────────────────────────────
+  // 1. PARÁMETROS
+  // ─────────────────────────────────────────────────────────────
+
   final nodes = (params['nodes'] as List)
-      .map((n) => Map<String, dynamic>.from(n as Map))
+      .map((node) => Map<String, dynamic>.from(node as Map))
       .toList();
+
   final edges = (params['edges'] as List)
-      .map((e) => Map<String, dynamic>.from(e as Map))
+      .map((edge) => Map<String, dynamic>.from(edge as Map))
       .toList();
+
   final width = (params['width'] as num).toDouble();
   final height = (params['height'] as num).toDouble();
+
   final depth = (params['depth'] as num?)?.toDouble() ?? 0.0;
-  final hasDepth = depth > 0.0; // T5.2: flag para modo 3D activo
+
+  final hasDepth = depth > 0.0;
+
   final maxIterations = params['iterations'] as int? ?? 100;
+
   final k = (params['k'] as num?)?.toDouble() ?? 150.0;
+
   final coolingFactor = (params['coolingFactor'] as num?)?.toDouble() ?? 0.95;
+
   final seed = params['seed'] as int?;
+
+  double temperature =
+      (params['temperature'] as num?)?.toDouble() ?? (width / 10);
 
   if (nodes.isEmpty) {
     return {
@@ -87,49 +94,26 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
     };
   }
 
-  // ── Constantes de canvas ──
+  // ─────────────────────────────────────────────────────────────
+  // 2. CANVAS
+  // ─────────────────────────────────────────────────────────────
+
   const margin = 50.0;
-  final areaWidth = width - 2 * margin;
-  final areaHeight = height - 2 * margin;
-  final areaDepth = hasDepth ? depth - 2 * margin : 0.0;
 
-  // ── 1. Inicializar posiciones aleatorias si x,y,z == 0 ──
-  final random = Random(seed);
-  for (final node in nodes) {
-    final x = (node['x'] as num?)?.toDouble() ?? 0.0;
-    final y = (node['y'] as num?)?.toDouble() ?? 0.0;
-    if (x == 0.0 && y == 0.0) {
-      node['x'] = margin + random.nextDouble() * areaWidth;
-      node['y'] = margin + random.nextDouble() * areaHeight;
-    }
-    // T5.2: Inicializar Z aleatoria si el modo 3D está activo
-    final z = (node['z'] as num?)?.toDouble() ?? 0.0;
-    if (hasDepth && z == 0.0) {
-      node['z'] = margin + random.nextDouble() * areaDepth;
-    } else if (node['z'] == null) {
-      // Asegurar que z siempre exista en el mapa de salida
-      node['z'] = 0.0;
-    }
-  }
+  final areaWidth = max(0.0, width - (2 * margin));
+  final areaHeight = max(0.0, height - (2 * margin));
+  final areaDepth = hasDepth ? max(0.0, depth - (2 * margin)) : 0.0;
 
-  // ── Pre-construir índice de aristas para O(1) lookup ──
-  // Mapa: nodeId → lista de (índice del vecino, delta unitario inicial 0)
-  final adjacency = <int, List<int>>{};
-  for (var i = 0; i < nodes.length; i++) {
-    adjacency[(nodes[i]['id'] as num).toInt()] = [];
-  }
-  for (final edge in edges) {
-    final fromId = (edge['fromId'] as num).toInt();
-    final toId = (edge['toId'] as num).toInt();
-    adjacency[fromId]?.add(toId);
-    adjacency[toId]?.add(fromId);
-  }
+  final centerX = width / 2;
+  final centerY = height / 2;
+  final centerZ = hasDepth ? depth / 2 : 0.0;
 
-  // ── Identificar índice del self-node (REQ-SN-02) ──
-  // El self-node debe permanecer anclado en su posición inicial
-  // (centro del canvas). Se excluye de los 3 bucles de fuerza
-  // para que no sea desplazado por repulsión ni atracción.
-  int selfNodeIdx = -1;
+  // ─────────────────────────────────────────────────────────────
+  // 3. IDENTIFICAR SELF-NODE
+  // ─────────────────────────────────────────────────────────────
+
+  var selfNodeIdx = -1;
+
   for (var i = 0; i < nodes.length; i++) {
     if (nodes[i]['isSelf'] == true) {
       selfNodeIdx = i;
@@ -137,187 +121,300 @@ Map<String, dynamic> calculateFRLayout(Map<String, dynamic> params) {
     }
   }
 
-  // ── Buscar índice de nodo por id ──
-  int indexOfId(int id) {
-    for (var i = 0; i < nodes.length; i++) {
-      if ((nodes[i]['id'] as num).toInt() == id) return i;
+  // ─────────────────────────────────────────────────────────────
+  // 4. INICIALIZAR POSICIONES
+  // ─────────────────────────────────────────────────────────────
+
+  final random = Random(seed);
+
+  for (var i = 0; i < nodes.length; i++) {
+    final node = nodes[i];
+
+    final x = (node['x'] as num?)?.toDouble() ?? 0.0;
+
+    final y = (node['y'] as num?)?.toDouble() ?? 0.0;
+
+    final z = (node['z'] as num?)?.toDouble() ?? 0.0;
+
+    // El nodo local funciona como ancla central.
+    //
+    // Si todavía no tiene una posición válida, se coloca exactamente
+    // en el centro del espacio disponible.
+    if (i == selfNodeIdx) {
+      if (x == 0.0 && y == 0.0) {
+        node['x'] = centerX;
+        node['y'] = centerY;
+      }
+
+      if (hasDepth) {
+        if (z == 0.0) {
+          node['z'] = centerZ;
+        }
+      } else {
+        node['z'] = 0.0;
+      }
+
+      continue;
     }
-    return -1;
+
+    // Los nodos sin posición previa reciben una posición aleatoria.
+    if (x == 0.0 && y == 0.0) {
+      node['x'] = margin + random.nextDouble() * areaWidth;
+
+      node['y'] = margin + random.nextDouble() * areaHeight;
+    }
+
+    if (hasDepth) {
+      if (z == 0.0) {
+        node['z'] = margin + random.nextDouble() * areaDepth;
+      }
+    } else {
+      node['z'] = 0.0;
+    }
   }
 
-  // ── 2. Bucle principal de Fruchterman-Reingold ──
-  double temperature =
-      (params['temperature'] as num?)?.toDouble() ?? (width / 10);
+  // ─────────────────────────────────────────────────────────────
+  // 5. ÍNDICE ID → POSICIÓN EN LA LISTA
+  // ─────────────────────────────────────────────────────────────
+
+  // Evita recorrer todos los nodos por cada arista.
+  //
+  // Antes:
+  //   indexOfId() → O(|V|) por lookup.
+  //
+  // Ahora:
+  //   Map lookup → O(1).
+  final nodeIndexById = <int, int>{};
+
+  for (var i = 0; i < nodes.length; i++) {
+    final id = (nodes[i]['id'] as num).toInt();
+    nodeIndexById[id] = i;
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // 6. BUCLE PRINCIPAL FR
+  // ─────────────────────────────────────────────────────────────
+
   var converged = false;
   var actualIterations = 0;
 
   for (var iter = 0; iter < maxIterations; iter++) {
     actualIterations = iter + 1;
 
-    // Inicializar vector de desplazamiento para cada nodo (2D + 3D)
     final displacementX = List<double>.filled(nodes.length, 0.0);
+
     final displacementY = List<double>.filled(nodes.length, 0.0);
+
     final displacementZ = hasDepth
         ? List<double>.filled(nodes.length, 0.0)
         : <double>[];
 
-    // ── a. Fuerzas repulsivas: Coulomb entre todos los pares O(|V|²) ──
-    // Ley de Coulomb: fr = k² / d
-    // Cada nodo repele a todos los demás. La fuerza es inversamente
-    // proporcional a la distancia: los nodos muy cercanos se repelen fuerte.
-    // T5.2: Distancia ahora incluye dz en modo 3D.
+    // ───────────────────────────────────────────────────────────
+    // 6.A FUERZAS REPULSIVAS
+    // ───────────────────────────────────────────────────────────
+    //
+    // fr = k² / d
+    //
+    // IMPORTANTE:
+    // El self-node también participa.
+    //
+    // Aunque acumule desplazamiento, ese desplazamiento nunca se
+    // aplicará posteriormente porque su posición está anclada.
+
     for (var i = 0; i < nodes.length; i++) {
       for (var j = i + 1; j < nodes.length; j++) {
-        // REQ-SN-02: self-node no repele ni es repelido
-        // El self-node permanece anclado al centro; excluirlo evita que
-        // desplace nodos externos hacia afuera artificialmente.
-        if (i == selfNodeIdx || j == selfNodeIdx) continue;
-
         final dx =
             (nodes[i]['x'] as num).toDouble() -
             (nodes[j]['x'] as num).toDouble();
+
         final dy =
             (nodes[i]['y'] as num).toDouble() -
             (nodes[j]['y'] as num).toDouble();
-        double dist2D = dx * dx + dy * dy;
+
+        var distanceSquared = (dx * dx) + (dy * dy);
+
+        double dz = 0.0;
 
         if (hasDepth) {
-          final dz =
+          dz =
               (nodes[i]['z'] as num).toDouble() -
               (nodes[j]['z'] as num).toDouble();
-          dist2D += dz * dz;
+
+          distanceSquared += dz * dz;
         }
 
-        final dist = sqrt(dist2D).clamp(0.01, double.infinity);
+        final distance = sqrt(distanceSquared).clamp(0.01, double.infinity);
 
-        // fr = k² / d  — fuerza repulsiva (Coulomb)
-        final fr = (k * k) / dist;
+        final repulsiveForce = (k * k) / distance;
 
-        // El nodo i recibe fuerza en dirección opuesta a j
-        displacementX[i] += (dx / dist) * fr;
-        displacementY[i] += (dy / dist) * fr;
-        // El nodo j recibe fuerza en dirección opuesta a i
-        displacementX[j] -= (dx / dist) * fr;
-        displacementY[j] -= (dy / dist) * fr;
+        final normalizedX = dx / distance;
+        final normalizedY = dy / distance;
 
-        // T5.2: Componente Z de la fuerza repulsiva
+        displacementX[i] += normalizedX * repulsiveForce;
+
+        displacementY[i] += normalizedY * repulsiveForce;
+
+        displacementX[j] -= normalizedX * repulsiveForce;
+
+        displacementY[j] -= normalizedY * repulsiveForce;
+
         if (hasDepth) {
-          final dz =
-              (nodes[i]['z'] as num).toDouble() -
-              (nodes[j]['z'] as num).toDouble();
-          displacementZ[i] += (dz / dist) * fr;
-          displacementZ[j] -= (dz / dist) * fr;
+          final normalizedZ = dz / distance;
+
+          displacementZ[i] += normalizedZ * repulsiveForce;
+
+          displacementZ[j] -= normalizedZ * repulsiveForce;
         }
       }
     }
 
-    // ── b. Fuerzas atractivas: Hooke solo entre adyacentes O(|E|) ──
-    // Ley de Hooke: fa = d² / k
-    // Las aristas actúan como resortes que atraen nodos conectados.
-    // La fuerza crece con la distancia: nodos lejanos se atraen más.
-    // T5.2: Distancia ahora incluye dz en modo 3D.
-    for (final edge in edges) {
-      final fromIdx = indexOfId((edge['fromId'] as num).toInt());
-      final toIdx = indexOfId((edge['toId'] as num).toInt());
-      if (fromIdx < 0 || toIdx < 0) continue;
+    // ───────────────────────────────────────────────────────────
+    // 6.B FUERZAS ATRACTIVAS
+    // ───────────────────────────────────────────────────────────
+    //
+    // fa = d² / k
+    //
+    // Las aristas funcionan como resortes.
+    //
+    // Las conexiones con el nodo local también participan:
+    // el nodo remoto es atraído hacia el self-node, mientras que el
+    // self-node permanece físicamente anclado.
 
-      // REQ-SN-02: aristas con el self-node no generan fuerza atractiva.
-      // El self-node no debe ser atraído hacia ningún otro nodo.
-      if (fromIdx == selfNodeIdx || toIdx == selfNodeIdx) continue;
+    for (final edge in edges) {
+      final fromId = (edge['fromId'] as num).toInt();
+
+      final toId = (edge['toId'] as num).toInt();
+
+      final fromIdx = nodeIndexById[fromId];
+      final toIdx = nodeIndexById[toId];
+
+      if (fromIdx == null || toIdx == null) {
+        continue;
+      }
+
+      // Una auto-arista no aporta información útil al layout.
+      if (fromIdx == toIdx) {
+        continue;
+      }
 
       final dx =
           (nodes[fromIdx]['x'] as num).toDouble() -
           (nodes[toIdx]['x'] as num).toDouble();
+
       final dy =
           (nodes[fromIdx]['y'] as num).toDouble() -
           (nodes[toIdx]['y'] as num).toDouble();
-      double dist2D = dx * dx + dy * dy;
+
+      var distanceSquared = (dx * dx) + (dy * dy);
+
+      double dz = 0.0;
 
       if (hasDepth) {
-        final dz =
+        dz =
             (nodes[fromIdx]['z'] as num).toDouble() -
             (nodes[toIdx]['z'] as num).toDouble();
-        dist2D += dz * dz;
+
+        distanceSquared += dz * dz;
       }
 
-      final dist = sqrt(dist2D).clamp(0.01, double.infinity);
+      final distance = sqrt(distanceSquared).clamp(0.01, double.infinity);
 
-      // fa = d² / k  — fuerza atractiva (Hooke)
-      final fa = (dist * dist) / k;
+      final attractiveForce = (distance * distance) / k;
 
-      // Atraer fromIdx hacia toIdx (dirección opuesta al vector dx,dy)
-      displacementX[fromIdx] -= (dx / dist) * fa;
-      displacementY[fromIdx] -= (dy / dist) * fa;
-      // Atraer toIdx hacia fromIdx
-      displacementX[toIdx] += (dx / dist) * fa;
-      displacementY[toIdx] += (dy / dist) * fa;
+      final normalizedX = dx / distance;
+      final normalizedY = dy / distance;
 
-      // T5.2: Componente Z de la fuerza atractiva
+      displacementX[fromIdx] -= normalizedX * attractiveForce;
+
+      displacementY[fromIdx] -= normalizedY * attractiveForce;
+
+      displacementX[toIdx] += normalizedX * attractiveForce;
+
+      displacementY[toIdx] += normalizedY * attractiveForce;
+
       if (hasDepth) {
-        final dz =
-            (nodes[fromIdx]['z'] as num).toDouble() -
-            (nodes[toIdx]['z'] as num).toDouble();
-        displacementZ[fromIdx] -= (dz / dist) * fa;
-        displacementZ[toIdx] += (dz / dist) * fa;
+        final normalizedZ = dz / distance;
+
+        displacementZ[fromIdx] -= normalizedZ * attractiveForce;
+
+        displacementZ[toIdx] += normalizedZ * attractiveForce;
       }
     }
 
-    // ── c. Aplicar desplazamiento con cap de temperatura ──
-    // La temperatura limita el desplazamiento máximo en esta iteración.
-    // Sin este cap, los nodos oscilarían sin converger.
-    // T5.2: El desplazamiento máximo ahora incluye la componente Z.
-    var maxDisplacement = 0.0;
+    // ───────────────────────────────────────────────────────────
+    // 6.C APLICAR DESPLAZAMIENTO
+    // ───────────────────────────────────────────────────────────
+
+    var maxAppliedDisplacement = 0.0;
+
     for (var i = 0; i < nodes.length; i++) {
-      // REQ-SN-02: self-node no se desplaza — permanece anclado
-      // en su posición inicial (centro del canvas, 1000,1000,0).
-      if (i == selfNodeIdx) continue;
-
-      var disp2D =
-          displacementX[i] * displacementX[i] +
-          displacementY[i] * displacementY[i];
-
-      if (hasDepth) {
-        disp2D += displacementZ[i] * displacementZ[i];
+      // El self-node participa en las fuerzas pero NO se mueve.
+      if (i == selfNodeIdx) {
+        continue;
       }
 
-      final disp = sqrt(disp2D);
+      var displacementSquared =
+          (displacementX[i] * displacementX[i]) +
+          (displacementY[i] * displacementY[i]);
 
-      if (disp > maxDisplacement) maxDisplacement = disp;
+      if (hasDepth) {
+        displacementSquared += displacementZ[i] * displacementZ[i];
+      }
 
-      if (disp > 0.0) {
-        // Cap: el desplazamiento no puede exceder la temperatura
-        final scale = disp.clamp(0.0, temperature) / disp;
+      final displacement = sqrt(displacementSquared);
 
-        final nx = (nodes[i]['x'] as num).toDouble() + displacementX[i] * scale;
-        final ny = (nodes[i]['y'] as num).toDouble() + displacementY[i] * scale;
+      if (displacement <= 0.0) {
+        continue;
+      }
 
-        // ── d. Clampear al canvas con margen ──
-        // Evita que los nodos se escapen del área visible.
-        nodes[i]['x'] = nx.clamp(margin, width - margin);
-        nodes[i]['y'] = ny.clamp(margin, height - margin);
+      // La temperatura limita cuánto puede moverse realmente
+      // un nodo durante esta iteración.
+      final appliedDisplacement = min(displacement, temperature);
 
-        // T5.2: Clampear Z si el modo 3D está activo
-        if (hasDepth) {
-          final nz =
-              (nodes[i]['z'] as num).toDouble() + displacementZ[i] * scale;
-          nodes[i]['z'] = nz.clamp(margin, depth - margin);
-        }
+      if (appliedDisplacement > maxAppliedDisplacement) {
+        maxAppliedDisplacement = appliedDisplacement;
+      }
+
+      final scale = appliedDisplacement / displacement;
+
+      final newX = (nodes[i]['x'] as num).toDouble() + displacementX[i] * scale;
+
+      final newY = (nodes[i]['y'] as num).toDouble() + displacementY[i] * scale;
+
+      nodes[i]['x'] = newX.clamp(margin, width - margin);
+
+      nodes[i]['y'] = newY.clamp(margin, height - margin);
+
+      if (hasDepth) {
+        final newZ =
+            (nodes[i]['z'] as num).toDouble() + displacementZ[i] * scale;
+
+        nodes[i]['z'] = newZ.clamp(margin, depth - margin);
       }
     }
 
-    // ── e. Enfriar temperatura ──
-    // Factor multiplicativo 0.95 reduce temperatura gradualmente,
-    // congelando las posiciones a medida que se acerca al equilibrio.
+    // ───────────────────────────────────────────────────────────
+    // 6.D ENFRIAMIENTO
+    // ───────────────────────────────────────────────────────────
+
     temperature *= coolingFactor;
 
-    // ── f. Convergencia temprana ──
-    // Si el desplazamiento máximo es < 1px después de 10 iteraciones,
-    // el sistema está en equilibrio y podemos cortar.
-    if (maxDisplacement < 1.0 && iter > 10) {
+    // ───────────────────────────────────────────────────────────
+    // 6.E CONVERGENCIA TEMPRANA
+    // ───────────────────────────────────────────────────────────
+    //
+    // Medimos desplazamiento REAL aplicado, no la fuerza bruta
+    // acumulada antes del límite de temperatura.
+
+    if (maxAppliedDisplacement < 1.0 && iter > 10) {
       converged = true;
       break;
     }
   }
+
+  // ─────────────────────────────────────────────────────────────
+  // 7. RESULTADO
+  // ─────────────────────────────────────────────────────────────
 
   return {
     'nodes': nodes,

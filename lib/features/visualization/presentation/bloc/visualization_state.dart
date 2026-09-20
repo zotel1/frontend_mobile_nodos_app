@@ -1,14 +1,18 @@
 import 'dart:ui';
 
 import 'package:equatable/equatable.dart';
+
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
 
-/// Estados de la visualización del grafo.
+/// Estados posibles de la visualización del grafo.
 ///
-/// Sigue el patrón de máquina de estados BLoC para gestionar
-/// el ciclo de vida completo: inicial → construyendo → listo/vista
-/// del grafo → error. Cada estado es inmutable y extiende Equatable
-/// para comparación eficiente.
+/// La visualización sigue una máquina de estados BLoC:
+///
+/// inicial → construyendo → listo
+///                       ↘ error
+///
+/// El estado es inmutable y utiliza Equatable para evitar
+/// reconstrucciones innecesarias cuando sus valores no cambian.
 abstract class VisualizationState extends Equatable {
   const VisualizationState();
 
@@ -16,45 +20,74 @@ abstract class VisualizationState extends Equatable {
   List<Object?> get props => [];
 }
 
-/// Estado inicial antes de cualquier acción del usuario o sistema.
+/// Estado inicial antes de construir el grafo.
 class VisualizationInitial extends VisualizationState {
   const VisualizationInitial();
 }
 
-/// El grafo se está construyendo y posicionando.
+/// El grafo está siendo construido o posicionado.
 ///
-/// La UI debe mostrar un indicador de carga mientras se ejecutan
-/// BuildGraph (repositorio) y CalculateLayout (Isolate FR).
+/// Se utiliza principalmente durante la carga inicial.
+/// Las actualizaciones BLE posteriores intentan conservar el grafo
+/// visible para evitar parpadeos o reinicios visuales.
 class GraphBuilding extends VisualizationState {
   const GraphBuilding();
 }
 
-/// El grafo está listo para ser renderizado por GraphPainter.
+/// El grafo está listo para ser renderizado.
 ///
-/// [selectedNodeId] es no-nulo cuando el usuario tocó un nodo
-/// y el tooltip está visible. Nulo cuando no hay selección activa.
+/// Existen dos conceptos de interacción independientes:
 ///
-/// [barycenter] es el centro geométrico del cluster de nodos
-/// (promedio de todas las posiciones x,y). Se usa en GraphView
-/// para centrar la vista automáticamente en el primer GraphReady (R5.13).
-/// Agregado en PR2.
+/// [selectedNodeId]
+///   Nodo seleccionado mediante un toque simple.
+///   Se utiliza para el menú/acción actual del nodo.
+///
+/// [detailsNodeId]
+///   Nodo cuyos detalles fueron solicitados mediante doble toque.
+///   Se utilizará para mostrar nombre, identidad, distancia u otra
+///   información contextual sin llenar permanentemente el grafo
+///   de etiquetas.
+///
+/// Ambos valores son independientes. Esto permite que la selección
+/// funcional de un nodo no esté acoplada a la visualización de detalles.
+///
+/// [barycenter]
+///   Centro inicial del grafo utilizado por GraphView para realizar
+///   el primer centrado del viewport.
+///
+/// Después del centrado inicial, GraphView conserva la transformación
+/// elegida por el usuario.
 class GraphReady extends VisualizationState {
   final LayoutResult layout;
+
+  /// Nodo seleccionado mediante toque simple.
   final int? selectedNodeId;
 
-  /// Centro geométrico del cluster: promedio de posiciones (x,y).
-  /// null si el layout está vacío (no debería ocurrir en este estado).
+  /// Nodo cuyos detalles están visibles.
+  ///
+  /// null significa que actualmente no se muestran detalles.
+  final int? detailsNodeId;
+
+  /// Centro del cluster utilizado para el centrado inicial.
   final Offset? barycenter;
 
-  const GraphReady(this.layout, {this.selectedNodeId, this.barycenter});
+  const GraphReady(
+    this.layout, {
+    this.selectedNodeId,
+    this.detailsNodeId,
+    this.barycenter,
+  });
 
   @override
-  List<Object?> get props => [layout, selectedNodeId, barycenter];
+  List<Object?> get props => [
+    layout,
+    selectedNodeId,
+    detailsNodeId,
+    barycenter,
+  ];
 }
 
 /// Ocurrió un error al construir el grafo o calcular su layout.
-///
-/// La UI muestra el mensaje de error y puede ofrecer reintentar.
 class GraphError extends VisualizationState {
   final String message;
 

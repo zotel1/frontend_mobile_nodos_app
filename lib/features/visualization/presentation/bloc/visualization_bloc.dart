@@ -1,87 +1,105 @@
 import 'dart:async';
-
+import 'dart:math' as math;
 import 'dart:ui';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_edge.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_node.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/usecases/build_graph.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/usecases/calculate_layout.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_event.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_state.dart';
 
-/// BLoC que orquesta la construcción y posicionamiento del grafo de
-/// visualización.
+/// Tick interno de la simulación física.
 ///
-/// Responsabilidades:
-/// - Procesar [BuildGraphRequested]: construir el grafo desde el repositorio,
-///   luego calcular el layout con Fruchterman-Reingold en un Isolate.
-/// - Debounce de 1s para evitar reconstrucciones excesivas durante
-///   escaneos BLE rápidos (múltiples detecciones por segundo).
-/// - Position cache: almacena el último [LayoutResult] y lo reutiliza
-///   como priorLayout en el siguiente cálculo, reduciendo iteraciones
-///   de FR de 100 a 30.
-/// - Gestionar selección/deselección de nodos para el tooltip.
+/// No forma parte de la API pública de interacción del grafo.
+class _PhysicsTick extends VisualizationEvent {
+  const _PhysicsTick();
+}
+
+/// Orquesta construcción, actualización e interacción del grafo.
 ///
-/// Usa [BuildGraph] para obtener nodos y aristas desde el repositorio,
-/// y [CalculateLayout] para ejecutar Fruchterman-Reingold en un Isolate.
+/// Existen dos mecanismos de posicionamiento diferentes:
 ///
-/// Estrategia de debounce: usa un contador de secuencia (_debounceSeq).
-/// Cada BuildGraphRequested incrementa el contador. El handler espera
-/// la duración configurada y solo procesa si el número de secuencia
-/// no cambió durante la espera (es decir, no llegó un evento más nuevo).
-/// Esto evita depender de Timer, que ejecuta el callback fuera del
-/// ciclo de vida del event handler de BLoC, causando el error
-/// "emit was called after an event handler completed normally".
+/// 1. CalculateLayout / Fruchterman-Reingold:
+///    utilizado para la carga inicial y cambios estructurales.
+///
+/// 2. Simulación incremental:
+///    utilizada durante el drag y la relajación posterior.
+///
+/// `_lastLayout` es siempre la memoria espacial autoritativa.
 class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
   final BuildGraph _buildGraph;
   final CalculateLayout _calculateLayout;
   final Duration _debounceDuration;
 
-  /// Cache del último layout calculado. Se reutiliza como [priorLayout]
-  /// en la siguiente llamada a CalculateLayout para reducir iteraciones
-  /// (100→30) y temperatura inicial, acelerando la convergencia.
   LayoutResult? _lastLayout;
 
-  /// Contador de secuencia para el debounce.
-  /// Cada BuildGraphRequested incrementa este contador. El handler
-  /// espera la ventana de debounce y solo procesa si el contador
-  /// coincide con el valor al inicio de la espera.
   int _debounceSeq = 0;
-
-  /// Hash del último conjunto de nodos procesados, combinando IDs y
-  /// niveles de proximidad (RSSI).
-  ///
-  /// PR7: antes era `Set<int>` (_lastNodeIds) comparando solo IDs.
-  /// Ahora incluye el último RSSI de cada nodo en el hash para detectar
-  /// cambios de proximidad: si los mismos dispositivos se detectan con
-  /// RSSI distinto (el usuario se movió), el grafo debe reconstruirse
-  /// para reflejar el nuevo nivel de proximidad en los colores.
   int _lastNodeHash = 0;
 
-  /// Guardia contra builds concurrentes (F1: _isBuilding).
-  ///
-  /// Cubre el edge case donde el timer de debounce dispara mientras
-  /// un build anterior todavía está en vuelo. `true` mientras
-  /// [processBuildRequest] está ejecutándose.
   bool _isBuilding = false;
 
-  /// Centro geométrico del cluster de nodos (promedio x,y).
+  /// Nodo fijado actualmente por el dedo.
+  int? _draggedNodeId;
+
+  /// Velocidad actual de cada nodo.
+  final Map<int, Offset> _velocities = <int, Offset>{};
+
+  /// Longitud de reposo de cada resorte.
   ///
-  /// Se calcula en [processBuildRequest] al recibir el layout final.
-  /// GraphView lo usa para centrar la vista en el primer GraphReady
-  /// con converged=true (R5.13). Agregado en PR2.
+  /// Se captura al comenzar una interacción para que el grafo intente
+  /// conservar aproximadamente su geometría anterior en vez de colapsar
+  /// hacia una distancia arbitraria.
+  final Map<String, double> _springRestLengths = <String, double>{};
+
+  Timer? _physicsTimer;
+
+  /// Cantidad de ticks consecutivos con movimiento prácticamente nulo.
+  int _settledTicks = 0;
+
   Offset? _barycenter;
 
-  /// Expone [isBuilding] para tests (F1.2).
   @visibleForTesting
   bool get isBuilding => _isBuilding;
 
-  /// Tamaño fijo del canvas donde se posiciona el grafo.
-  /// 2000×2000 píxeles da espacio suficiente para 50+ nodos sin
-  /// solapamiento.
-  static const _canvasWidth = 2000.0;
-  static const _canvasHeight = 2000.0;
+  @visibleForTesting
+  int? get draggedNodeId => _draggedNodeId;
+
+  static const double _canvasWidth = 2000.0;
+  static const double _canvasHeight = 2000.0;
+  static const double _canvasDepth = 2000.0;
+
+  static const double _canvasMargin = 30.0;
+
+  /// ~30 FPS es suficiente para este tipo de grafo y reduce trabajo
+  /// innecesario frente a una simulación de 60 FPS.
+  static const Duration _physicsInterval = Duration(milliseconds: 33);
+
+  /// Intensidad de los resortes.
+  static const double _directSpringStrength = 0.020;
+  static const double _transitiveSpringStrength = 0.008;
+
+  /// Amortiguación de velocidad.
+  ///
+  /// Cuanto menor sea, antes se detendrá el sistema.
+  static const double _damping = 0.82;
+
+  /// Límite de velocidad por tick para evitar explosiones numéricas.
+  static const double _maxSpeed = 24.0;
+
+  /// Repulsión local para evitar que dos nodos terminen exactamente
+  /// superpuestos durante la relajación.
+  static const double _repulsionDistance = 90.0;
+  static const double _repulsionStrength = 0.035;
+
+  /// Umbral para considerar que el sistema prácticamente se detuvo.
+  static const double _settledSpeed = 0.12;
+
+  static const int _settledTicksRequired = 10;
 
   VisualizationBloc({
     required BuildGraph buildGraph,
@@ -92,117 +110,98 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
        _debounceDuration = debounceDuration,
        super(const VisualizationInitial()) {
     on<BuildGraphRequested>(_onBuildGraphRequested);
+
     on<NodeSelected>(_onNodeSelected);
     on<NodeDeselected>(_onNodeDeselected);
-    // T-PR1-012: Handler para reintentar construcción del grafo tras error.
+
+    on<NodeDetailsToggled>(_onNodeDetailsToggled);
+    on<NodeDetailsDismissed>(_onNodeDetailsDismissed);
+
+    on<NodeDragStarted>(_onNodeDragStarted);
+    on<NodeDragUpdated>(_onNodeDragUpdated);
+    on<NodeDragEnded>(_onNodeDragEnded);
+
+    on<_PhysicsTick>(_onPhysicsTick);
+
     on<RetryGraphBuild>(_onRetryGraphBuild);
   }
 
-  /// Aplica debounce a BuildGraphRequested usando un contador de secuencia.
-  ///
-  /// Problema que resuelve: durante un escaneo BLE, NodeListBloc emite
-  /// NodeListLoaded múltiples veces por segundo (cada paquete de
-  /// advertisement recibido). Sin debounce, se dispararía una
-  /// reconstrucción completa del grafo por cada emisión, saturando
-  /// el Isolate y causando lag visual.
-  ///
-  /// Mecanismo: cada evento incrementa _debounceSeq. El handler espera
-  /// _debounceDuration y verifica que el contador no haya cambiado.
-  /// Si cambió (llegó otro evento), este handler se descarta y el
-  /// nuevo evento tomará el control.
   Future<void> _onBuildGraphRequested(
     BuildGraphRequested event,
     Emitter<VisualizationState> emit,
   ) async {
-    // PR7: Dedup con hash de IDs + proximity.
-    //
-    // Antes (F1) se comparaba solo el Set<int> de node IDs. Esto ignoraba
-    // cambios de RSSI/proximidad: si el usuario se movía, los mismos
-    // nodos aparecían con distinto RSSI pero el grafo no se actualizaba.
-    //
-    // Ahora se computa un hash combinando cada (nodeId, lastRssi).
-    // Si algún nodo cambió de proximidad (RSSI distinto), el hash
-    // cambia y se procesa el build. Si IDs + RSSI son idénticos
-    // (escaneo estable), se hace dedup para ahorrar cómputo.
     final currentHash = _computeNodeHash(event.nodes);
 
     if (_lastNodeHash != 0 && _lastNodeHash == currentHash) {
-      return; // Mismos IDs + misma proximidad: dedup
+      return;
     }
 
-    // BUG-FIX: invalidar cache de layout cuando cambia el set de nodos.
-    // Si no se resetea, _lastLayout (del set anterior con menos nodos)
-    // se usa como source en CalculateLayout, truncando los nodos nuevos.
-    if (_lastNodeHash != 0 && _lastNodeHash != currentHash) {
-      _lastLayout = null;
-    }
     _lastNodeHash = currentHash;
+
     _debounceSeq++;
-    final int currentSeq = _debounceSeq;
+
+    final currentSeq = _debounceSeq;
 
     await Future<void>.delayed(_debounceDuration);
 
-    if (currentSeq != _debounceSeq || isClosed) return;
+    if (currentSeq != _debounceSeq || isClosed) {
+      return;
+    }
 
     await processBuildRequest(event, emit);
   }
 
-  /// PR7: Computa un hash estable combinando IDs de nodo y último RSSI.
-  ///
-  /// Usa un [Set] de strings `$id:$rssi` para eliminar duplicados (si un
-  /// nodo aparece múltiples veces en la lista de entrada, se cuenta una
-  /// sola). Luego ordena alfabéticamente para garantizar determinismo
-  /// independiente del orden de entrada. Finalmente aplica
-  /// [Object.hashAll] sobre la lista ordenada.
-  ///
-  /// Garantías:
-  /// - Mismos IDs + mismo RSSI → mismo hash (dedup efectivo)
-  /// - Mismos IDs + distinto RSSI → distinto hash (se reconstruye)
-  /// - Nodos duplicados en la lista → mismo hash que sin duplicados
   int _computeNodeHash(List<dynamic> nodes) {
     final keys = <String>{};
-    for (final n in nodes) {
-      if (n.id == null) continue;
-      final rssi = (n.rssiHistory is List && (n.rssiHistory as List).isNotEmpty)
-          ? (n.rssiHistory as List).last
+
+    for (final node in nodes) {
+      if (node.id == null) {
+        continue;
+      }
+
+      final rssi =
+          node.rssiHistory is List && (node.rssiHistory as List).isNotEmpty
+          ? (node.rssiHistory as List).last
           : -100;
-      keys.add('${n.id}:$rssi');
+
+      keys.add('${node.id}:$rssi');
     }
+
     final sorted = keys.toList()..sort();
+
     return Object.hashAll(sorted);
   }
 
-  /// Procesa la construcción y layout del grafo.
-  ///
-  /// Flujo:
-  /// 1. Emite [GraphBuilding] para que la UI muestre indicador de carga.
-  /// 2. Llama a [BuildGraph] para obtener nodos y aristas iniciales
-  ///    desde el repositorio (posiciones iniciales circulares).
-  /// 3. Llama a [CalculateLayout] con posición cache (si existe) para
-  ///    refinar posiciones con Fruchterman-Reingold. La cache reduce
-  ///    iteraciones de 100 a 30 y la temperatura inicial, acelerando
-  ///    la convergencia para recomputaciones.
-  /// 4. Emite [GraphReady] con el resultado, o [GraphError] si falla.
-  ///
-  /// F1: _isBuilding previene llamados concurrentes — si otro build
-  /// está en vuelo, el nuevo request se ignora.
   @visibleForTesting
   Future<void> processBuildRequest(
     BuildGraphRequested event,
     Emitter<VisualizationState> emit,
   ) async {
-    // F1: Guardia contra builds concurrentes
-    if (_isBuilding) return;
+    if (_isBuilding) {
+      return;
+    }
+
     _isBuilding = true;
 
     try {
-      emit(const GraphBuilding());
+      final previousLayout = _lastLayout;
+      final currentState = state;
 
-      // Paso 1: Construir grafo desde el repositorio.
-      // PR2: pasar myDeviceUuid para marcar self-node en el grafo.
-      
-      // ARCH-001: userName/userColor permanecen por compatibilidad.
-      // La identidad principal del self-node proviene ahora de Nodes.
+      final isInitialBuild =
+          previousLayout == null || currentState is VisualizationInitial;
+
+      final selectedNodeId = currentState is GraphReady
+          ? currentState.selectedNodeId
+          : null;
+
+      final detailsNodeId = currentState is GraphReady
+          ? currentState.detailsNodeId
+          : null;
+
+      if (isInitialBuild) {
+        emit(const GraphBuilding());
+      }
+
       final buildResult = await _buildGraph(
         event.scanSessionId,
         myDeviceUuid: event.myDeviceUuid,
@@ -215,103 +214,665 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
         return null;
       }, (layout) => layout);
 
-      if (initialLayout == null) return;
+      if (initialLayout == null) {
+        return;
+      }
 
-      // F2: Si buildGraph retorna un layout sin nodos, emitir error
-      // en lugar de proceder con el cálculo de layout (que también
-      // sería vacío). El usuario recibe feedback claro en lugar de
-      // un canvas en blanco.
       if (initialLayout.nodes.isEmpty) {
         emit(const GraphError('No se encontraron nodos en la sesión'));
         return;
       }
 
-      // Paso 2: Calcular layout con FR, reusando cache si existe.
-      // REQ-GL-03: depth=2000 activa el modo 3D del algoritmo FR,
-      // permitiendo que los nodos exploren el eje Z (profundidad).
+      final topologyChanged =
+          previousLayout == null ||
+          _hasTopologyChanged(previous: previousLayout, current: initialLayout);
+
       final calcResult = await _calculateLayout(
         initialLayout,
         _canvasWidth,
         _canvasHeight,
-        depth: 2000.0,
-        priorLayout: _lastLayout,
+        depth: _canvasDepth,
+        priorLayout: previousLayout,
+        stabilize: topologyChanged,
       );
 
-      calcResult.fold((failure) => emit(GraphError(failure.message)), (layout) {
-        // Cachear layout para el próximo BuildGraphRequested
-        _lastLayout = layout;
+      calcResult.fold(
+        (failure) {
+          emit(GraphError(failure.message));
+        },
+        (layout) {
+          _lastLayout = layout;
 
-        // PR2: Calcular barycenter del cluster para auto-centrado (R5.13).
-        // Promedio de posiciones (x,y) de todos los nodos.
-        _computeBarycenter(layout);
+          _removeStalePhysicsData(layout);
 
-        emit(GraphReady(layout, barycenter: _barycenter));
-      });
+          final activeDraggedNodeId = _draggedNodeId;
+
+          if (activeDraggedNodeId != null &&
+              !_containsNode(layout, activeDraggedNodeId)) {
+            _draggedNodeId = null;
+          }
+
+          _computeBarycenter(layout);
+
+          final preservedSelection =
+              selectedNodeId != null && _containsNode(layout, selectedNodeId)
+              ? selectedNodeId
+              : null;
+
+          final preservedDetails =
+              detailsNodeId != null && _containsNode(layout, detailsNodeId)
+              ? detailsNodeId
+              : null;
+
+          emit(
+            GraphReady(
+              layout,
+              selectedNodeId: preservedSelection,
+              detailsNodeId: preservedDetails,
+              barycenter: _barycenter,
+            ),
+          );
+
+          if (kDebugMode) {
+            debugPrint(
+              topologyChanged
+                  ? 'VisualizationBloc: topology changed; layout stabilized.'
+                  : 'VisualizationBloc: metadata-only refresh; '
+                        'positions preserved.',
+            );
+          }
+        },
+      );
     } finally {
       _isBuilding = false;
     }
   }
 
-  /// El usuario seleccionó un nodo: actualiza el estado para
-  /// mostrar el tooltip con información detallada.
-  ///
-  /// Solo procesa la selección si el estado actual es [GraphReady],
-  /// ya que no tiene sentido seleccionar un nodo durante la carga
-  /// o en estado de error.
-  void _onNodeSelected(NodeSelected event, Emitter<VisualizationState> emit) {
+  // ─────────────────────────────────────────────────────────────
+  // DRAG
+  // ─────────────────────────────────────────────────────────────
+
+  void _onNodeDragStarted(
+    NodeDragStarted event,
+    Emitter<VisualizationState> emit,
+  ) {
     final currentState = state;
-    if (currentState is GraphReady) {
-      emit(
-        GraphReady(
-          currentState.layout,
-          selectedNodeId: event.nodeId,
-          barycenter: currentState.barycenter,
-        ),
-      );
+
+    if (currentState is! GraphReady) {
+      return;
+    }
+
+    if (!_containsNode(currentState.layout, event.nodeId)) {
+      return;
+    }
+
+    _draggedNodeId = event.nodeId;
+
+    // El nodo agarrado no debe conservar velocidad anterior.
+    _velocities[event.nodeId] = Offset.zero;
+
+    _captureSpringRestLengths(currentState.layout);
+
+    _settledTicks = 0;
+
+    _startPhysics();
+  }
+
+  void _onNodeDragUpdated(
+    NodeDragUpdated event,
+    Emitter<VisualizationState> emit,
+  ) {
+    final currentState = state;
+
+    if (currentState is! GraphReady) {
+      return;
+    }
+
+    if (_draggedNodeId != event.nodeId) {
+      return;
+    }
+
+    final x = event.x
+        .clamp(_canvasMargin, _canvasWidth - _canvasMargin)
+        .toDouble();
+
+    final y = event.y
+        .clamp(_canvasMargin, _canvasHeight - _canvasMargin)
+        .toDouble();
+
+    var nodeFound = false;
+
+    final updatedNodes = currentState.layout.nodes
+        .map((node) {
+          if (node.id != event.nodeId) {
+            return node;
+          }
+
+          nodeFound = true;
+
+          return node.copyWith(x: x, y: y);
+        })
+        .toList(growable: false);
+
+    if (!nodeFound) {
+      _draggedNodeId = null;
+      return;
+    }
+
+    _velocities[event.nodeId] = Offset.zero;
+
+    final updatedLayout = LayoutResult(
+      nodes: updatedNodes,
+      edges: currentState.layout.edges,
+      iterations: currentState.layout.iterations,
+      converged: false,
+    );
+
+    _lastLayout = updatedLayout;
+
+    emit(
+      GraphReady(
+        updatedLayout,
+        selectedNodeId: currentState.selectedNodeId,
+        detailsNodeId: currentState.detailsNodeId,
+        barycenter: currentState.barycenter,
+      ),
+    );
+  }
+
+  void _onNodeDragEnded(NodeDragEnded event, Emitter<VisualizationState> emit) {
+    if (_draggedNodeId != event.nodeId) {
+      return;
+    }
+
+    _draggedNodeId = null;
+    _settledTicks = 0;
+
+    // No detenemos el timer:
+    // la red continúa relajándose después de soltar.
+    _startPhysics();
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // LIVE PHYSICS
+  // ─────────────────────────────────────────────────────────────
+
+  void _startPhysics() {
+    if (_physicsTimer?.isActive ?? false) {
+      return;
+    }
+
+    _physicsTimer = Timer.periodic(_physicsInterval, (_) {
+      if (!isClosed) {
+        add(const _PhysicsTick());
+      }
+    });
+  }
+
+  void _stopPhysics() {
+    _physicsTimer?.cancel();
+    _physicsTimer = null;
+
+    _settledTicks = 0;
+
+    _velocities.removeWhere(
+      (nodeId, velocity) => velocity.distance < _settledSpeed,
+    );
+  }
+
+  void _onPhysicsTick(_PhysicsTick event, Emitter<VisualizationState> emit) {
+    final currentState = state;
+    final layout = _lastLayout;
+
+    if (currentState is! GraphReady || layout == null) {
+      _stopPhysics();
+      return;
+    }
+
+    if (layout.nodes.length < 2) {
+      if (_draggedNodeId == null) {
+        _stopPhysics();
+      }
+
+      return;
+    }
+
+    final nodesById = <int, GraphNode>{};
+
+    for (final node in layout.nodes) {
+      final id = node.id;
+
+      if (id != null) {
+        nodesById[id] = node;
+      }
+    }
+
+    final forces = <int, Offset>{};
+
+    for (final id in nodesById.keys) {
+      forces[id] = Offset.zero;
+    }
+
+    _applySpringForces(layout: layout, nodesById: nodesById, forces: forces);
+
+    _applyRepulsion(nodesById: nodesById, forces: forces);
+
+    var maxSpeed = 0.0;
+
+    final updatedNodes = layout.nodes
+        .map((node) {
+          final id = node.id;
+
+          if (id == null) {
+            return node;
+          }
+
+          // El nodo agarrado está fijado exactamente al dedo.
+          if (id == _draggedNodeId) {
+            _velocities[id] = Offset.zero;
+            return node;
+          }
+
+          final force = forces[id] ?? Offset.zero;
+          final previousVelocity = _velocities[id] ?? Offset.zero;
+
+          var velocity = Offset(
+            (previousVelocity.dx + force.dx) * _damping,
+            (previousVelocity.dy + force.dy) * _damping,
+          );
+
+          velocity = _limitVector(velocity, _maxSpeed);
+
+          if (velocity.distance < 0.01) {
+            velocity = Offset.zero;
+          }
+
+          _velocities[id] = velocity;
+
+          maxSpeed = math.max(maxSpeed, velocity.distance);
+
+          if (velocity == Offset.zero) {
+            return node;
+          }
+
+          final newX = (node.x + velocity.dx)
+              .clamp(_canvasMargin, _canvasWidth - _canvasMargin)
+              .toDouble();
+
+          final newY = (node.y + velocity.dy)
+              .clamp(_canvasMargin, _canvasHeight - _canvasMargin)
+              .toDouble();
+
+          return node.copyWith(x: newX, y: newY);
+        })
+        .toList(growable: false);
+
+    final updatedLayout = LayoutResult(
+      nodes: updatedNodes,
+      edges: layout.edges,
+      iterations: layout.iterations,
+      converged: _draggedNodeId == null && maxSpeed < _settledSpeed,
+    );
+
+    _lastLayout = updatedLayout;
+
+    emit(
+      GraphReady(
+        updatedLayout,
+        selectedNodeId: currentState.selectedNodeId,
+        detailsNodeId: currentState.detailsNodeId,
+        barycenter: currentState.barycenter,
+      ),
+    );
+
+    if (_draggedNodeId != null) {
+      _settledTicks = 0;
+      return;
+    }
+
+    if (maxSpeed < _settledSpeed) {
+      _settledTicks++;
+    } else {
+      _settledTicks = 0;
+    }
+
+    if (_settledTicks >= _settledTicksRequired) {
+      _stopPhysics();
     }
   }
 
-  /// El usuario cerró el tooltip tocando fuera del grafo.
+  /// Aplica Hooke simplificado sobre las aristas.
   ///
-  /// Restaura el grafo sin selección activa, preservando el
-  /// mismo layout (sin recalcular posiciones).
+  /// direct:
+  ///   vínculo más fuerte.
+  ///
+  /// transitive:
+  ///   vínculo más suave.
+  void _applySpringForces({
+    required LayoutResult layout,
+    required Map<int, GraphNode> nodesById,
+    required Map<int, Offset> forces,
+  }) {
+    for (final edge in layout.edges) {
+      final from = nodesById[edge.fromId];
+      final to = nodesById[edge.toId];
+
+      if (from == null || to == null) {
+        continue;
+      }
+
+      final dx = to.x - from.x;
+      final dy = to.y - from.y;
+
+      final distanceSquared = dx * dx + dy * dy;
+
+      if (distanceSquared < 0.0001) {
+        continue;
+      }
+
+      final distance = math.sqrt(distanceSquared);
+
+      final direction = Offset(dx / distance, dy / distance);
+
+      final restLength =
+          _springRestLengths[_edgeKey(edge)] ??
+          distance.clamp(80.0, 500.0).toDouble();
+
+      final displacement = distance - restLength;
+
+      final springStrength = edge.edgeType == EdgeType.direct
+          ? _directSpringStrength
+          : _transitiveSpringStrength;
+
+      // thickness aporta ligeramente más influencia, sin convertir
+      // las aristas gruesas en resortes excesivamente agresivos.
+      final thicknessMultiplier =
+          1.0 + ((edge.thickness - 1.0).clamp(0.0, 2.0) * 0.12);
+
+      final magnitude = displacement * springStrength * thicknessMultiplier;
+
+      final force = direction * magnitude;
+
+      forces[edge.fromId] = (forces[edge.fromId] ?? Offset.zero) + force;
+
+      forces[edge.toId] = (forces[edge.toId] ?? Offset.zero) - force;
+    }
+  }
+
+  /// Repulsión local.
+  ///
+  /// No intenta reemplazar Fruchterman-Reingold. Su único objetivo es
+  /// impedir que nodos cercanos terminen visualmente uno encima del otro.
+  void _applyRepulsion({
+    required Map<int, GraphNode> nodesById,
+    required Map<int, Offset> forces,
+  }) {
+    final entries = nodesById.entries.toList(growable: false);
+
+    for (var i = 0; i < entries.length; i++) {
+      for (var j = i + 1; j < entries.length; j++) {
+        final first = entries[i];
+        final second = entries[j];
+
+        final dx = second.value.x - first.value.x;
+        final dy = second.value.y - first.value.y;
+
+        final distanceSquared = dx * dx + dy * dy;
+
+        if (distanceSquared < 0.0001) {
+          continue;
+        }
+
+        final distance = math.sqrt(distanceSquared);
+
+        if (distance >= _repulsionDistance) {
+          continue;
+        }
+
+        final direction = Offset(dx / distance, dy / distance);
+
+        final overlap = _repulsionDistance - distance;
+
+        final magnitude = overlap * _repulsionStrength;
+
+        final force = direction * magnitude;
+
+        forces[first.key] = (forces[first.key] ?? Offset.zero) - force;
+
+        forces[second.key] = (forces[second.key] ?? Offset.zero) + force;
+      }
+    }
+  }
+
+  void _captureSpringRestLengths(LayoutResult layout) {
+    final nodesById = <int, GraphNode>{};
+
+    for (final node in layout.nodes) {
+      final id = node.id;
+
+      if (id != null) {
+        nodesById[id] = node;
+      }
+    }
+
+    for (final edge in layout.edges) {
+      final from = nodesById[edge.fromId];
+      final to = nodesById[edge.toId];
+
+      if (from == null || to == null) {
+        continue;
+      }
+
+      final dx = to.x - from.x;
+      final dy = to.y - from.y;
+
+      final distance = math.sqrt(dx * dx + dy * dy);
+
+      _springRestLengths[_edgeKey(edge)] = distance
+          .clamp(60.0, 600.0)
+          .toDouble();
+    }
+  }
+
+  String _edgeKey(GraphEdge edge) {
+    final first = math.min(edge.fromId, edge.toId);
+    final second = math.max(edge.fromId, edge.toId);
+
+    return '$first:$second:${edge.edgeType.name}';
+  }
+
+  Offset _limitVector(Offset vector, double maximum) {
+    final magnitude = vector.distance;
+
+    if (magnitude <= maximum || magnitude == 0) {
+      return vector;
+    }
+
+    final factor = maximum / magnitude;
+
+    return Offset(vector.dx * factor, vector.dy * factor);
+  }
+
+  void _removeStalePhysicsData(LayoutResult layout) {
+    final ids = _nodeIds(layout);
+
+    _velocities.removeWhere((id, _) => !ids.contains(id));
+
+    final validEdges = _edgeKeys(layout.edges);
+
+    _springRestLengths.removeWhere((key, _) => !validEdges.contains(key));
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // TOPOLOGY
+  // ─────────────────────────────────────────────────────────────
+
+  bool _hasTopologyChanged({
+    required LayoutResult previous,
+    required LayoutResult current,
+  }) {
+    final previousNodeIds = _nodeIds(previous);
+    final currentNodeIds = _nodeIds(current);
+
+    if (!_sameSet(previousNodeIds, currentNodeIds)) {
+      return true;
+    }
+
+    final previousEdges = _edgeKeys(previous.edges);
+    final currentEdges = _edgeKeys(current.edges);
+
+    return !_sameSet(previousEdges, currentEdges);
+  }
+
+  Set<int> _nodeIds(LayoutResult layout) {
+    final result = <int>{};
+
+    for (final node in layout.nodes) {
+      final id = node.id;
+
+      if (id != null) {
+        result.add(id);
+      }
+    }
+
+    return result;
+  }
+
+  Set<String> _edgeKeys(List<GraphEdge> edges) {
+    final result = <String>{};
+
+    for (final edge in edges) {
+      result.add(_edgeKey(edge));
+    }
+
+    return result;
+  }
+
+  bool _sameSet<T>(Set<T> first, Set<T> second) {
+    if (first.length != second.length) {
+      return false;
+    }
+
+    return first.containsAll(second);
+  }
+
+  bool _containsNode(LayoutResult layout, int nodeId) {
+    for (final node in layout.nodes) {
+      if (node.id == nodeId) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // SELECTION
+  // ─────────────────────────────────────────────────────────────
+
+  void _onNodeSelected(NodeSelected event, Emitter<VisualizationState> emit) {
+    final currentState = state;
+
+    if (currentState is! GraphReady) {
+      return;
+    }
+
+    emit(
+      GraphReady(
+        currentState.layout,
+        selectedNodeId: event.nodeId,
+        detailsNodeId: currentState.detailsNodeId,
+        barycenter: currentState.barycenter,
+      ),
+    );
+  }
+
   void _onNodeDeselected(
     NodeDeselected event,
     Emitter<VisualizationState> emit,
   ) {
     final currentState = state;
-    if (currentState is GraphReady) {
-      emit(
-        GraphReady(currentState.layout, barycenter: currentState.barycenter),
-      );
+
+    if (currentState is! GraphReady) {
+      return;
     }
+
+    emit(
+      GraphReady(
+        currentState.layout,
+        detailsNodeId: currentState.detailsNodeId,
+        barycenter: currentState.barycenter,
+      ),
+    );
   }
 
-  /// Reintenta la construcción del grafo después de un error.
-  ///
-  /// QUÉ: convierte [RetryGraphBuild] en un nuevo [BuildGraphRequested]
-  /// con los mismos parámetros originales y lo procesa con el pipeline
-  /// normal de construcción (debounce + build + layout).
-  ///
-  /// POR QUÉ: T-PR1-012 — antes no existía este mecanismo. Cuando
-  /// el grafo fallaba (GraphError), no había forma de reintentar
-  /// desde la UI. El usuario quedaba atrapado en el mensaje de error.
-  ///
-  /// PR7: preserva [myDeviceUuid] del evento original para que el
-  /// self-node siga marcado correctamente tras el reintento.
-  ///
-  /// Solo procesa si el estado actual es [GraphError] — no tiene
-  /// sentido reintentar desde otros estados.
+  // ─────────────────────────────────────────────────────────────
+  // DETAILS
+  // ─────────────────────────────────────────────────────────────
+
+  void _onNodeDetailsToggled(
+    NodeDetailsToggled event,
+    Emitter<VisualizationState> emit,
+  ) {
+    final currentState = state;
+
+    if (currentState is! GraphReady) {
+      return;
+    }
+
+    if (!_containsNode(currentState.layout, event.nodeId)) {
+      return;
+    }
+
+    final nextDetailsNodeId = currentState.detailsNodeId == event.nodeId
+        ? null
+        : event.nodeId;
+
+    emit(
+      GraphReady(
+        currentState.layout,
+        selectedNodeId: currentState.selectedNodeId,
+        detailsNodeId: nextDetailsNodeId,
+        barycenter: currentState.barycenter,
+      ),
+    );
+  }
+
+  void _onNodeDetailsDismissed(
+    NodeDetailsDismissed event,
+    Emitter<VisualizationState> emit,
+  ) {
+    final currentState = state;
+
+    if (currentState is! GraphReady) {
+      return;
+    }
+
+    if (currentState.detailsNodeId == null) {
+      return;
+    }
+
+    emit(
+      GraphReady(
+        currentState.layout,
+        selectedNodeId: currentState.selectedNodeId,
+        barycenter: currentState.barycenter,
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // RETRY
+  // ─────────────────────────────────────────────────────────────
+
   void _onRetryGraphBuild(
     RetryGraphBuild event,
     Emitter<VisualizationState> emit,
   ) {
-    if (state is! GraphError) return;
+    if (state is! GraphError) {
+      return;
+    }
 
-    // Redispatch como un BuildGraphRequested normal, que pasará
-    // por el pipeline completo: debounce → build → layout.
-    // PR7: preservar myDeviceUuid del evento original.
-    // REQ-SN-01: preservar userName y userColor para el self-node.
     add(
       BuildGraphRequested(
         scanSessionId: event.lastSessionId,
@@ -323,23 +884,16 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     );
   }
 
-  /// Calcula el barycenter (centro de referencia) del cluster de nodos.
-  ///
-  /// REQ-SN-02: si existe un self-node (isSelf=true), usa su posición
-  /// como barycenter. El self-node está anclado al centro del canvas
-  /// y es el punto de referencia natural (el usuario es el centro de su red).
-  /// Fallback: promedio aritmético de todos los nodos (centroide).
-  /// Si no hay nodos, usa (0, 0).
-  ///
-  /// Este valor se usa en GraphView para centrar la vista automáticamente
-  /// en el primer GraphReady (R5.13).
+  // ─────────────────────────────────────────────────────────────
+  // BARYCENTER
+  // ─────────────────────────────────────────────────────────────
+
   void _computeBarycenter(LayoutResult layout) {
     if (layout.nodes.isEmpty) {
       _barycenter = Offset.zero;
       return;
     }
 
-    // Buscar self-node — su posición es el centro de referencia ideal
     for (final node in layout.nodes) {
       if (node.isSelf) {
         _barycenter = Offset(node.x, node.y);
@@ -347,15 +901,25 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
       }
     }
 
-    // Fallback: centroide de todos los nodos
-    double sumX = 0, sumY = 0;
+    double sumX = 0.0;
+    double sumY = 0.0;
+
     for (final node in layout.nodes) {
       sumX += node.x;
       sumY += node.y;
     }
+
     _barycenter = Offset(
       sumX / layout.nodes.length,
       sumY / layout.nodes.length,
     );
+  }
+
+  @override
+  Future<void> close() {
+    _physicsTimer?.cancel();
+    _physicsTimer = null;
+
+    return super.close();
   }
 }

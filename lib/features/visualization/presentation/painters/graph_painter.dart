@@ -1,240 +1,539 @@
 import 'dart:math';
+
 import 'package:flutter/material.dart';
+
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_edge.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_node.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
 
-/// CustomPainter que renderiza el grafo de nodos BLE en 6 capas.
+/// Renderizador 2D del grafo.
 ///
-/// Capas de pintado (en orden back-to-front):
-/// 1. Aristas (edges) — curvas Bezier entre nodos co-detectados
-/// 2. Anillos de proximidad — círculos concéntricos con alpha decreciente
-/// 3. Nodos — círculos rellenos con color de proximidad y borde blanco
-/// 3.5. Self node — glow azul para el nodo que representa al usuario
-/// 4. Etiquetas — nombre o "Desconocido" debajo de cada nodo
-/// 5. Selección — anillo azul sobre el nodo seleccionado
+/// Mantiene la semántica visual del dominio:
 ///
-/// Recibe un LayoutResult como entrada y delega en el sistema de equality
-/// de Equatable para shouldRepaint.
+/// - color propio del nodo mediante [GraphNode.displayColor];
+/// - nodos conocidos y desconocidos diferenciados;
+/// - self-node identificado mediante el color de perfil;
+/// - aristas directas y transitivas diferenciadas;
+/// - selección mediante halo magenta;
+/// - detalles visibles únicamente para el nodo solicitado.
+///
+/// El grafo permanece limpio por defecto.
+/// Los nombres y distancias no se muestran permanentemente.
 class GraphPainter extends CustomPainter {
   final LayoutResult layout;
+
+  /// Nodo seleccionado mediante toque simple.
+  ///
+  /// Se utiliza para la selección visual asociada al menú de acciones.
   final int? selectedNodeId;
 
-  GraphPainter({required this.layout, this.selectedNodeId});
+  /// Nodo cuyos detalles deben mostrarse.
+  ///
+  /// Es independiente de [selectedNodeId] y normalmente se modifica
+  /// mediante doble toque.
+  final int? detailsNodeId;
+
+  GraphPainter({required this.layout, this.selectedNodeId, this.detailsNodeId});
+
+  static const Color _edgeColor = Color(0xFF7E8A9A);
+  static const Color _transitiveEdgeColor = Color(0xFF667080);
+
+  static const Color _nodeBorderColor = Color(0xFFE7ECF3);
+
+  static const Color _unknownNodeColor = Color(0xFF6F7785);
+
+  static const Color _selectionColor = Color(0xFFFF2D9A);
+
+  static const Color _labelColor = Color(0xFFE9EDF5);
+  static const Color _secondaryLabelColor = Color(0xFF9DA8B8);
+
+  static const Color _detailsBackgroundColor = Color(0xE61A1F29);
+  static const Color _detailsBorderColor = Color(0xFF596579);
+
+  static const Color _selfFallbackColor = Color(0xFF42A5F5);
 
   @override
   void paint(Canvas canvas, Size size) {
-    // F2: Si el layout está vacío, renderizar mensaje de feedback
-    // en lugar de retornar silenciosamente (canvas en blanco).
     if (layout.nodes.isEmpty) {
       _drawEmptyState(canvas, size);
       return;
     }
 
-    // Construir mapa id → GraphNode para lookup de aristas.
     final nodeMap = <int, GraphNode>{};
+
     for (final node in layout.nodes) {
-      if (node.id != null) {
-        nodeMap[node.id!] = node;
+      final id = node.id;
+
+      if (id != null) {
+        nodeMap[id] = node;
       }
     }
 
+    // Orden back-to-front.
     _drawEdges(canvas, nodeMap);
     _drawProximityRings(canvas);
     _drawNodes(canvas);
     _drawSelfNode(canvas);
-    _drawLabels(canvas);
     _drawSelection(canvas, nodeMap);
+
+    // Los detalles se dibujan al final para quedar por encima
+    // del resto del grafo.
+    _drawDetails(canvas, nodeMap);
   }
 
-  /// Capa 1: Aristas entre nodos co-detectados.
+  // ─────────────────────────────────────────────────────────────
+  // EDGES
+  // ─────────────────────────────────────────────────────────────
+
+  /// Dibuja las conexiones del grafo.
   ///
-  /// Dibuja curvas Bezier cuadráticas cuyo estilo depende de [EdgeType]:
-  /// - [EdgeType.direct]: sólida, opacidad completa, color por grosor.
-  /// - [EdgeType.transitive]: patrón dashed [5, 5], opacidad 50% (R5.3).
+  /// Las conexiones directas son continuas.
+  /// Las transitivas utilizan línea discontinua y menor opacidad.
   ///
-  /// PR2: soporte para aristas transitivas con renderizado diferenciado.
+  /// Las aristas terminan en el borde del nodo destino y reciben una
+  /// pequeña punta de flecha para conservar visualmente la dirección
+  /// `fromId → toId`.
   void _drawEdges(Canvas canvas, Map<int, GraphNode> nodeMap) {
     for (final edge in layout.edges) {
       final fromNode = nodeMap[edge.fromId];
       final toNode = nodeMap[edge.toId];
-      if (fromNode == null || toNode == null) continue;
 
-      // PR2: estilo según edgeType
+      if (fromNode == null || toNode == null) {
+        continue;
+      }
+
+      if (fromNode.id == toNode.id) {
+        continue;
+      }
+
+      final fromCenter = Offset(fromNode.x, fromNode.y);
+
+      final toCenter = Offset(toNode.x, toNode.y);
+
+      final distance = (toCenter - fromCenter).distance;
+
+      if (distance <= 0.01) {
+        continue;
+      }
+
       final isTransitive = edge.edgeType == EdgeType.transitive;
 
-      // Color interpolado: grosor 1 → rojizo, grosor 3 → verdoso
-      final t = (edge.thickness - 1.0) / 2.0; // 0..1
-      final edgeColor = Color.lerp(
-        const Color(0xFFF44336), // rojo (conexión débil)
-        const Color(0xFF4CAF50), // verde (conexión fuerte)
-        t.clamp(0.0, 1.0),
-      )!;
+      final geometry = _calculateEdgeGeometry(
+        fromCenter: fromCenter,
+        toCenter: toCenter,
+        fromRadius: fromNode.radius,
+        toRadius: toNode.radius,
+      );
+
+      final strokeWidth = isTransitive
+          ? 1.15
+          : (1.25 + edge.thickness * 0.35).clamp(1.4, 2.4).toDouble();
 
       final paint = Paint()
         ..color = isTransitive
-            ? edgeColor.withAlpha(128) // 50% opacity para transitivas
-            : edgeColor
-        ..strokeWidth = edge.thickness
+            ? _transitiveEdgeColor.withAlpha(105)
+            : _edgeColor.withAlpha(165)
         ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round;
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
 
-      final from = Offset(fromNode.x, fromNode.y);
-      final to = Offset(toNode.x, toNode.y);
-
-      // Curva Bezier cuadrática: punto de control desplazado
-      final cp = computeBezierControlPoint(from, to);
       final path = Path()
-        ..moveTo(from.dx, from.dy)
-        ..quadraticBezierTo(cp.dx, cp.dy, to.dx, to.dy);
+        ..moveTo(geometry.start.dx, geometry.start.dy)
+        ..quadraticBezierTo(
+          geometry.control.dx,
+          geometry.control.dy,
+          geometry.end.dx,
+          geometry.end.dy,
+        );
 
-      // PR2: patrón dashed [5, 5] para aristas transitivas
       if (isTransitive) {
-        _drawDashedPath(canvas, path, paint, dashWidth: 5.0, gapWidth: 5.0);
+        _drawDashedPath(canvas, path, paint, dashWidth: 7, gapWidth: 7);
       } else {
         canvas.drawPath(path, paint);
       }
+
+      _drawArrowHead(
+        canvas: canvas,
+        tip: geometry.end,
+        control: geometry.control,
+        color: paint.color,
+        size: isTransitive ? 6.0 : 7.5,
+      );
     }
   }
 
-  /// Computa el punto de control para una arista Bezier cuadrática.
+  /// Calcula inicio, control y final de una arista.
   ///
-  /// El punto de control se desplaza perpendicularmente al punto medio
-  /// de la arista, con curvatura = longitud de la arista * 0.2.
-  /// Para aristas horizontales, el control point va hacia arriba; para
-  /// verticales, hacia la izquierda — consistente vía la perpendicular.
-  ///
-  /// Fórmula:
-  ///   cpX = midX - dy/dist * curvature
-  ///   cpY = midY + dx/dist * curvature
-  ///   curvature = edge.length * 0.2
+  /// La línea no atraviesa visualmente el centro de los nodos:
+  /// empieza y termina aproximadamente en sus circunferencias.
+  _EdgeGeometry _calculateEdgeGeometry({
+    required Offset fromCenter,
+    required Offset toCenter,
+    required double fromRadius,
+    required double toRadius,
+  }) {
+    final vector = toCenter - fromCenter;
+    final distance = vector.distance;
+
+    if (distance <= 0.01) {
+      return _EdgeGeometry(
+        start: fromCenter,
+        control: fromCenter,
+        end: toCenter,
+      );
+    }
+
+    final direction = vector / distance;
+
+    final start = fromCenter + direction * (fromRadius + 2);
+
+    final end = toCenter - direction * (toRadius + 7);
+
+    final control = computeBezierControlPoint(start, end);
+
+    return _EdgeGeometry(start: start, control: control, end: end);
+  }
+
+  /// Calcula el punto de control de una Bezier cuadrática.
   @visibleForTesting
   static Offset computeBezierControlPoint(Offset from, Offset to) {
     final dx = to.dx - from.dx;
     final dy = to.dy - from.dy;
-    final dist = sqrt(dx * dx + dy * dy);
-    final midX = (from.dx + to.dx) / 2;
-    final midY = (from.dy + to.dy) / 2;
-    final curvature = dist * 0.2;
 
-    if (dist == 0) return Offset(midX, midY);
+    final distance = sqrt((dx * dx) + (dy * dy));
 
-    return Offset(midX - dy / dist * curvature, midY + dx / dist * curvature);
+    final middle = Offset((from.dx + to.dx) / 2, (from.dy + to.dy) / 2);
+
+    if (distance <= 0.01) {
+      return middle;
+    }
+
+    final curvature = min(distance * 0.08, 45.0);
+
+    return Offset(
+      middle.dx - (dy / distance) * curvature,
+      middle.dy + (dx / distance) * curvature,
+    );
   }
 
-  /// Capa 2: Anillos de proximidad concéntricos alrededor de cada nodo.
-  ///
-  /// Dos círculos con radios ×1.5 y ×2 del radio del nodo, con alpha 0.15
-  /// y 0.10 respectivamente. El color usa el color de proximidad del nodo.
-  /// Si el nodo está seleccionado, la opacidad se duplica.
+  /// Punta de flecha orientada según la tangente final de la Bezier.
+  void _drawArrowHead({
+    required Canvas canvas,
+    required Offset tip,
+    required Offset control,
+    required Color color,
+    required double size,
+  }) {
+    final tangent = tip - control;
+
+    if (tangent.distance <= 0.01) {
+      return;
+    }
+
+    final angle = atan2(tangent.dy, tangent.dx);
+
+    const spread = pi / 6;
+
+    final left = Offset(
+      tip.dx - size * cos(angle - spread),
+      tip.dy - size * sin(angle - spread),
+    );
+
+    final right = Offset(
+      tip.dx - size * cos(angle + spread),
+      tip.dy - size * sin(angle + spread),
+    );
+
+    final arrowPath = Path()
+      ..moveTo(tip.dx, tip.dy)
+      ..lineTo(left.dx, left.dy)
+      ..lineTo(right.dx, right.dy)
+      ..close();
+
+    final arrowPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    canvas.drawPath(arrowPath, arrowPaint);
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // PROXIMITY
+  // ─────────────────────────────────────────────────────────────
+
+  /// Halo sutil relacionado con el color del nodo.
   void _drawProximityRings(Canvas canvas) {
     for (final node in layout.nodes) {
+      if (node.isSelf) {
+        continue;
+      }
+
       final isSelected = node.id != null && node.id == selectedNodeId;
-      final baseAlpha = isSelected ? 0.30 : 0.15;
 
-      // Primer anillo (×1.5 radio)
-      final ring1Paint = Paint()
-        ..color = Color(node.color).withAlpha((baseAlpha * 255).round())
-        ..style = PaintingStyle.fill;
-      canvas.drawCircle(Offset(node.x, node.y), node.radius * 1.5, ring1Paint);
+      final radius = node.radius + (isSelected ? 8.0 : 5.0);
 
-      // Segundo anillo (×2 radio)
-      final ring2Paint = Paint()
-        ..color = Color(
-          node.color,
-        ).withAlpha(((baseAlpha * 0.66) * 255).round())
+      final paint = Paint()
+        ..color = Color(node.displayColor).withAlpha(isSelected ? 45 : 24)
         ..style = PaintingStyle.fill;
-      canvas.drawCircle(Offset(node.x, node.y), node.radius * 2, ring2Paint);
+
+      canvas.drawCircle(Offset(node.x, node.y), radius, paint);
     }
   }
 
-  /// Capa 3: Nodos como círculos rellenos con borde blanco.
+  // ─────────────────────────────────────────────────────────────
+  // NODES
+  // ─────────────────────────────────────────────────────────────
+
+  /// Renderiza los nodos como círculos simples.
   ///
-  /// Nodos conocidos (isKnown=true): relleno con [GraphNode.displayColor]
-  /// (que respeta userColor > proximidad, R5.6) y borde blanco sólido de 2px.
+  /// Conocidos:
+  /// - color [GraphNode.displayColor];
+  /// - borde claro.
   ///
-  /// Nodos desconocidos (isKnown=false): relleno gris (#9E9E9E) y
-  /// borde blanco discontinuo (dashed) de 1.5px.
+  /// Desconocidos:
+  /// - gris neutro;
+  /// - borde discontinuo.
   void _drawNodes(Canvas canvas) {
     for (final node in layout.nodes) {
       final center = Offset(node.x, node.y);
 
+      final radius = max(node.radius, 1.0);
+
       if (node.isKnown) {
-        // PR2: usar displayColor que respeta userColor (R5.6)
         final fillPaint = Paint()
           ..color = Color(node.displayColor)
           ..style = PaintingStyle.fill;
-        canvas.drawCircle(center, node.radius, fillPaint);
 
-        // Borde blanco sólido de 2px
-        final strokePaint = Paint()
-          ..color = Colors.white
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.0;
-        canvas.drawCircle(center, node.radius, strokePaint);
-      } else {
-        // Relleno gris para nodo desconocido
-        final fillPaint = Paint()
-          ..color = const Color(0xFF9E9E9E)
-          ..style = PaintingStyle.fill;
-        canvas.drawCircle(center, node.radius, fillPaint);
+        canvas.drawCircle(center, radius, fillPaint);
 
-        // Borde blanco discontinuo (dashed) de 1.5px
-        final strokePaint = Paint()
-          ..color = Colors.white
+        final borderPaint = Paint()
+          ..color = _nodeBorderColor.withAlpha(210)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.5;
-        _drawDashedCircle(canvas, center, node.radius, strokePaint);
+
+        canvas.drawCircle(center, radius, borderPaint);
+      } else {
+        final fillPaint = Paint()
+          ..color = _unknownNodeColor
+          ..style = PaintingStyle.fill;
+
+        canvas.drawCircle(center, radius, fillPaint);
+
+        final borderPaint = Paint()
+          ..color = _nodeBorderColor.withAlpha(190)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.4;
+
+        _drawDashedCircle(canvas, center, radius, borderPaint);
       }
     }
   }
 
-  /// Capa 3.5: Efecto glow para el nodo propio (isSelf=true).
+  // ─────────────────────────────────────────────────────────────
+  // SELF NODE
+  // ─────────────────────────────────────────────────────────────
+
+  /// Identifica visualmente el dispositivo local.
   ///
-  /// Renderiza dos anillos adicionales alrededor del nodo self:
-  /// - Anillo exterior (glow): círculo relleno, radius+10, color del perfil
-  ///   con alpha 80. REQ-VR-01: usa [node.userColor] en lugar de hardcodeado.
-  /// - Anillo interior (acento): borde sólido 4px, color del perfil.
-  ///
-  /// Fallback: azul #42a5f5 si userColor es null.
-  ///
-  /// Se llama después de _drawNodes para que el glow quede detrás
-  /// de las etiquetas pero sobre los nodos normales.
+  /// El color del perfil se conserva como identidad del usuario.
+  /// Este indicador es independiente del estado de selección.
   void _drawSelfNode(Canvas canvas) {
     for (final node in layout.nodes) {
-      if (!node.isSelf) continue;
+      if (!node.isSelf) {
+        continue;
+      }
 
       final center = Offset(node.x, node.y);
 
-      // REQ-VR-01: color del anillo desde el perfil del usuario.
-      // Fallback azul #42a5f5 si el perfil no tiene color asignado.
-      final ringColor = node.userColor != null
+      final selfColor = node.userColor != null
           ? Color(node.userColor!)
-          : const Color(0xFF42A5F5);
+          : _selfFallbackColor;
 
-      // Anillo exterior de glow: relleno translúcido con alpha ~0.31
       final glowPaint = Paint()
-        ..color = ringColor.withAlpha(80)
+        ..color = selfColor.withAlpha(42)
         ..style = PaintingStyle.fill;
+
       canvas.drawCircle(center, node.radius + 10, glowPaint);
 
-      // Anillo interior de acento: borde sólido 4px
-      final accentPaint = Paint()
-        ..color = ringColor
+      final ringPaint = Paint()
+        ..color = selfColor.withAlpha(235)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 4.0;
-      canvas.drawCircle(center, node.radius + 4, accentPaint);
+        ..strokeWidth = 2.5;
+
+      canvas.drawCircle(center, node.radius + 5, ringPaint);
+
+      final markerPaint = Paint()
+        ..color = selfColor
+        ..style = PaintingStyle.fill;
+
+      canvas.drawCircle(
+        Offset(node.x, node.y - node.radius - 5),
+        3.2,
+        markerPaint,
+      );
     }
   }
 
-  /// Dibuja un borde discontinuo (dashed) alrededor de una circunferencia.
+  // ─────────────────────────────────────────────────────────────
+  // SELECTION
+  // ─────────────────────────────────────────────────────────────
+
+  /// Selección independiente de la identidad del nodo.
   ///
-  /// Flutter CustomPainter no soporta dash pattern nativo. Esta función
-  /// computa manualmente segmentos dash-gap usando [PathMetrics] sobre
-  /// un [Path] circular. Patrón: dash 4px, gap 3px.
+  /// Un nodo seleccionado recibe un halo magenta.
+  void _drawSelection(Canvas canvas, Map<int, GraphNode> nodeMap) {
+    final id = selectedNodeId;
+
+    if (id == null) {
+      return;
+    }
+
+    final node = nodeMap[id];
+
+    if (node == null) {
+      return;
+    }
+
+    final center = Offset(node.x, node.y);
+
+    final glowPaint = Paint()
+      ..color = _selectionColor.withAlpha(48)
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(center, node.radius + 14, glowPaint);
+
+    final ringPaint = Paint()
+      ..color = _selectionColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.0;
+
+    canvas.drawCircle(center, node.radius + 8, ringPaint);
+
+    final outerPaint = Paint()
+      ..color = _selectionColor.withAlpha(115)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    canvas.drawCircle(center, node.radius + 12, outerPaint);
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // DETAILS
+  // ─────────────────────────────────────────────────────────────
+
+  /// Dibuja información únicamente para el nodo activado mediante
+  /// doble toque.
   ///
-  /// QUÉ problema resuelve: los nodos desconocidos necesitan un borde
-  /// visualmente distinto del borde sólido de los nodos conocidos.
+  /// Si [detailsNodeId] es null, el grafo no muestra etiquetas.
+  void _drawDetails(Canvas canvas, Map<int, GraphNode> nodeMap) {
+    final id = detailsNodeId;
+
+    if (id == null) {
+      return;
+    }
+
+    final node = nodeMap[id];
+
+    if (node == null) {
+      return;
+    }
+
+    final namePainter = TextPainter(
+      text: TextSpan(
+        text: node.label,
+        style: TextStyle(
+          color: _labelColor,
+          fontSize: node.isSelf ? 13.0 : 12.5,
+          fontWeight: FontWeight.w600,
+          height: 1.1,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      textAlign: TextAlign.center,
+      maxLines: 1,
+      ellipsis: '…',
+    )..layout(maxWidth: 150);
+
+    final estimatedDistance = node.estimatedDistance;
+
+    TextPainter? distancePainter;
+
+    if (estimatedDistance != null) {
+      final distanceLabel = estimatedDistance >= 1.0
+          ? '~${estimatedDistance.toStringAsFixed(1)}m'
+          : '~${(estimatedDistance * 100).round()}cm';
+
+      distancePainter = TextPainter(
+        text: TextSpan(
+          text: distanceLabel,
+          style: const TextStyle(
+            color: _secondaryLabelColor,
+            fontSize: 10.5,
+            fontWeight: FontWeight.w400,
+            height: 1.0,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+        textAlign: TextAlign.center,
+        maxLines: 1,
+      )..layout(maxWidth: 120);
+    }
+
+    const horizontalPadding = 10.0;
+    const verticalPadding = 7.0;
+    const lineSpacing = 3.0;
+
+    final contentWidth = max(namePainter.width, distancePainter?.width ?? 0.0);
+
+    final contentHeight =
+        namePainter.height +
+        (distancePainter != null ? lineSpacing + distancePainter.height : 0.0);
+
+    final boxWidth = contentWidth + horizontalPadding * 2;
+
+    final boxHeight = contentHeight + verticalPadding * 2;
+
+    final boxLeft = node.x - boxWidth / 2;
+
+    final boxTop = node.y + node.radius + 11.0;
+
+    final rect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(boxLeft, boxTop, boxWidth, boxHeight),
+      const Radius.circular(8),
+    );
+
+    final backgroundPaint = Paint()
+      ..color = _detailsBackgroundColor
+      ..style = PaintingStyle.fill;
+
+    canvas.drawRRect(rect, backgroundPaint);
+
+    final borderPaint = Paint()
+      ..color = _detailsBorderColor.withAlpha(190)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    canvas.drawRRect(rect, borderPaint);
+
+    var textY = boxTop + verticalPadding;
+
+    namePainter.paint(canvas, Offset(node.x - namePainter.width / 2, textY));
+
+    if (distancePainter != null) {
+      textY += namePainter.height + lineSpacing;
+
+      distancePainter.paint(
+        canvas,
+        Offset(node.x - distancePainter.width / 2, textY),
+      );
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // DASH HELPERS
+  // ─────────────────────────────────────────────────────────────
+
   void _drawDashedCircle(
     Canvas canvas,
     Offset center,
@@ -243,148 +542,85 @@ class GraphPainter extends CustomPainter {
   ) {
     final path = Path()
       ..addOval(Rect.fromCircle(center: center, radius: radius));
-    final metrics = path.computeMetrics();
 
-    for (final metric in metrics) {
-      double distance = 0;
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+
       while (distance < metric.length) {
-        final dashEnd = min(distance + 4.0, metric.length);
-        final extractPath = metric.extractPath(distance, dashEnd);
-        canvas.drawPath(extractPath, paint);
-        distance += 4.0 + 3.0; // dash + gap
+        final dashEnd = min(distance + 5.0, metric.length);
+
+        canvas.drawPath(metric.extractPath(distance, dashEnd), paint);
+
+        distance += 8.0;
       }
     }
   }
 
-  /// PR2: Dibuja un path con patrón discontinuo (dashed).
-  ///
-  /// Útil para aristas transitivas (R5.3) que deben distinguirse
-  /// visualmente de las aristas directas. Similar a [_drawDashedCircle]
-  /// pero para paths arbitrarios (ej. curvas Bezier).
-  ///
-  /// [dashWidth]: ancho de cada segmento pintado (default 5px).
-  /// [gapWidth]: espacio entre segmentos (default 5px).
   void _drawDashedPath(
     Canvas canvas,
     Path path,
     Paint paint, {
-    double dashWidth = 5.0,
-    double gapWidth = 5.0,
+    double dashWidth = 7.0,
+    double gapWidth = 7.0,
   }) {
-    final metrics = path.computeMetrics();
-    for (final metric in metrics) {
-      double distance = 0;
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+
       while (distance < metric.length) {
         final dashEnd = min(distance + dashWidth, metric.length);
-        final extractPath = metric.extractPath(distance, dashEnd);
-        canvas.drawPath(extractPath, paint);
+
+        canvas.drawPath(metric.extractPath(distance, dashEnd), paint);
+
         distance += dashWidth + gapWidth;
       }
     }
   }
 
-  /// Capa 4: Etiquetas de texto debajo de cada nodo.
-  ///
-  /// Muestra el nombre del nodo (o "Desconocido") en texto blanco de 12px.
-  /// Si [GraphNode.estimatedDistance] no es null, agrega una segunda línea
-  /// con la distancia en formato adaptativo: ≥1m → "~2.3m", <1m → "~35cm" (R5.15).
-  /// PR2: soporte multilínea + distance label.
-  void _drawLabels(Canvas canvas) {
-    for (final node in layout.nodes) {
-      String labelText = node.label;
+  // ─────────────────────────────────────────────────────────────
+  // EMPTY STATE
+  // ─────────────────────────────────────────────────────────────
 
-      // PR2: agregar distancia debajo del nombre si está disponible
-      if (node.estimatedDistance != null) {
-        final d = node.estimatedDistance!;
-        final distanceLabel = d >= 1.0
-            ? '~${d.toStringAsFixed(1)}m'
-            : '~${(d * 100).round()}cm';
-        labelText += '\n$distanceLabel';
-      }
-
-      final textPainter = TextPainter(
-        text: TextSpan(
-          text: labelText,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 12.0,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-        textAlign: TextAlign.center,
-        maxLines: 3,
-        ellipsis: '…',
-      )..layout(maxWidth: 120);
-
-      // Centrar horizontalmente debajo del nodo (radio + 4px de separación)
-      final offset = Offset(
-        node.x - textPainter.width / 2,
-        node.y + node.radius + 4,
-      );
-      textPainter.paint(canvas, offset);
-    }
-  }
-
-  /// Capa 5: Anillo de selección azul sobre el nodo seleccionado.
-  ///
-  /// Si selectedNodeId coincide con algún nodo, dibuja un anillo
-  /// exterior azul (cyan accent) de 3px de grosor.
-  void _drawSelection(Canvas canvas, Map<int, GraphNode> nodeMap) {
-    if (selectedNodeId == null) return;
-    final selectedNode = nodeMap[selectedNodeId];
-    if (selectedNode == null) return;
-
-    final paint = Paint()
-      ..color =
-          const Color(0xFF2196F3) // azul material
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0;
-
-    canvas.drawCircle(
-      Offset(selectedNode.x, selectedNode.y),
-      selectedNode.radius + 4, // anillo exterior, ligeramente separado
-      paint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(GraphPainter oldDelegate) {
-    // Compara LayoutResult por equality (Equatable) y selectedNodeId.
-    // El costo de comparar las listas de nodos/aristas es menor que
-    // el costo de repintar innecesariamente.
-    return oldDelegate.layout != layout ||
-        oldDelegate.selectedNodeId != selectedNodeId;
-  }
-
-  /// F2: Renderiza el mensaje "Sin datos de grafo" centrado en el canvas
-  /// cuando el layout no contiene nodos.
-  ///
-  /// QUÉ hace: dibuja el texto centrado horizontal y verticalmente en el
-  /// canvas, en color gris (#9E9E9E), fuente 20px, centrado.
-  ///
-  /// POR QUÉ: reemplaza el `if (nodes.isEmpty) return;` que dejaba al
-  /// usuario con un canvas completamente en blanco sin feedback alguno.
   void _drawEmptyState(Canvas canvas, Size size) {
     final textPainter = TextPainter(
       text: const TextSpan(
         text: 'Sin datos de grafo',
         style: TextStyle(
-          color: Color(0xFF9E9E9E),
-          fontSize: 20.0,
+          color: Color(0xFF7F8998),
+          fontSize: 18,
           fontWeight: FontWeight.w500,
         ),
       ),
       textDirection: TextDirection.ltr,
       textAlign: TextAlign.center,
       maxLines: 2,
-    )..layout(maxWidth: size.width - 40);
+    )..layout(maxWidth: max(size.width - 40, 1));
 
-    // Centrar horizontal y verticalmente
-    final offset = Offset(
-      (size.width - textPainter.width) / 2,
-      (size.height - textPainter.height) / 2,
+    textPainter.paint(
+      canvas,
+      Offset(
+        (size.width - textPainter.width) / 2,
+        (size.height - textPainter.height) / 2,
+      ),
     );
-    textPainter.paint(canvas, offset);
   }
+
+  @override
+  bool shouldRepaint(covariant GraphPainter oldDelegate) {
+    return oldDelegate.layout != layout ||
+        oldDelegate.selectedNodeId != selectedNodeId ||
+        oldDelegate.detailsNodeId != detailsNodeId;
+  }
+}
+
+/// Geometría precalculada de una conexión.
+class _EdgeGeometry {
+  final Offset start;
+  final Offset control;
+  final Offset end;
+
+  const _EdgeGeometry({
+    required this.start,
+    required this.control,
+    required this.end,
+  });
 }
