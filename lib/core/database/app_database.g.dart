@@ -45,6 +45,18 @@ class $NodesTable extends Nodes with TableInfo<$NodesTable, NodeRow> {
     requiredDuringInsert: false,
     defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
   );
+  static const VerificationMeta _remoteRefMeta = const VerificationMeta(
+    'remoteRef',
+  );
+  @override
+  late final GeneratedColumn<String> remoteRef = GeneratedColumn<String>(
+    'remote_ref',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
+  );
   static const VerificationMeta _isSelfMeta = const VerificationMeta('isSelf');
   @override
   late final GeneratedColumn<bool> isSelf = GeneratedColumn<bool>(
@@ -185,6 +197,7 @@ class $NodesTable extends Nodes with TableInfo<$NodesTable, NodeRow> {
     id,
     deviceUuid,
     bleAddress,
+    remoteRef,
     isSelf,
     name,
     color,
@@ -223,6 +236,12 @@ class $NodesTable extends Nodes with TableInfo<$NodesTable, NodeRow> {
       context.handle(
         _bleAddressMeta,
         bleAddress.isAcceptableOrUnknown(data['ble_address']!, _bleAddressMeta),
+      );
+    }
+    if (data.containsKey('remote_ref')) {
+      context.handle(
+        _remoteRefMeta,
+        remoteRef.isAcceptableOrUnknown(data['remote_ref']!, _remoteRefMeta),
       );
     }
     if (data.containsKey('is_self')) {
@@ -337,6 +356,10 @@ class $NodesTable extends Nodes with TableInfo<$NodesTable, NodeRow> {
         DriftSqlType.string,
         data['${effectivePrefix}ble_address'],
       ),
+      remoteRef: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}remote_ref'],
+      ),
       isSelf: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_self'],
@@ -408,6 +431,29 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
   /// a sí mismo mediante escaneo.
   final String? bleAddress;
 
+  /// Referencia namespaced recibida mediante Graph Exchange.
+  ///
+  /// Se utiliza para materializar localmente dispositivos BLE genéricos
+  /// conocidos únicamente a través de otra instalación Nodos.
+  ///
+  /// Ejemplo:
+  ///
+  ///   local:<reporterUuid>:42
+  ///
+  /// Esta referencia NO es:
+  /// - una dirección BLE;
+  /// - un UUID global;
+  /// - evidencia de que el dispositivo fue detectado localmente.
+  ///
+  /// Es null para:
+  /// - el self-node;
+  /// - dispositivos detectados localmente;
+  /// - instalaciones Nodos identificables mediante [deviceUuid].
+  ///
+  /// Para un dispositivo BLE genérico remoto, [remoteRef] constituye
+  /// su identidad estable dentro del namespace del reporter.
+  final String? remoteRef;
+
   /// Verdadero únicamente para el nodo que representa este dispositivo.
   final bool isSelf;
   final String? name;
@@ -425,6 +471,7 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
     required this.id,
     this.deviceUuid,
     this.bleAddress,
+    this.remoteRef,
     required this.isSelf,
     this.name,
     this.color,
@@ -447,6 +494,9 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
     }
     if (!nullToAbsent || bleAddress != null) {
       map['ble_address'] = Variable<String>(bleAddress);
+    }
+    if (!nullToAbsent || remoteRef != null) {
+      map['remote_ref'] = Variable<String>(remoteRef);
     }
     map['is_self'] = Variable<bool>(isSelf);
     if (!nullToAbsent || name != null) {
@@ -488,6 +538,9 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
       bleAddress: bleAddress == null && nullToAbsent
           ? const Value.absent()
           : Value(bleAddress),
+      remoteRef: remoteRef == null && nullToAbsent
+          ? const Value.absent()
+          : Value(remoteRef),
       isSelf: Value(isSelf),
       name: name == null && nullToAbsent ? const Value.absent() : Value(name),
       color: color == null && nullToAbsent
@@ -526,6 +579,7 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
       id: serializer.fromJson<int>(json['id']),
       deviceUuid: serializer.fromJson<String?>(json['deviceUuid']),
       bleAddress: serializer.fromJson<String?>(json['bleAddress']),
+      remoteRef: serializer.fromJson<String?>(json['remoteRef']),
       isSelf: serializer.fromJson<bool>(json['isSelf']),
       name: serializer.fromJson<String?>(json['name']),
       color: serializer.fromJson<String?>(json['color']),
@@ -549,6 +603,7 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
       'id': serializer.toJson<int>(id),
       'deviceUuid': serializer.toJson<String?>(deviceUuid),
       'bleAddress': serializer.toJson<String?>(bleAddress),
+      'remoteRef': serializer.toJson<String?>(remoteRef),
       'isSelf': serializer.toJson<bool>(isSelf),
       'name': serializer.toJson<String?>(name),
       'color': serializer.toJson<String?>(color),
@@ -568,6 +623,7 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
     int? id,
     Value<String?> deviceUuid = const Value.absent(),
     Value<String?> bleAddress = const Value.absent(),
+    Value<String?> remoteRef = const Value.absent(),
     bool? isSelf,
     Value<String?> name = const Value.absent(),
     Value<String?> color = const Value.absent(),
@@ -584,6 +640,7 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
     id: id ?? this.id,
     deviceUuid: deviceUuid.present ? deviceUuid.value : this.deviceUuid,
     bleAddress: bleAddress.present ? bleAddress.value : this.bleAddress,
+    remoteRef: remoteRef.present ? remoteRef.value : this.remoteRef,
     isSelf: isSelf ?? this.isSelf,
     name: name.present ? name.value : this.name,
     color: color.present ? color.value : this.color,
@@ -612,6 +669,7 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
       bleAddress: data.bleAddress.present
           ? data.bleAddress.value
           : this.bleAddress,
+      remoteRef: data.remoteRef.present ? data.remoteRef.value : this.remoteRef,
       isSelf: data.isSelf.present ? data.isSelf.value : this.isSelf,
       name: data.name.present ? data.name.value : this.name,
       color: data.color.present ? data.color.value : this.color,
@@ -645,6 +703,7 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
           ..write('id: $id, ')
           ..write('deviceUuid: $deviceUuid, ')
           ..write('bleAddress: $bleAddress, ')
+          ..write('remoteRef: $remoteRef, ')
           ..write('isSelf: $isSelf, ')
           ..write('name: $name, ')
           ..write('color: $color, ')
@@ -666,6 +725,7 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
     id,
     deviceUuid,
     bleAddress,
+    remoteRef,
     isSelf,
     name,
     color,
@@ -686,6 +746,7 @@ class NodeRow extends DataClass implements Insertable<NodeRow> {
           other.id == this.id &&
           other.deviceUuid == this.deviceUuid &&
           other.bleAddress == this.bleAddress &&
+          other.remoteRef == this.remoteRef &&
           other.isSelf == this.isSelf &&
           other.name == this.name &&
           other.color == this.color &&
@@ -704,6 +765,7 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
   final Value<int> id;
   final Value<String?> deviceUuid;
   final Value<String?> bleAddress;
+  final Value<String?> remoteRef;
   final Value<bool> isSelf;
   final Value<String?> name;
   final Value<String?> color;
@@ -720,6 +782,7 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
     this.id = const Value.absent(),
     this.deviceUuid = const Value.absent(),
     this.bleAddress = const Value.absent(),
+    this.remoteRef = const Value.absent(),
     this.isSelf = const Value.absent(),
     this.name = const Value.absent(),
     this.color = const Value.absent(),
@@ -737,6 +800,7 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
     this.id = const Value.absent(),
     this.deviceUuid = const Value.absent(),
     this.bleAddress = const Value.absent(),
+    this.remoteRef = const Value.absent(),
     this.isSelf = const Value.absent(),
     this.name = const Value.absent(),
     this.color = const Value.absent(),
@@ -755,6 +819,7 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
     Expression<int>? id,
     Expression<String>? deviceUuid,
     Expression<String>? bleAddress,
+    Expression<String>? remoteRef,
     Expression<bool>? isSelf,
     Expression<String>? name,
     Expression<String>? color,
@@ -772,6 +837,7 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
       if (id != null) 'id': id,
       if (deviceUuid != null) 'device_uuid': deviceUuid,
       if (bleAddress != null) 'ble_address': bleAddress,
+      if (remoteRef != null) 'remote_ref': remoteRef,
       if (isSelf != null) 'is_self': isSelf,
       if (name != null) 'name': name,
       if (color != null) 'color': color,
@@ -791,6 +857,7 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
     Value<int>? id,
     Value<String?>? deviceUuid,
     Value<String?>? bleAddress,
+    Value<String?>? remoteRef,
     Value<bool>? isSelf,
     Value<String?>? name,
     Value<String?>? color,
@@ -808,6 +875,7 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
       id: id ?? this.id,
       deviceUuid: deviceUuid ?? this.deviceUuid,
       bleAddress: bleAddress ?? this.bleAddress,
+      remoteRef: remoteRef ?? this.remoteRef,
       isSelf: isSelf ?? this.isSelf,
       name: name ?? this.name,
       color: color ?? this.color,
@@ -834,6 +902,9 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
     }
     if (bleAddress.present) {
       map['ble_address'] = Variable<String>(bleAddress.value);
+    }
+    if (remoteRef.present) {
+      map['remote_ref'] = Variable<String>(remoteRef.value);
     }
     if (isSelf.present) {
       map['is_self'] = Variable<bool>(isSelf.value);
@@ -880,6 +951,7 @@ class NodesCompanion extends UpdateCompanion<NodeRow> {
           ..write('id: $id, ')
           ..write('deviceUuid: $deviceUuid, ')
           ..write('bleAddress: $bleAddress, ')
+          ..write('remoteRef: $remoteRef, ')
           ..write('isSelf: $isSelf, ')
           ..write('name: $name, ')
           ..write('color: $color, ')
@@ -1669,6 +1741,561 @@ class ConnectionsCompanion extends UpdateCompanion<Connection> {
   }
 }
 
+class $RemoteRelationsTable extends RemoteRelations
+    with TableInfo<$RemoteRelationsTable, RemoteRelation> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RemoteRelationsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _reporterUuidMeta = const VerificationMeta(
+    'reporterUuid',
+  );
+  @override
+  late final GeneratedColumn<String> reporterUuid = GeneratedColumn<String>(
+    'reporter_uuid',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _remoteRefMeta = const VerificationMeta(
+    'remoteRef',
+  );
+  @override
+  late final GeneratedColumn<String> remoteRef = GeneratedColumn<String>(
+    'remote_ref',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _remoteDeviceUuidMeta = const VerificationMeta(
+    'remoteDeviceUuid',
+  );
+  @override
+  late final GeneratedColumn<String> remoteDeviceUuid = GeneratedColumn<String>(
+    'remote_device_uuid',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _remoteNameMeta = const VerificationMeta(
+    'remoteName',
+  );
+  @override
+  late final GeneratedColumn<String> remoteName = GeneratedColumn<String>(
+    'remote_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _remoteColorMeta = const VerificationMeta(
+    'remoteColor',
+  );
+  @override
+  late final GeneratedColumn<String> remoteColor = GeneratedColumn<String>(
+    'remote_color',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _remoteDeviceTypeMeta = const VerificationMeta(
+    'remoteDeviceType',
+  );
+  @override
+  late final GeneratedColumn<String> remoteDeviceType = GeneratedColumn<String>(
+    'remote_device_type',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lastReceivedAtMeta = const VerificationMeta(
+    'lastReceivedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastReceivedAt =
+      GeneratedColumn<DateTime>(
+        'last_received_at',
+        aliasedName,
+        false,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: true,
+      );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    reporterUuid,
+    remoteRef,
+    remoteDeviceUuid,
+    remoteName,
+    remoteColor,
+    remoteDeviceType,
+    lastReceivedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'remote_relations';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<RemoteRelation> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('reporter_uuid')) {
+      context.handle(
+        _reporterUuidMeta,
+        reporterUuid.isAcceptableOrUnknown(
+          data['reporter_uuid']!,
+          _reporterUuidMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_reporterUuidMeta);
+    }
+    if (data.containsKey('remote_ref')) {
+      context.handle(
+        _remoteRefMeta,
+        remoteRef.isAcceptableOrUnknown(data['remote_ref']!, _remoteRefMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_remoteRefMeta);
+    }
+    if (data.containsKey('remote_device_uuid')) {
+      context.handle(
+        _remoteDeviceUuidMeta,
+        remoteDeviceUuid.isAcceptableOrUnknown(
+          data['remote_device_uuid']!,
+          _remoteDeviceUuidMeta,
+        ),
+      );
+    }
+    if (data.containsKey('remote_name')) {
+      context.handle(
+        _remoteNameMeta,
+        remoteName.isAcceptableOrUnknown(data['remote_name']!, _remoteNameMeta),
+      );
+    }
+    if (data.containsKey('remote_color')) {
+      context.handle(
+        _remoteColorMeta,
+        remoteColor.isAcceptableOrUnknown(
+          data['remote_color']!,
+          _remoteColorMeta,
+        ),
+      );
+    }
+    if (data.containsKey('remote_device_type')) {
+      context.handle(
+        _remoteDeviceTypeMeta,
+        remoteDeviceType.isAcceptableOrUnknown(
+          data['remote_device_type']!,
+          _remoteDeviceTypeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_received_at')) {
+      context.handle(
+        _lastReceivedAtMeta,
+        lastReceivedAt.isAcceptableOrUnknown(
+          data['last_received_at']!,
+          _lastReceivedAtMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_lastReceivedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  RemoteRelation map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return RemoteRelation(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      reporterUuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reporter_uuid'],
+      )!,
+      remoteRef: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}remote_ref'],
+      )!,
+      remoteDeviceUuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}remote_device_uuid'],
+      ),
+      remoteName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}remote_name'],
+      ),
+      remoteColor: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}remote_color'],
+      ),
+      remoteDeviceType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}remote_device_type'],
+      ),
+      lastReceivedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_received_at'],
+      )!,
+    );
+  }
+
+  @override
+  $RemoteRelationsTable createAlias(String alias) {
+    return $RemoteRelationsTable(attachedDatabase, alias);
+  }
+}
+
+class RemoteRelation extends DataClass implements Insertable<RemoteRelation> {
+  final int id;
+
+  /// UUID estable de la instalación Nodos que declara la relación.
+  final String reporterUuid;
+
+  /// Referencia transportable del otro extremo de la relación.
+  final String remoteRef;
+
+  /// UUID Nodos del nodo remoto, cuando existe.
+  ///
+  /// Es null para dispositivos BLE genéricos.
+  final String? remoteDeviceUuid;
+
+  /// Nombre que el reporter conoce para el nodo remoto.
+  final String? remoteName;
+
+  /// Color Nodos cuando el extremo remoto es otra instalación Nodos.
+  final String? remoteColor;
+
+  /// Tipo de dispositivo conocido por el reporter.
+  final String? remoteDeviceType;
+
+  /// Momento en que esta instalación recibió por última vez
+  /// esta relación desde el reporter.
+  final DateTime lastReceivedAt;
+  const RemoteRelation({
+    required this.id,
+    required this.reporterUuid,
+    required this.remoteRef,
+    this.remoteDeviceUuid,
+    this.remoteName,
+    this.remoteColor,
+    this.remoteDeviceType,
+    required this.lastReceivedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['reporter_uuid'] = Variable<String>(reporterUuid);
+    map['remote_ref'] = Variable<String>(remoteRef);
+    if (!nullToAbsent || remoteDeviceUuid != null) {
+      map['remote_device_uuid'] = Variable<String>(remoteDeviceUuid);
+    }
+    if (!nullToAbsent || remoteName != null) {
+      map['remote_name'] = Variable<String>(remoteName);
+    }
+    if (!nullToAbsent || remoteColor != null) {
+      map['remote_color'] = Variable<String>(remoteColor);
+    }
+    if (!nullToAbsent || remoteDeviceType != null) {
+      map['remote_device_type'] = Variable<String>(remoteDeviceType);
+    }
+    map['last_received_at'] = Variable<DateTime>(lastReceivedAt);
+    return map;
+  }
+
+  RemoteRelationsCompanion toCompanion(bool nullToAbsent) {
+    return RemoteRelationsCompanion(
+      id: Value(id),
+      reporterUuid: Value(reporterUuid),
+      remoteRef: Value(remoteRef),
+      remoteDeviceUuid: remoteDeviceUuid == null && nullToAbsent
+          ? const Value.absent()
+          : Value(remoteDeviceUuid),
+      remoteName: remoteName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(remoteName),
+      remoteColor: remoteColor == null && nullToAbsent
+          ? const Value.absent()
+          : Value(remoteColor),
+      remoteDeviceType: remoteDeviceType == null && nullToAbsent
+          ? const Value.absent()
+          : Value(remoteDeviceType),
+      lastReceivedAt: Value(lastReceivedAt),
+    );
+  }
+
+  factory RemoteRelation.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return RemoteRelation(
+      id: serializer.fromJson<int>(json['id']),
+      reporterUuid: serializer.fromJson<String>(json['reporterUuid']),
+      remoteRef: serializer.fromJson<String>(json['remoteRef']),
+      remoteDeviceUuid: serializer.fromJson<String?>(json['remoteDeviceUuid']),
+      remoteName: serializer.fromJson<String?>(json['remoteName']),
+      remoteColor: serializer.fromJson<String?>(json['remoteColor']),
+      remoteDeviceType: serializer.fromJson<String?>(json['remoteDeviceType']),
+      lastReceivedAt: serializer.fromJson<DateTime>(json['lastReceivedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'reporterUuid': serializer.toJson<String>(reporterUuid),
+      'remoteRef': serializer.toJson<String>(remoteRef),
+      'remoteDeviceUuid': serializer.toJson<String?>(remoteDeviceUuid),
+      'remoteName': serializer.toJson<String?>(remoteName),
+      'remoteColor': serializer.toJson<String?>(remoteColor),
+      'remoteDeviceType': serializer.toJson<String?>(remoteDeviceType),
+      'lastReceivedAt': serializer.toJson<DateTime>(lastReceivedAt),
+    };
+  }
+
+  RemoteRelation copyWith({
+    int? id,
+    String? reporterUuid,
+    String? remoteRef,
+    Value<String?> remoteDeviceUuid = const Value.absent(),
+    Value<String?> remoteName = const Value.absent(),
+    Value<String?> remoteColor = const Value.absent(),
+    Value<String?> remoteDeviceType = const Value.absent(),
+    DateTime? lastReceivedAt,
+  }) => RemoteRelation(
+    id: id ?? this.id,
+    reporterUuid: reporterUuid ?? this.reporterUuid,
+    remoteRef: remoteRef ?? this.remoteRef,
+    remoteDeviceUuid: remoteDeviceUuid.present
+        ? remoteDeviceUuid.value
+        : this.remoteDeviceUuid,
+    remoteName: remoteName.present ? remoteName.value : this.remoteName,
+    remoteColor: remoteColor.present ? remoteColor.value : this.remoteColor,
+    remoteDeviceType: remoteDeviceType.present
+        ? remoteDeviceType.value
+        : this.remoteDeviceType,
+    lastReceivedAt: lastReceivedAt ?? this.lastReceivedAt,
+  );
+  RemoteRelation copyWithCompanion(RemoteRelationsCompanion data) {
+    return RemoteRelation(
+      id: data.id.present ? data.id.value : this.id,
+      reporterUuid: data.reporterUuid.present
+          ? data.reporterUuid.value
+          : this.reporterUuid,
+      remoteRef: data.remoteRef.present ? data.remoteRef.value : this.remoteRef,
+      remoteDeviceUuid: data.remoteDeviceUuid.present
+          ? data.remoteDeviceUuid.value
+          : this.remoteDeviceUuid,
+      remoteName: data.remoteName.present
+          ? data.remoteName.value
+          : this.remoteName,
+      remoteColor: data.remoteColor.present
+          ? data.remoteColor.value
+          : this.remoteColor,
+      remoteDeviceType: data.remoteDeviceType.present
+          ? data.remoteDeviceType.value
+          : this.remoteDeviceType,
+      lastReceivedAt: data.lastReceivedAt.present
+          ? data.lastReceivedAt.value
+          : this.lastReceivedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RemoteRelation(')
+          ..write('id: $id, ')
+          ..write('reporterUuid: $reporterUuid, ')
+          ..write('remoteRef: $remoteRef, ')
+          ..write('remoteDeviceUuid: $remoteDeviceUuid, ')
+          ..write('remoteName: $remoteName, ')
+          ..write('remoteColor: $remoteColor, ')
+          ..write('remoteDeviceType: $remoteDeviceType, ')
+          ..write('lastReceivedAt: $lastReceivedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    reporterUuid,
+    remoteRef,
+    remoteDeviceUuid,
+    remoteName,
+    remoteColor,
+    remoteDeviceType,
+    lastReceivedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RemoteRelation &&
+          other.id == this.id &&
+          other.reporterUuid == this.reporterUuid &&
+          other.remoteRef == this.remoteRef &&
+          other.remoteDeviceUuid == this.remoteDeviceUuid &&
+          other.remoteName == this.remoteName &&
+          other.remoteColor == this.remoteColor &&
+          other.remoteDeviceType == this.remoteDeviceType &&
+          other.lastReceivedAt == this.lastReceivedAt);
+}
+
+class RemoteRelationsCompanion extends UpdateCompanion<RemoteRelation> {
+  final Value<int> id;
+  final Value<String> reporterUuid;
+  final Value<String> remoteRef;
+  final Value<String?> remoteDeviceUuid;
+  final Value<String?> remoteName;
+  final Value<String?> remoteColor;
+  final Value<String?> remoteDeviceType;
+  final Value<DateTime> lastReceivedAt;
+  const RemoteRelationsCompanion({
+    this.id = const Value.absent(),
+    this.reporterUuid = const Value.absent(),
+    this.remoteRef = const Value.absent(),
+    this.remoteDeviceUuid = const Value.absent(),
+    this.remoteName = const Value.absent(),
+    this.remoteColor = const Value.absent(),
+    this.remoteDeviceType = const Value.absent(),
+    this.lastReceivedAt = const Value.absent(),
+  });
+  RemoteRelationsCompanion.insert({
+    this.id = const Value.absent(),
+    required String reporterUuid,
+    required String remoteRef,
+    this.remoteDeviceUuid = const Value.absent(),
+    this.remoteName = const Value.absent(),
+    this.remoteColor = const Value.absent(),
+    this.remoteDeviceType = const Value.absent(),
+    required DateTime lastReceivedAt,
+  }) : reporterUuid = Value(reporterUuid),
+       remoteRef = Value(remoteRef),
+       lastReceivedAt = Value(lastReceivedAt);
+  static Insertable<RemoteRelation> custom({
+    Expression<int>? id,
+    Expression<String>? reporterUuid,
+    Expression<String>? remoteRef,
+    Expression<String>? remoteDeviceUuid,
+    Expression<String>? remoteName,
+    Expression<String>? remoteColor,
+    Expression<String>? remoteDeviceType,
+    Expression<DateTime>? lastReceivedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (reporterUuid != null) 'reporter_uuid': reporterUuid,
+      if (remoteRef != null) 'remote_ref': remoteRef,
+      if (remoteDeviceUuid != null) 'remote_device_uuid': remoteDeviceUuid,
+      if (remoteName != null) 'remote_name': remoteName,
+      if (remoteColor != null) 'remote_color': remoteColor,
+      if (remoteDeviceType != null) 'remote_device_type': remoteDeviceType,
+      if (lastReceivedAt != null) 'last_received_at': lastReceivedAt,
+    });
+  }
+
+  RemoteRelationsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? reporterUuid,
+    Value<String>? remoteRef,
+    Value<String?>? remoteDeviceUuid,
+    Value<String?>? remoteName,
+    Value<String?>? remoteColor,
+    Value<String?>? remoteDeviceType,
+    Value<DateTime>? lastReceivedAt,
+  }) {
+    return RemoteRelationsCompanion(
+      id: id ?? this.id,
+      reporterUuid: reporterUuid ?? this.reporterUuid,
+      remoteRef: remoteRef ?? this.remoteRef,
+      remoteDeviceUuid: remoteDeviceUuid ?? this.remoteDeviceUuid,
+      remoteName: remoteName ?? this.remoteName,
+      remoteColor: remoteColor ?? this.remoteColor,
+      remoteDeviceType: remoteDeviceType ?? this.remoteDeviceType,
+      lastReceivedAt: lastReceivedAt ?? this.lastReceivedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (reporterUuid.present) {
+      map['reporter_uuid'] = Variable<String>(reporterUuid.value);
+    }
+    if (remoteRef.present) {
+      map['remote_ref'] = Variable<String>(remoteRef.value);
+    }
+    if (remoteDeviceUuid.present) {
+      map['remote_device_uuid'] = Variable<String>(remoteDeviceUuid.value);
+    }
+    if (remoteName.present) {
+      map['remote_name'] = Variable<String>(remoteName.value);
+    }
+    if (remoteColor.present) {
+      map['remote_color'] = Variable<String>(remoteColor.value);
+    }
+    if (remoteDeviceType.present) {
+      map['remote_device_type'] = Variable<String>(remoteDeviceType.value);
+    }
+    if (lastReceivedAt.present) {
+      map['last_received_at'] = Variable<DateTime>(lastReceivedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RemoteRelationsCompanion(')
+          ..write('id: $id, ')
+          ..write('reporterUuid: $reporterUuid, ')
+          ..write('remoteRef: $remoteRef, ')
+          ..write('remoteDeviceUuid: $remoteDeviceUuid, ')
+          ..write('remoteName: $remoteName, ')
+          ..write('remoteColor: $remoteColor, ')
+          ..write('remoteDeviceType: $remoteDeviceType, ')
+          ..write('lastReceivedAt: $lastReceivedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $ScanSessionsTable extends ScanSessions
     with TableInfo<$ScanSessionsTable, ScanSession> {
   @override
@@ -2279,6 +2906,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $NodesTable nodes = $NodesTable(this);
   late final $UsersTable users = $UsersTable(this);
   late final $ConnectionsTable connections = $ConnectionsTable(this);
+  late final $RemoteRelationsTable remoteRelations = $RemoteRelationsTable(
+    this,
+  );
   late final $ScanSessionsTable scanSessions = $ScanSessionsTable(this);
   late final $ScanSessionNodesTable scanSessionNodes = $ScanSessionNodesTable(
     this,
@@ -2291,6 +2921,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     nodes,
     users,
     connections,
+    remoteRelations,
     scanSessions,
     scanSessionNodes,
   ];
@@ -2342,6 +2973,7 @@ typedef $$NodesTableCreateCompanionBuilder =
       Value<int> id,
       Value<String?> deviceUuid,
       Value<String?> bleAddress,
+      Value<String?> remoteRef,
       Value<bool> isSelf,
       Value<String?> name,
       Value<String?> color,
@@ -2360,6 +2992,7 @@ typedef $$NodesTableUpdateCompanionBuilder =
       Value<int> id,
       Value<String?> deviceUuid,
       Value<String?> bleAddress,
+      Value<String?> remoteRef,
       Value<bool> isSelf,
       Value<String?> name,
       Value<String?> color,
@@ -2438,6 +3071,11 @@ class $$NodesTableFilterComposer extends Composer<_$AppDatabase, $NodesTable> {
 
   ColumnFilters<String> get bleAddress => $composableBuilder(
     column: $table.bleAddress,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get remoteRef => $composableBuilder(
+    column: $table.remoteRef,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2576,6 +3214,11 @@ class $$NodesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get remoteRef => $composableBuilder(
+    column: $table.remoteRef,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get isSelf => $composableBuilder(
     column: $table.isSelf,
     builder: (column) => ColumnOrderings(column),
@@ -2658,6 +3301,9 @@ class $$NodesTableAnnotationComposer
     column: $table.bleAddress,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get remoteRef =>
+      $composableBuilder(column: $table.remoteRef, builder: (column) => column);
 
   GeneratedColumn<bool> get isSelf =>
       $composableBuilder(column: $table.isSelf, builder: (column) => column);
@@ -2789,6 +3435,7 @@ class $$NodesTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<String?> deviceUuid = const Value.absent(),
                 Value<String?> bleAddress = const Value.absent(),
+                Value<String?> remoteRef = const Value.absent(),
                 Value<bool> isSelf = const Value.absent(),
                 Value<String?> name = const Value.absent(),
                 Value<String?> color = const Value.absent(),
@@ -2805,6 +3452,7 @@ class $$NodesTableTableManager
                 id: id,
                 deviceUuid: deviceUuid,
                 bleAddress: bleAddress,
+                remoteRef: remoteRef,
                 isSelf: isSelf,
                 name: name,
                 color: color,
@@ -2823,6 +3471,7 @@ class $$NodesTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<String?> deviceUuid = const Value.absent(),
                 Value<String?> bleAddress = const Value.absent(),
+                Value<String?> remoteRef = const Value.absent(),
                 Value<bool> isSelf = const Value.absent(),
                 Value<String?> name = const Value.absent(),
                 Value<String?> color = const Value.absent(),
@@ -2839,6 +3488,7 @@ class $$NodesTableTableManager
                 id: id,
                 deviceUuid: deviceUuid,
                 bleAddress: bleAddress,
+                remoteRef: remoteRef,
                 isSelf: isSelf,
                 name: name,
                 color: color,
@@ -3655,6 +4305,284 @@ typedef $$ConnectionsTableProcessedTableManager =
       Connection,
       PrefetchHooks Function({bool fromNodeId, bool toNodeId})
     >;
+typedef $$RemoteRelationsTableCreateCompanionBuilder =
+    RemoteRelationsCompanion Function({
+      Value<int> id,
+      required String reporterUuid,
+      required String remoteRef,
+      Value<String?> remoteDeviceUuid,
+      Value<String?> remoteName,
+      Value<String?> remoteColor,
+      Value<String?> remoteDeviceType,
+      required DateTime lastReceivedAt,
+    });
+typedef $$RemoteRelationsTableUpdateCompanionBuilder =
+    RemoteRelationsCompanion Function({
+      Value<int> id,
+      Value<String> reporterUuid,
+      Value<String> remoteRef,
+      Value<String?> remoteDeviceUuid,
+      Value<String?> remoteName,
+      Value<String?> remoteColor,
+      Value<String?> remoteDeviceType,
+      Value<DateTime> lastReceivedAt,
+    });
+
+class $$RemoteRelationsTableFilterComposer
+    extends Composer<_$AppDatabase, $RemoteRelationsTable> {
+  $$RemoteRelationsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get reporterUuid => $composableBuilder(
+    column: $table.reporterUuid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get remoteRef => $composableBuilder(
+    column: $table.remoteRef,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get remoteDeviceUuid => $composableBuilder(
+    column: $table.remoteDeviceUuid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get remoteName => $composableBuilder(
+    column: $table.remoteName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get remoteColor => $composableBuilder(
+    column: $table.remoteColor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get remoteDeviceType => $composableBuilder(
+    column: $table.remoteDeviceType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastReceivedAt => $composableBuilder(
+    column: $table.lastReceivedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$RemoteRelationsTableOrderingComposer
+    extends Composer<_$AppDatabase, $RemoteRelationsTable> {
+  $$RemoteRelationsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get reporterUuid => $composableBuilder(
+    column: $table.reporterUuid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get remoteRef => $composableBuilder(
+    column: $table.remoteRef,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get remoteDeviceUuid => $composableBuilder(
+    column: $table.remoteDeviceUuid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get remoteName => $composableBuilder(
+    column: $table.remoteName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get remoteColor => $composableBuilder(
+    column: $table.remoteColor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get remoteDeviceType => $composableBuilder(
+    column: $table.remoteDeviceType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastReceivedAt => $composableBuilder(
+    column: $table.lastReceivedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$RemoteRelationsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $RemoteRelationsTable> {
+  $$RemoteRelationsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get reporterUuid => $composableBuilder(
+    column: $table.reporterUuid,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get remoteRef =>
+      $composableBuilder(column: $table.remoteRef, builder: (column) => column);
+
+  GeneratedColumn<String> get remoteDeviceUuid => $composableBuilder(
+    column: $table.remoteDeviceUuid,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get remoteName => $composableBuilder(
+    column: $table.remoteName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get remoteColor => $composableBuilder(
+    column: $table.remoteColor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get remoteDeviceType => $composableBuilder(
+    column: $table.remoteDeviceType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get lastReceivedAt => $composableBuilder(
+    column: $table.lastReceivedAt,
+    builder: (column) => column,
+  );
+}
+
+class $$RemoteRelationsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $RemoteRelationsTable,
+          RemoteRelation,
+          $$RemoteRelationsTableFilterComposer,
+          $$RemoteRelationsTableOrderingComposer,
+          $$RemoteRelationsTableAnnotationComposer,
+          $$RemoteRelationsTableCreateCompanionBuilder,
+          $$RemoteRelationsTableUpdateCompanionBuilder,
+          (
+            RemoteRelation,
+            BaseReferences<
+              _$AppDatabase,
+              $RemoteRelationsTable,
+              RemoteRelation
+            >,
+          ),
+          RemoteRelation,
+          PrefetchHooks Function()
+        > {
+  $$RemoteRelationsTableTableManager(
+    _$AppDatabase db,
+    $RemoteRelationsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RemoteRelationsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$RemoteRelationsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$RemoteRelationsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> reporterUuid = const Value.absent(),
+                Value<String> remoteRef = const Value.absent(),
+                Value<String?> remoteDeviceUuid = const Value.absent(),
+                Value<String?> remoteName = const Value.absent(),
+                Value<String?> remoteColor = const Value.absent(),
+                Value<String?> remoteDeviceType = const Value.absent(),
+                Value<DateTime> lastReceivedAt = const Value.absent(),
+              }) => RemoteRelationsCompanion(
+                id: id,
+                reporterUuid: reporterUuid,
+                remoteRef: remoteRef,
+                remoteDeviceUuid: remoteDeviceUuid,
+                remoteName: remoteName,
+                remoteColor: remoteColor,
+                remoteDeviceType: remoteDeviceType,
+                lastReceivedAt: lastReceivedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String reporterUuid,
+                required String remoteRef,
+                Value<String?> remoteDeviceUuid = const Value.absent(),
+                Value<String?> remoteName = const Value.absent(),
+                Value<String?> remoteColor = const Value.absent(),
+                Value<String?> remoteDeviceType = const Value.absent(),
+                required DateTime lastReceivedAt,
+              }) => RemoteRelationsCompanion.insert(
+                id: id,
+                reporterUuid: reporterUuid,
+                remoteRef: remoteRef,
+                remoteDeviceUuid: remoteDeviceUuid,
+                remoteName: remoteName,
+                remoteColor: remoteColor,
+                remoteDeviceType: remoteDeviceType,
+                lastReceivedAt: lastReceivedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$RemoteRelationsTable, RemoteRelation>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $RemoteRelationsTable,
+                    RemoteRelation
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$RemoteRelationsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $RemoteRelationsTable,
+      RemoteRelation,
+      $$RemoteRelationsTableFilterComposer,
+      $$RemoteRelationsTableOrderingComposer,
+      $$RemoteRelationsTableAnnotationComposer,
+      $$RemoteRelationsTableCreateCompanionBuilder,
+      $$RemoteRelationsTableUpdateCompanionBuilder,
+      (
+        RemoteRelation,
+        BaseReferences<_$AppDatabase, $RemoteRelationsTable, RemoteRelation>,
+      ),
+      RemoteRelation,
+      PrefetchHooks Function()
+    >;
 typedef $$ScanSessionsTableCreateCompanionBuilder =
     ScanSessionsCompanion Function({
       Value<int> id,
@@ -4336,6 +5264,8 @@ class $AppDatabaseManager {
       $$UsersTableTableManager(_db, _db.users);
   $$ConnectionsTableTableManager get connections =>
       $$ConnectionsTableTableManager(_db, _db.connections);
+  $$RemoteRelationsTableTableManager get remoteRelations =>
+      $$RemoteRelationsTableTableManager(_db, _db.remoteRelations);
   $$ScanSessionsTableTableManager get scanSessions =>
       $$ScanSessionsTableTableManager(_db, _db.scanSessions);
   $$ScanSessionNodesTableTableManager get scanSessionNodes =>

@@ -34,12 +34,7 @@ class NodosIdentity extends Equatable {
   });
 
   Map<String, dynamic> toJson() {
-    return {
-      'version': version,
-      'uuid': uuid,
-      'name': name,
-      'color': color,
-    };
+    return {'version': version, 'uuid': uuid, 'name': name, 'color': color};
   }
 
   String toJsonString() {
@@ -57,9 +52,7 @@ class NodosIdentity extends Equatable {
     final color = json['color'];
 
     if (version is! int) {
-      throw const FormatException(
-        'NodosIdentity.version debe ser un entero',
-      );
+      throw const FormatException('NodosIdentity.version debe ser un entero');
     }
 
     if (version != currentVersion) {
@@ -69,21 +62,15 @@ class NodosIdentity extends Equatable {
     }
 
     if (uuid is! String || uuid.trim().isEmpty) {
-      throw const FormatException(
-        'NodosIdentity.uuid inválido',
-      );
+      throw const FormatException('NodosIdentity.uuid inválido');
     }
 
     if (name is! String || name.trim().isEmpty) {
-      throw const FormatException(
-        'NodosIdentity.name inválido',
-      );
+      throw const FormatException('NodosIdentity.name inválido');
     }
 
     if (color is! String || color.trim().isEmpty) {
-      throw const FormatException(
-        'NodosIdentity.color inválido',
-      );
+      throw const FormatException('NodosIdentity.color inválido');
     }
 
     return NodosIdentity(
@@ -108,21 +95,12 @@ class NodosIdentity extends Equatable {
 
   factory NodosIdentity.fromBytes(List<int> bytes) {
     if (bytes.isEmpty) {
-      throw const FormatException(
-        'El payload de identidad Nodos está vacío',
-      );
+      throw const FormatException('El payload de identidad Nodos está vacío');
     }
 
-    return NodosIdentity.fromJsonString(
-      utf8.decode(bytes),
-    );
+    return NodosIdentity.fromJsonString(utf8.decode(bytes));
   }
 
   @override
-  List<Object?> get props => [
-        version,
-        uuid,
-        name,
-        color,
-      ];
+  List<Object?> get props => [version, uuid, name, color];
 }

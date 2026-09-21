@@ -5,6 +5,7 @@
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 
 import 'dart:async' as _i3;
+import 'dart:typed_data' as _i5;
 
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart'
     as _i4;
@@ -76,6 +77,15 @@ class MockBleRepository extends _i1.Mock implements _i2.BleRepository {
   ) =>
       (super.noSuchMethod(
             Invocation.method(#startAdvertise, [deviceUuid, name, color]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Future<void> updateGraphPayload(_i5.Uint8List? payload) =>
+      (super.noSuchMethod(
+            Invocation.method(#updateGraphPayload, [payload]),
             returnValue: _i3.Future<void>.value(),
             returnValueForMissingStub: _i3.Future<void>.value(),
           )

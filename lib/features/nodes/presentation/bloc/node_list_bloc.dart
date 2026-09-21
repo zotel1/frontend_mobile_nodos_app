@@ -238,10 +238,7 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
     _ensureSubscription();
   }
 
-  void _onNodeDetected(
-    NodeDetected event,
-    Emitter<NodeListState> emit,
-  ) {
+  void _onNodeDetected(NodeDetected event, Emitter<NodeListState> emit) {
     emit(NodeListLoaded([event.node]));
   }
 
@@ -309,9 +306,7 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
       // Conservamos solamente una ventana reciente.
       final rssiHistory = combinedHistory.length <= _maxRssiSamples
           ? List<int>.from(combinedHistory)
-          : combinedHistory.sublist(
-              combinedHistory.length - _maxRssiSamples,
-            );
+          : combinedHistory.sublist(combinedHistory.length - _maxRssiSamples);
 
       final filteredRssi = _medianRssi(rssiHistory);
 
@@ -348,8 +343,7 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
           lastSeen: now,
           rssiHistory: rssiHistory,
           suggestedName:
-              latestDevice.advName != null &&
-                  latestDevice.advName!.isNotEmpty
+              latestDevice.advName != null && latestDevice.advName!.isNotEmpty
               ? latestDevice.advName
               : null,
           deviceType: latestDevice.deviceType,
@@ -422,10 +416,7 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
     Emitter<NodeListState> emit,
   ) async {
     await updateNodeMetadata(
-      UpdateNodeMetadataParams(
-        id: event.nodeId,
-        name: event.name,
-      ),
+      UpdateNodeMetadataParams(id: event.nodeId, name: event.name),
     );
   }
 
@@ -437,10 +428,7 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
     Emitter<NodeListState> emit,
   ) async {
     await updateNodeMetadata(
-      UpdateNodeMetadataParams(
-        id: event.nodeId,
-        color: event.color,
-      ),
+      UpdateNodeMetadataParams(id: event.nodeId, color: event.color),
     );
   }
 
@@ -496,10 +484,7 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
     );
   }
 
-  void _onNodesUpdated(
-    _NodesUpdated event,
-    Emitter<NodeListState> emit,
-  ) {
+  void _onNodesUpdated(_NodesUpdated event, Emitter<NodeListState> emit) {
     emit(NodeListLoaded(event.nodes));
   }
 
@@ -510,10 +495,7 @@ class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
     emit(const NodeListEmpty());
   }
 
-  void _onNodesLoadError(
-    _NodesLoadError event,
-    Emitter<NodeListState> emit,
-  ) {
+  void _onNodesLoadError(_NodesLoadError event, Emitter<NodeListState> emit) {
     emit(NodeListError(event.message));
   }
 

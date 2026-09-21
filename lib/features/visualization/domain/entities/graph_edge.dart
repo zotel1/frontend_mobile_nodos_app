@@ -2,20 +2,28 @@ import 'package:equatable/equatable.dart';
 
 /// Tipo de arista en el grafo de visualización.
 ///
-/// [direct]: conexión real registrada en la tabla connections
-///   (A↔B mutuamente conectados). Se renderiza sólida, opacidad completa.
+/// [direct]:
+/// conexión real registrada localmente en la tabla `connections`.
 ///
-/// [transitive]: arista inferida por transitividad 1-hop
-///   (A→B y B→C ⇒ A—C). Se renderiza con patrón discontinuo (dashed)
-///   y opacidad 50% (R5.3).
-/// Agregado en PR2 — Phase 5 Graph Social Model.
-enum EdgeType { direct, transitive }
+/// [transitive]:
+/// arista inferida localmente por transitividad 1-hop.
+///
+/// [reported]:
+/// relación declarada por otra instalación Nodos mediante Graph Exchange.
+///
+/// Una arista [reported] NO implica que esta instalación posea una conexión
+/// directa con el nodo remoto y NO debe persistirse en `connections`.
+enum EdgeType { direct, transitive, reported }
 
 /// Arista entre dos nodos en el grafo de visualización.
 ///
-/// Conecta dos GraphNode por sus IDs. El grosor (thickness) depende de
-/// la cantidad de co-detecciones entre los nodos conectados, siguiendo
-/// la especificación GRAPH-VIZ AC-5.
+/// [fromId] y [toId] siempre corresponden a IDs reales de la tabla `nodes`.
+///
+/// La procedencia de la relación se conserva mediante [edgeType]:
+///
+/// - [EdgeType.direct]: relación local persistida.
+/// - [EdgeType.transitive]: relación inferida.
+/// - [EdgeType.reported]: relación recibida mediante Graph Exchange.
 class GraphEdge extends Equatable {
   /// ID del nodo origen.
   final int fromId;
@@ -23,13 +31,10 @@ class GraphEdge extends Equatable {
   /// ID del nodo destino.
   final int toId;
 
-  /// Grosor de la línea en píxeles.
-  /// Derivado de la cantidad de co-detecciones.
+  /// Grosor base de la línea en píxeles.
   final double thickness;
 
-  /// Tipo de arista: [EdgeType.direct] (conexión real) o
-  /// [EdgeType.transitive] (inferida por transitividad 1-hop).
-  /// Default: direct. Agregado en PR2.
+  /// Procedencia semántica de la arista.
   final EdgeType edgeType;
 
   const GraphEdge({
@@ -39,14 +44,17 @@ class GraphEdge extends Equatable {
     this.edgeType = EdgeType.direct,
   });
 
-  /// Calcula el grosor de arista según cantidad de co-detecciones.
+  /// Calcula el grosor de una arista local según cantidad de
+  /// co-detecciones.
   ///
   /// 1 detección → 1.0 px
   /// 2-3 detecciones → 2.0 px
   /// ≥4 detecciones → 3.0 px
   static double thicknessFromCount(int count) {
     if (count >= 4) return 3.0;
+
     if (count >= 2) return 2.0;
+
     return 1.0;
   }
 
