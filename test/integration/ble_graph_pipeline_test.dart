@@ -72,6 +72,8 @@ class _TestBleRepository implements BleRepository {
   Future<void> startAdvertise(String uuid, String name, String color) async {}
 
   @override
+  Future<void> updateGraphPayload(Uint8List payload) async {}
+  @override
   Future<void> stopAdvertise() async {}
 
   @override

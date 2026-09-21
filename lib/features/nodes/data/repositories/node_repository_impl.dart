@@ -22,6 +22,10 @@ class NodeRepositoryImpl implements NodeRepository {
       _dataSource.getNodeByDeviceUuid(deviceUuid);
 
   @override
+  Future<Node?> getNodeByRemoteRef(String remoteRef) =>
+      _dataSource.getNodeByRemoteRef(remoteRef);
+
+  @override
   Future<Node?> getSelfNode() => _dataSource.getSelfNode();
 
   @override

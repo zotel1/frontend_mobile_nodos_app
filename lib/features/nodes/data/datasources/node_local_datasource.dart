@@ -10,6 +10,15 @@ abstract class NodeLocalDataSource {
 
   Future<Node?> getNodeByDeviceUuid(String deviceUuid);
 
+  /// Busca un dispositivo BLE genérico conocido mediante Graph Exchange
+  /// utilizando su referencia namespaced.
+  ///
+  /// Ejemplo:
+  /// `local:reporterUuid:42`
+  ///
+  /// [remoteRef] no representa una dirección BLE ni una identidad global.
+  Future<Node?> getNodeByRemoteRef(String remoteRef);
+
   Future<Node?> getSelfNode();
 
   Future<void> upsertNode(Node node);

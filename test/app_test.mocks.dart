@@ -639,6 +639,15 @@ class MockVisualizationBloc extends _i1.Mock implements _i22.VisualizationBloc {
           as _i19.Future<void>);
 
   @override
+  _i19.Future<void> close() =>
+      (super.noSuchMethod(
+            Invocation.method(#close, []),
+            returnValue: _i19.Future<void>.value(),
+            returnValueForMissingStub: _i19.Future<void>.value(),
+          )
+          as _i19.Future<void>);
+
+  @override
   void add(_i23.VisualizationEvent? event) => super.noSuchMethod(
     Invocation.method(#add, [event]),
     returnValueForMissingStub: null,
@@ -683,15 +692,6 @@ class MockVisualizationBloc extends _i1.Mock implements _i22.VisualizationBloc {
     Invocation.method(#onDone, [event, error, stackTrace]),
     returnValueForMissingStub: null,
   );
-
-  @override
-  _i19.Future<void> close() =>
-      (super.noSuchMethod(
-            Invocation.method(#close, []),
-            returnValue: _i19.Future<void>.value(),
-            returnValueForMissingStub: _i19.Future<void>.value(),
-          )
-          as _i19.Future<void>);
 
   @override
   void onChange(_i21.Change<_i12.VisualizationState>? change) =>

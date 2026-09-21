@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remote_relation_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_edge.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_node.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
@@ -20,6 +21,15 @@ class _PhysicsTick extends VisualizationEvent {
   const _PhysicsTick();
 }
 
+/// Notifica que cambió el snapshot distribuido almacenado en
+/// `remote_relations`.
+///
+/// Es un evento interno. Su única responsabilidad es solicitar una
+/// reconstrucción del grafo utilizando el último contexto conocido.
+class _RemoteRelationsChanged extends VisualizationEvent {
+  const _RemoteRelationsChanged();
+}
+
 /// Orquesta construcción, actualización e interacción del grafo.
 ///
 /// Existen dos mecanismos de posicionamiento diferentes:
@@ -31,9 +41,13 @@ class _PhysicsTick extends VisualizationEvent {
 ///    utilizada durante el drag y la relajación posterior.
 ///
 /// `_lastLayout` es siempre la memoria espacial autoritativa.
+///
+/// Además observa [RemoteRelationRepository] para reconstruir el grafo
+/// cuando cambia la topología distribuida recibida mediante Graph Exchange.
 class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
   final BuildGraph _buildGraph;
   final CalculateLayout _calculateLayout;
+  final RemoteRelationRepository _remoteRelationRepository;
   final Duration _debounceDuration;
 
   LayoutResult? _lastLayout;
@@ -42,6 +56,22 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
   int _lastNodeHash = 0;
 
   bool _isBuilding = false;
+
+  /// Última solicitud pública de construcción conocida.
+  ///
+  /// Permite reconstruir el mismo grafo cuando cambia `remote_relations`
+  /// sin depender de que la UI vuelva a emitir BuildGraphRequested.
+  BuildGraphRequested? _lastBuildRequest;
+
+  /// Suscripción a los snapshots distribuidos.
+  StreamSubscription<dynamic>? _remoteRelationsSubscription;
+
+  /// Evita reconstruir inmediatamente por la emisión inicial de Drift.
+  ///
+  /// `watchAll()` normalmente emite el estado actual apenas comienza la
+  /// escucha. Esa primera emisión no representa necesariamente un cambio
+  /// ocurrido después de construir el grafo.
+  bool _receivedInitialRemoteSnapshot = false;
 
   /// Nodo fijado actualmente por el dedo.
   int? _draggedNodeId;
@@ -81,6 +111,7 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
 
   /// Intensidad de los resortes.
   static const double _directSpringStrength = 0.020;
+  static const double _reportedSpringStrength = 0.012;
   static const double _transitiveSpringStrength = 0.008;
 
   /// Amortiguación de velocidad.
@@ -104,12 +135,16 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
   VisualizationBloc({
     required BuildGraph buildGraph,
     required CalculateLayout calculateLayout,
+    required RemoteRelationRepository remoteRelationRepository,
     Duration debounceDuration = const Duration(seconds: 1),
   }) : _buildGraph = buildGraph,
        _calculateLayout = calculateLayout,
+       _remoteRelationRepository = remoteRelationRepository,
        _debounceDuration = debounceDuration,
        super(const VisualizationInitial()) {
     on<BuildGraphRequested>(_onBuildGraphRequested);
+
+    on<_RemoteRelationsChanged>(_onRemoteRelationsChanged);
 
     on<NodeSelected>(_onNodeSelected);
     on<NodeDeselected>(_onNodeDeselected);
@@ -124,12 +159,47 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     on<_PhysicsTick>(_onPhysicsTick);
 
     on<RetryGraphBuild>(_onRetryGraphBuild);
+
+    _observeRemoteRelations();
+  }
+
+  /// Observa cambios en los snapshots distribuidos.
+  ///
+  /// Drift emite inicialmente el contenido actual de la tabla. Esa primera
+  /// emisión se utiliza únicamente para inicializar la observación.
+  ///
+  /// Las emisiones posteriores representan cambios que pueden modificar
+  /// la topología visible.
+  void _observeRemoteRelations() {
+    _remoteRelationsSubscription = _remoteRelationRepository.watchAll().listen(
+      (_) {
+        if (!_receivedInitialRemoteSnapshot) {
+          _receivedInitialRemoteSnapshot = true;
+          return;
+        }
+
+        if (!isClosed) {
+          add(const _RemoteRelationsChanged());
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (kDebugMode) {
+          debugPrint(
+            'VisualizationBloc: error observando remote_relations: $error',
+          );
+        }
+      },
+    );
   }
 
   Future<void> _onBuildGraphRequested(
     BuildGraphRequested event,
     Emitter<VisualizationState> emit,
   ) async {
+    // Guardamos siempre el contexto más reciente aunque el hash de nodos
+    // indique que no hace falta reconstruir en este instante.
+    _lastBuildRequest = event;
+
     final currentHash = _computeNodeHash(event.nodes);
 
     if (_lastNodeHash != 0 && _lastNodeHash == currentHash) {
@@ -149,6 +219,30 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     }
 
     await processBuildRequest(event, emit);
+  }
+
+  /// Reconstruye el grafo cuando cambia `remote_relations`.
+  ///
+  /// Esta ruta NO utiliza `_lastNodeHash`, porque un cambio distribuido puede
+  /// modificar nodos/aristas sin alterar la lista BLE recibida desde la UI.
+  ///
+  /// Tampoco aplica el debounce BLE de un segundo: el cambio remoto ya fue
+  /// consolidado previamente como snapshot válido en SQLite.
+  Future<void> _onRemoteRelationsChanged(
+    _RemoteRelationsChanged event,
+    Emitter<VisualizationState> emit,
+  ) async {
+    final lastRequest = _lastBuildRequest;
+
+    if (lastRequest == null) {
+      return;
+    }
+
+    // Invalida cualquier BuildGraphRequested que todavía esté esperando
+    // dentro del debounce.
+    _debounceSeq++;
+
+    await processBuildRequest(lastRequest, emit);
   }
 
   int _computeNodeHash(List<dynamic> nodes) {
@@ -544,10 +638,13 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
   /// Aplica Hooke simplificado sobre las aristas.
   ///
   /// direct:
-  ///   vínculo más fuerte.
+  ///   vínculo local más fuerte.
+  ///
+  /// reported:
+  ///   vínculo activo declarado por otra instalación Nodos.
   ///
   /// transitive:
-  ///   vínculo más suave.
+  ///   vínculo local inferido más suave.
   void _applySpringForces({
     required LayoutResult layout,
     required Map<int, GraphNode> nodesById,
@@ -580,9 +677,11 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
 
       final displacement = distance - restLength;
 
-      final springStrength = edge.edgeType == EdgeType.direct
-          ? _directSpringStrength
-          : _transitiveSpringStrength;
+      final springStrength = switch (edge.edgeType) {
+        EdgeType.direct => _directSpringStrength,
+        EdgeType.reported => _reportedSpringStrength,
+        EdgeType.transitive => _transitiveSpringStrength,
+      };
 
       // thickness aporta ligeramente más influencia, sin convertir
       // las aristas gruesas en resortes excesivamente agresivos.
@@ -916,10 +1015,13 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
   }
 
   @override
-  Future<void> close() {
+  Future<void> close() async {
     _physicsTimer?.cancel();
     _physicsTimer = null;
 
-    return super.close();
+    await _remoteRelationsSubscription?.cancel();
+    _remoteRelationsSubscription = null;
+
+    await super.close();
   }
 }

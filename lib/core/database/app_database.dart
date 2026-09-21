@@ -21,6 +21,29 @@ class Nodes extends Table {
   /// a sí mismo mediante escaneo.
   TextColumn get bleAddress => text().nullable().unique()();
 
+  /// Referencia namespaced recibida mediante Graph Exchange.
+  ///
+  /// Se utiliza para materializar localmente dispositivos BLE genéricos
+  /// conocidos únicamente a través de otra instalación Nodos.
+  ///
+  /// Ejemplo:
+  ///
+  ///   local:`reporterUuid:42`
+  ///
+  /// Esta referencia NO es:
+  /// - una dirección BLE;
+  /// - un UUID global;
+  /// - evidencia de que el dispositivo fue detectado localmente.
+  ///
+  /// Es null para:
+  /// - el self-node;
+  /// - dispositivos detectados localmente;
+  /// - instalaciones Nodos identificables mediante [deviceUuid].
+  ///
+  /// Para un dispositivo BLE genérico remoto, [remoteRef] constituye
+  /// su identidad estable dentro del namespace del reporter.
+  TextColumn get remoteRef => text().nullable().unique()();
+
   /// Verdadero únicamente para el nodo que representa este dispositivo.
   BoolColumn get isSelf => boolean().withDefault(const Constant(false))();
 
@@ -85,6 +108,10 @@ class Users extends Table {
 
 // ──────────────────────── Connections ────────────────────────
 
+/// Relaciones directas creadas por esta instalación.
+///
+/// Esta tabla NO contiene relaciones aprendidas desde otros dispositivos
+/// mediante Graph Exchange.
 class Connections extends Table {
   IntColumn get id => integer().autoIncrement()();
 
@@ -98,6 +125,61 @@ class Connections extends Table {
 
   @override
   List<String> get customConstraints => ['UNIQUE(from_node_id, to_node_id)'];
+}
+
+// ──────────────────────── RemoteRelations ────────────────────────
+
+/// Relación directa declarada por otra instalación Nodos.
+///
+/// Ejemplo:
+///
+/// El Motorola recibe del A25:
+///
+///   A25 ── JBL Charge 3
+///
+/// Motorola NO inserta esa relación en [Connections], porque no es una
+/// relación creada localmente. En cambio almacena aquí que el A25 declaró
+/// una relación con un nodo remoto.
+///
+/// [reporterUuid] identifica a la instalación Nodos que publicó la relación.
+///
+/// [remoteRef] identifica al otro extremo dentro del protocolo distribuido:
+///
+/// - `nodos:<deviceUuid>` para otra instalación Nodos.
+/// - `local:<reporterUuid>:<localNodeId>` para un BLE genérico conocido
+///   únicamente por el dispositivo que publica el grafo.
+///
+/// El segundo formato NO constituye una identidad global del dispositivo BLE.
+/// Es solamente una referencia estable dentro del namespace del reporter.
+class RemoteRelations extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  /// UUID estable de la instalación Nodos que declara la relación.
+  TextColumn get reporterUuid => text()();
+
+  /// Referencia transportable del otro extremo de la relación.
+  TextColumn get remoteRef => text()();
+
+  /// UUID Nodos del nodo remoto, cuando existe.
+  ///
+  /// Es null para dispositivos BLE genéricos.
+  TextColumn get remoteDeviceUuid => text().nullable()();
+
+  /// Nombre que el reporter conoce para el nodo remoto.
+  TextColumn get remoteName => text().nullable()();
+
+  /// Color Nodos cuando el extremo remoto es otra instalación Nodos.
+  TextColumn get remoteColor => text().nullable()();
+
+  /// Tipo de dispositivo conocido por el reporter.
+  TextColumn get remoteDeviceType => text().nullable()();
+
+  /// Momento en que esta instalación recibió por última vez
+  /// esta relación desde el reporter.
+  DateTimeColumn get lastReceivedAt => dateTime()();
+
+  @override
+  List<String> get customConstraints => ['UNIQUE(reporter_uuid, remote_ref)'];
 }
 
 // ──────────────────────── ScanSessions ────────────────────────
@@ -150,6 +232,11 @@ final nodesDeviceUuidIdx = Index(
   'CREATE INDEX idx_nodes_device_uuid ON nodes(device_uuid)',
 );
 
+final nodesRemoteRefIdx = Index(
+  'idx_nodes_remote_ref',
+  'CREATE INDEX idx_nodes_remote_ref ON nodes(remote_ref)',
+);
+
 final nodesIsSelfIdx = Index(
   'idx_nodes_is_self',
   'CREATE UNIQUE INDEX idx_nodes_is_self '
@@ -180,10 +267,29 @@ final connectionsToNodeIdIdx = Index(
       'ON connections(to_node_id)',
 );
 
+final remoteRelationsReporterUuidIdx = Index(
+  'idx_remote_relations_reporter_uuid',
+  'CREATE INDEX idx_remote_relations_reporter_uuid '
+      'ON remote_relations(reporter_uuid)',
+);
+
+final remoteRelationsRemoteDeviceUuidIdx = Index(
+  'idx_remote_relations_remote_device_uuid',
+  'CREATE INDEX idx_remote_relations_remote_device_uuid '
+      'ON remote_relations(remote_device_uuid)',
+);
+
 // ──────────────────────── Database ────────────────────────
 
 @DriftDatabase(
-  tables: [Nodes, Users, Connections, ScanSessions, ScanSessionNodes],
+  tables: [
+    Nodes,
+    Users,
+    Connections,
+    RemoteRelations,
+    ScanSessions,
+    ScanSessionNodes,
+  ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase({required String encryptionKey})
@@ -201,7 +307,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.inMemory() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -213,9 +319,12 @@ class AppDatabase extends _$AppDatabase {
       await m.createIndex(connectionsToNodeIdIdx);
       await m.createIndex(nodesBleAddressIdx);
       await m.createIndex(nodesDeviceUuidIdx);
+      await m.createIndex(nodesRemoteRefIdx);
       await m.createIndex(nodesIsSelfIdx);
       await m.createIndex(scanSessionNodesNodeIdIdx);
       await m.createIndex(scanSessionsStartedAtIdx);
+      await m.createIndex(remoteRelationsReporterUuidIdx);
+      await m.createIndex(remoteRelationsRemoteDeviceUuidIdx);
     },
 
     onUpgrade: (Migrator m, int from, int to) async {
@@ -281,6 +390,35 @@ class AppDatabase extends _$AppDatabase {
 
         await m.createIndex(nodesDeviceUuidIdx);
         await m.createIndex(nodesIsSelfIdx);
+      }
+
+      if (from < 8) {
+        // FEAT-002:
+        //
+        // Las relaciones recibidas desde otras instalaciones Nodos
+        // se mantienen separadas de las conexiones directas locales.
+        //
+        // Esto preserva la semántica de `connections` y permite saber
+        // qué instalación declaró cada relación.
+        await m.createTable(remoteRelations);
+        await m.createIndex(remoteRelationsReporterUuidIdx);
+        await m.createIndex(remoteRelationsRemoteDeviceUuidIdx);
+      }
+
+      if (from < 9) {
+        // FEAT-002:
+        //
+        // Los dispositivos BLE genéricos aprendidos mediante Graph Exchange
+        // necesitan un Node.id local para participar del sistema de
+        // visualización existente.
+        //
+        // remote_ref conserva la identidad namespaced declarada por el
+        // reporter sin reutilizar ble_address ni inventar un device_uuid.
+        //
+        // Ejemplo:
+        // local:`local:reporterUuid:42`
+        await m.addColumn(nodes, nodes.remoteRef);
+        await m.createIndex(nodesRemoteRefIdx);
       }
     },
 

@@ -7,16 +7,28 @@ import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.da
 /// - User.id NO debe usarse como Node.id.
 /// - deviceUuid representa identidad estable Nodos.
 /// - bleAddress representa identidad de transporte BLE.
+/// - remoteRef representa identidad namespaced de un BLE genérico
+///   aprendido mediante Graph Exchange.
 abstract class NodeRepository {
   Stream<List<Node>> observeNodes();
 
   Future<Node?> getNodeById(int id);
 
-  /// Busca por remoteId / dirección BLE observada.
+  /// Busca por remoteId / dirección BLE observada localmente.
   Future<Node?> getNodeByBleAddress(String bleAddress);
 
   /// Busca un dispositivo Nodos por su UUID estable.
   Future<Node?> getNodeByDeviceUuid(String deviceUuid);
+
+  /// Busca un dispositivo BLE genérico conocido mediante Graph Exchange
+  /// utilizando su referencia namespaced.
+  ///
+  /// Ejemplo:
+  /// `local:reporterUuid:42`
+  ///
+  /// Esta referencia solamente es estable dentro del namespace del
+  /// dispositivo Nodos que reportó la relación.
+  Future<Node?> getNodeByRemoteRef(String remoteRef);
 
   /// Retorna el único nodo local persistente.
   ///
@@ -28,7 +40,8 @@ abstract class NodeRepository {
   /// La implementación debe resolver identidad usando:
   /// 1. id, si existe;
   /// 2. deviceUuid, si existe;
-  /// 3. bleAddress, si existe.
+  /// 3. bleAddress, si existe;
+  /// 4. remoteRef, si existe.
   Future<void> upsertNode(Node node);
 
   /// Persiste la identidad estable obtenida mediante el protocolo Nodos.

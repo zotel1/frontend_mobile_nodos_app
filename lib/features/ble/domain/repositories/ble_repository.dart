@@ -1,11 +1,33 @@
+import 'dart:typed_data';
+
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart';
 
 abstract class BleRepository {
   Stream<List<BleDevice>> get scanResults;
+
   Future<void> startScan();
+
   Future<void> stopScan();
+
+  /// Inicia el advertising y el servidor GATT de Nodos.
+  ///
+  /// [deviceUuid] identifica de forma estable esta instalación.
+  /// [name] y [color] forman parte de la identidad pública de Nodos.
   Future<void> startAdvertise(String deviceUuid, String name, String color);
+
+  /// Actualiza el snapshot del grafo activo publicado mediante GATT.
+  ///
+  /// El payload debe contener un NodosGraphPayload ya serializado.
+  ///
+  /// Este método solamente transporta los bytes hacia la capa de datos.
+  /// No determina qué conexiones están activas ni consulta SQLite.
+  ///
+  /// Actualizar el grafo no debe reiniciar el advertising.
+  Future<void> updateGraphPayload(Uint8List payload);
+
+  /// Detiene el advertising y el servidor GATT.
   Future<void> stopAdvertise();
+
   Stream<bool> get bluetoothState;
 
   /// Cierra la sesión de escaneo activa estableciendo [endedAt].
