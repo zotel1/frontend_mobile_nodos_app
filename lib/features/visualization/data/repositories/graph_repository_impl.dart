@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:drift/drift.dart' hide Column;
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remote_relation_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_edge.dart';
@@ -17,13 +18,26 @@ import 'package:frontend_mobile_nodos_app/features/visualization/domain/reposito
 /// - el self-node es un Node persistente real de SQLite;
 /// - isSelf define comportamiento visual, no el valor del ID.
 ///
-/// Las aristas directas se derivan de [connections].
+/// Graph Exchange:
+/// - `connections` continúa representando relaciones locales persistentes;
+/// - `remote_relations` representa snapshots recibidos desde otros Nodos;
+/// - los extremos remotos se materializan en `nodes` para obtener IDs locales;
+/// - las relaciones remotas se representan mediante [EdgeType.reported];
+/// - nunca se copian relaciones remotas hacia `connections`.
+///
+/// Las aristas directas se derivan de `connections`.
 /// Las aristas transitivas se infieren mediante self-join SQL.
+/// Las aristas reportadas se derivan de `remote_relations`.
 class GraphRepositoryImpl implements GraphRepository {
   final NodeRepository _nodeRepository;
   final AppDatabase _db;
+  final RemoteRelationRepository _remoteRelationRepository;
 
-  GraphRepositoryImpl(this._nodeRepository, this._db);
+  GraphRepositoryImpl(
+    this._nodeRepository,
+    this._db,
+    this._remoteRelationRepository,
+  );
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Grafo principal
@@ -56,19 +70,56 @@ class GraphRepositoryImpl implements GraphRepository {
 
     final loadedNodes = await Future.wait(nodePromises);
 
-    final externalNodes = loadedNodes
+    final sessionExternalNodes = loadedNodes
         .whereType<Node>()
         .where((node) => !node.isSelf)
         .toList();
 
+    // ────────────────────────────────────────────────────────
+    // Graph Exchange
+    // ────────────────────────────────────────────────────────
+    //
+    // Materializamos los extremos de remote_relations dentro de nodes
+    // para que toda la visualización continúe trabajando exclusivamente
+    // con Node.id reales de SQLite.
+    //
+    // IMPORTANTE:
+    // Esto NO crea connections ni scan_session_nodes.
+    final remoteGraph = await _loadRemoteGraph();
+
+    // Un mismo nodo puede:
+    // - haber sido detectado localmente;
+    // - aparecer además dentro de un snapshot remoto.
+    //
+    // Se deduplica exclusivamente por Node.id ya reconciliado/persistido.
+    final externalNodesById = <int, Node>{};
+
+    for (final node in sessionExternalNodes) {
+      final id = node.id;
+
+      if (id != null) {
+        externalNodesById[id] = node;
+      }
+    }
+
+    for (final node in remoteGraph.nodes) {
+      final id = node.id;
+
+      if (id != null && id != selfNode?.id) {
+        // Si ya fue observado localmente, conservamos esa representación
+        // porque posee información de transporte/RSSI más rica.
+        externalNodesById.putIfAbsent(id, () => node);
+      }
+    }
+
+    final externalNodes = externalNodesById.values.toList();
+
     // Los IDs visibles del grafo incluyen:
     // - dispositivos detectados en esta sesión;
+    // - dispositivos materializados desde Graph Exchange;
     // - self-node persistente.
-    //
-    // Esto es fundamental para que una conexión self ↔ remoto
-    // pueda recuperarse desde la tabla connections.
     final visibleNodeIds = <int>{
-      ...externalNodes.where((node) => node.id != null).map((node) => node.id!),
+      ...externalNodes.map((node) => node.id!),
       if (selfNode?.id != null) selfNode!.id!,
     };
 
@@ -76,7 +127,21 @@ class GraphRepositoryImpl implements GraphRepository {
 
     final transitiveEdges = await _getTransitiveEdges(visibleNodeIds);
 
-    final edges = <GraphEdge>[...directEdges, ...transitiveEdges];
+    // Una relación reportada solamente se dibuja si ambos extremos
+    // pertenecen al grafo visible actual.
+    final reportedEdges = remoteGraph.edges
+        .where(
+          (edge) =>
+              visibleNodeIds.contains(edge.fromId) &&
+              visibleNodeIds.contains(edge.toId),
+        )
+        .toList();
+
+    final edges = <GraphEdge>[
+      ...directEdges,
+      ...transitiveEdges,
+      ...reportedEdges,
+    ];
 
     // Cantidad de relaciones por Node.id.
     final connectionCounts = <int, int>{};
@@ -113,7 +178,9 @@ class GraphRepositoryImpl implements GraphRepository {
       );
     }
 
-    // Si no hay externos, devolvemos únicamente el self-node si existe.
+    // Ahora este early return considera también nodos recibidos mediante
+    // Graph Exchange. Si A25 reporta Watch/JBL, externalNodes ya no estará
+    // vacío aunque esos dispositivos no pertenezcan a scan_session_nodes.
     if (externalNodes.isEmpty) {
       return LayoutResult(
         nodes: graphNodes,
@@ -124,21 +191,31 @@ class GraphRepositoryImpl implements GraphRepository {
     }
 
     // ────────────────────────────────────────────────────────
-    // Posicionamiento inicial de nodos externos por proximidad
+    // Posicionamiento inicial de nodos externos
     // ────────────────────────────────────────────────────────
-
+    //
+    // Los nodos observados localmente conservan posicionamiento basado
+    // en RSSI.
+    //
+    // Los nodos conocidos únicamente mediante Graph Exchange no tienen
+    // RSSI local. Se ubican inicialmente en un anillo remoto neutral y
+    // posteriormente la física de visualización puede estabilizarlos.
     final Map<String, List<int>> ringGroups = {};
 
     for (var i = 0; i < externalNodes.length; i++) {
       final node = externalNodes[i];
 
-      final lastRssi = node.rssiHistory.isNotEmpty
-          ? node.rssiHistory.last
-          : -100;
+      final double ringRadius;
 
-      final distance = rssiToDistance(lastRssi);
+      if (node.rssiHistory.isNotEmpty) {
+        final lastRssi = node.rssiHistory.last;
 
-      final ringRadius = _ringRadiusForDistance(distance);
+        final distance = rssiToDistance(lastRssi);
+
+        ringRadius = _ringRadiusForDistance(distance);
+      } else {
+        ringRadius = 700.0;
+      }
 
       final ringKey = ringRadius.toStringAsFixed(0);
 
@@ -168,11 +245,9 @@ class GraphRepositoryImpl implements GraphRepository {
 
         final y = (centerY + radius * sin(angle)).clamp(50.0, 1950.0);
 
-        final lastRssi = node.rssiHistory.isNotEmpty
-            ? node.rssiHistory.last
-            : -100;
-
-        final proximity = rssiToProximity(lastRssi);
+        final proximity = node.rssiHistory.isNotEmpty
+            ? rssiToProximity(node.rssiHistory.last)
+            : ProximityLevel.far;
 
         graphNodes.add(
           GraphNode(
@@ -199,6 +274,166 @@ class GraphRepositoryImpl implements GraphRepository {
       iterations: 0,
       converged: false,
     );
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Graph Exchange
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  /// Reconstruye la parte remota del grafo a partir de los snapshots
+  /// persistidos en `remote_relations`.
+  ///
+  /// Cada relación:
+  ///
+  /// reporterUuid → remoteRef
+  ///
+  /// se transforma en:
+  ///
+  /// reporter Node.id → remote Node.id
+  ///
+  /// utilizando únicamente IDs locales reales de SQLite.
+  Future<_RemoteGraphData> _loadRemoteGraph() async {
+    final relations = await _remoteRelationRepository.watchAll().first;
+
+    if (relations.isEmpty) {
+      return const _RemoteGraphData(nodes: [], edges: []);
+    }
+
+    final nodesById = <int, Node>{};
+    final edges = <GraphEdge>[];
+    final edgeKeys = <String>{};
+
+    for (final relation in relations) {
+      final reporterUuid = relation.reporterUuid.trim();
+
+      if (reporterUuid.isEmpty) {
+        continue;
+      }
+
+      // El reporter debe ser una instalación Nodos conocida.
+      //
+      // No fabricamos un reporter sin identidad porque normalmente ya fue
+      // reconciliado al recibir NodosIdentity antes del graph payload.
+      final reporterNode = await _nodeRepository.getNodeByDeviceUuid(
+        reporterUuid,
+      );
+
+      if (reporterNode == null ||
+          reporterNode.id == null ||
+          reporterNode.isSelf) {
+        continue;
+      }
+
+      final remoteNode = await _resolveRemoteNode(relation);
+
+      if (remoteNode == null || remoteNode.id == null) {
+        continue;
+      }
+
+      if (remoteNode.id == reporterNode.id) {
+        continue;
+      }
+
+      nodesById[reporterNode.id!] = reporterNode;
+      nodesById[remoteNode.id!] = remoteNode;
+
+      final edgeKey = '${reporterNode.id}->${remoteNode.id}';
+
+      if (!edgeKeys.add(edgeKey)) {
+        continue;
+      }
+
+      edges.add(
+        GraphEdge(
+          fromId: reporterNode.id!,
+          toId: remoteNode.id!,
+          thickness: 1.0,
+          edgeType: EdgeType.reported,
+        ),
+      );
+    }
+
+    return _RemoteGraphData(nodes: nodesById.values.toList(), edges: edges);
+  }
+
+  /// Resuelve el extremo remoto de una relación.
+  ///
+  /// Existen dos estrategias y NO son intercambiables:
+  ///
+  /// 1. Nodos:
+  ///    identidad global estable mediante deviceUuid.
+  ///
+  /// 2. BLE genérico:
+  ///    identidad namespaced mediante remoteRef.
+  ///
+  /// Nunca se intenta fusionar un BLE genérico por nombre.
+  Future<Node?> _resolveRemoteNode(RemoteRelation relation) async {
+    final remoteDeviceUuid = _normalizeNullable(relation.remoteDeviceUuid);
+    final remoteRef = relation.remoteRef.trim();
+
+    if (remoteDeviceUuid != null) {
+      final existing = await _nodeRepository.getNodeByDeviceUuid(
+        remoteDeviceUuid,
+      );
+
+      if (existing != null) {
+        return existing;
+      }
+
+      final now = relation.lastReceivedAt;
+
+      final node = Node(
+        deviceUuid: remoteDeviceUuid,
+        isSelf: false,
+        name: _normalizeNullable(relation.remoteName),
+        color: _normalizeNullable(relation.remoteColor),
+        firstSeen: now,
+        lastSeen: now,
+        deviceType: _normalizeNullable(relation.remoteDeviceType),
+        connectable: false,
+      );
+
+      await _nodeRepository.upsertNode(node);
+
+      return _nodeRepository.getNodeByDeviceUuid(remoteDeviceUuid);
+    }
+
+    if (remoteRef.isEmpty) {
+      return null;
+    }
+
+    final existing = await _nodeRepository.getNodeByRemoteRef(remoteRef);
+
+    if (existing != null) {
+      return existing;
+    }
+
+    final now = relation.lastReceivedAt;
+
+    final node = Node(
+      remoteRef: remoteRef,
+      isSelf: false,
+      name: _normalizeNullable(relation.remoteName),
+      color: _normalizeNullable(relation.remoteColor),
+      firstSeen: now,
+      lastSeen: now,
+      deviceType: _normalizeNullable(relation.remoteDeviceType),
+      connectable: false,
+    );
+
+    await _nodeRepository.upsertNode(node);
+
+    return _nodeRepository.getNodeByRemoteRef(remoteRef);
+  }
+
+  String? _normalizeNullable(String? value) {
+    final normalized = value?.trim();
+
+    if (normalized == null || normalized.isEmpty) {
+      return null;
+    }
+
+    return normalized;
   }
 
   int? _parseColor(String? color) {
@@ -277,7 +512,6 @@ class GraphRepositoryImpl implements GraphRepository {
 
     for (final row in rows) {
       final fromId = row.read<int>('from_node_id');
-
       final toId = row.read<int>('to_node_id');
 
       // Dibujamos únicamente relaciones cuyos dos extremos
@@ -332,7 +566,6 @@ class GraphRepositoryImpl implements GraphRepository {
 
     for (final row in rows) {
       final fromId = row.read<int>('from_node_id');
-
       final toId = row.read<int>('to_node_id');
 
       if (visibleNodeIds.contains(fromId) && visibleNodeIds.contains(toId)) {
@@ -379,9 +612,7 @@ class GraphRepositoryImpl implements GraphRepository {
 
     for (final row in rows) {
       final nodeA = row.read<int>('node_a');
-
       final nodeB = row.read<int>('node_b');
-
       final count = row.read<int>('co_count');
 
       result['$nodeA-$nodeB'] = count;
@@ -427,7 +658,6 @@ class GraphRepositoryImpl implements GraphRepository {
       final parts = entry.key.split('-');
 
       final id1 = int.parse(parts[0]);
-
       final id2 = int.parse(parts[1]);
 
       if (sessionNodeIdSet.contains(id1) && sessionNodeIdSet.contains(id2)) {
@@ -467,7 +697,6 @@ class GraphRepositoryImpl implements GraphRepository {
       const radius = 300.0;
 
       final x = centerX + radius * cos(angle);
-
       final y = centerY + radius * sin(angle);
 
       final lastRssi = node.rssiHistory.isNotEmpty
@@ -525,4 +754,15 @@ class GraphRepositoryImpl implements GraphRepository {
 
     return _getDirectEdges(nodeIds);
   }
+}
+
+/// Resultado interno de materializar la porción remota del grafo.
+///
+/// No forma parte del dominio público: solamente permite transportar
+/// los nodos persistidos y las aristas reportadas durante buildGraph().
+class _RemoteGraphData {
+  final List<Node> nodes;
+  final List<GraphEdge> edges;
+
+  const _RemoteGraphData({required this.nodes, required this.edges});
 }

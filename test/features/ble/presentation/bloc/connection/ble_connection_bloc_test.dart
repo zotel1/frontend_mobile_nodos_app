@@ -8,6 +8,7 @@ import 'package:mockito/mockito.dart';
 
 import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_connection_repository.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/services/active_graph_exchange_service.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
@@ -15,23 +16,36 @@ import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/nod
 @GenerateNiceMocks([
   MockSpec<BleConnectionRepository>(),
   MockSpec<NodeRepository>(),
+  MockSpec<ActiveGraphExchangeService>(),
 ])
 import 'ble_connection_bloc_test.mocks.dart';
 
 void main() {
   late MockBleConnectionRepository mockRepo;
   late MockNodeRepository mockNodeRepo;
+  late MockActiveGraphExchangeService mockActiveGraphExchange;
   late StreamController<bool> stateController;
 
   setUp(() async {
     mockRepo = MockBleConnectionRepository();
     mockNodeRepo = MockNodeRepository();
+    mockActiveGraphExchange = MockActiveGraphExchangeService();
     stateController = StreamController<bool>.broadcast();
 
     // Configurar mocks por defecto.
     when(mockRepo.discoverServices(any)).thenAnswer((_) async {});
 
     when(mockRepo.readCharacteristic(any, any)).thenAnswer((_) async => null);
+
+    // FEAT-002:
+    // El servicio del grafo activo es una dependencia colaboradora del BLoC.
+    // En estos tests no evaluamos su implementación interna, por lo que
+    // simplemente permitimos que complete correctamente.
+    when(mockActiveGraphExchange.markConnected(any)).thenAnswer((_) async {});
+
+    when(
+      mockActiveGraphExchange.markDisconnected(any),
+    ).thenAnswer((_) async {});
   });
 
   tearDown(() async {
@@ -46,6 +60,7 @@ void main() {
       build: () => BleConnectionBloc(
         connectionRepository: mockRepo,
         nodeRepository: mockNodeRepo,
+        activeGraphExchange: mockActiveGraphExchange,
       ),
       verify: (bloc) => expect(bloc.state, isA<BleConnectionInitial>()),
     );
@@ -66,6 +81,7 @@ void main() {
         return BleConnectionBloc(
           connectionRepository: mockRepo,
           nodeRepository: mockNodeRepo,
+          activeGraphExchange: mockActiveGraphExchange,
         );
       },
       act: (bloc) =>
@@ -99,6 +115,7 @@ void main() {
         return BleConnectionBloc(
           connectionRepository: mockRepo,
           nodeRepository: mockNodeRepo,
+          activeGraphExchange: mockActiveGraphExchange,
         );
       },
       act: (bloc) =>
@@ -129,6 +146,7 @@ void main() {
         return BleConnectionBloc(
           connectionRepository: mockRepo,
           nodeRepository: mockNodeRepo,
+          activeGraphExchange: mockActiveGraphExchange,
         );
       },
       act: (bloc) =>
@@ -157,6 +175,7 @@ void main() {
         return BleConnectionBloc(
           connectionRepository: mockRepo,
           nodeRepository: mockNodeRepo,
+          activeGraphExchange: mockActiveGraphExchange,
         );
       },
       act: (bloc) =>
@@ -181,6 +200,7 @@ void main() {
         return BleConnectionBloc(
           connectionRepository: mockRepo,
           nodeRepository: mockNodeRepo,
+          activeGraphExchange: mockActiveGraphExchange,
         );
       },
       seed: () => const BleConnected(remoteId: 'AA:BB:CC:DD:EE:FF'),
@@ -199,6 +219,7 @@ void main() {
         return BleConnectionBloc(
           connectionRepository: mockRepo,
           nodeRepository: mockNodeRepo,
+          activeGraphExchange: mockActiveGraphExchange,
         );
       },
       seed: () =>
@@ -208,13 +229,14 @@ void main() {
     );
 
     blocTest<BleConnectionBloc, BleConnectionState>(
-      'no emite nada al desconectar desde BleConnectionInitial',
+      'desconectar desde Initial mantiene el estado inicial',
       build: () {
         when(mockRepo.disconnect(any)).thenAnswer((_) async {});
 
         return BleConnectionBloc(
           connectionRepository: mockRepo,
           nodeRepository: mockNodeRepo,
+          activeGraphExchange: mockActiveGraphExchange,
         );
       },
       act: (bloc) => bloc.add(const DisconnectDevice('any-id')),
@@ -224,7 +246,8 @@ void main() {
     // ─────────── T3.3: identidad y conexión ───────────
 
     blocTest<BleConnectionBloc, BleConnectionState>(
-      'T3.3: emite ConnectionInserted + RemoteIdentityLoaded cuando GATT read tiene éxito',
+      'T3.3: emite ConnectionInserted + RemoteIdentityLoaded '
+      'cuando GATT read tiene éxito',
       build: () {
         when(mockRepo.connect(any)).thenAnswer((_) async {});
 
@@ -237,7 +260,12 @@ void main() {
         when(
           mockRepo.readCharacteristic(any, identityCharacteristicUUID),
         ).thenAnswer(
-          (_) async => utf8.encode('{"name":"Nodo Remoto","color":"#FF5722"}'),
+          (_) async => utf8.encode(
+            '{"version":1,'
+            '"uuid":"remote-test-uuid",'
+            '"name":"Nodo Remoto",'
+            '"color":"#FF5722"}',
+          ),
         );
 
         when(mockNodeRepo.getNodeByBleAddress('AA:BB:CC:DD:EE:FF')).thenAnswer(
@@ -254,6 +282,7 @@ void main() {
         return BleConnectionBloc(
           connectionRepository: mockRepo,
           nodeRepository: mockNodeRepo,
+          activeGraphExchange: mockActiveGraphExchange,
         );
       },
       act: (bloc) =>
@@ -291,6 +320,7 @@ void main() {
         return BleConnectionBloc(
           connectionRepository: mockRepo,
           nodeRepository: mockNodeRepo,
+          activeGraphExchange: mockActiveGraphExchange,
         );
       },
       act: (bloc) =>
@@ -318,7 +348,8 @@ void main() {
     // La responsabilidad de HomePage será enviar User.localNodeId.
 
     blocTest<BleConnectionBloc, BleConnectionState>(
-      'BUG-001: persiste la conexión usando el Node.id local recibido en myNodeId',
+      'BUG-001: persiste la conexión usando el Node.id local '
+      'recibido en myNodeId',
       build: () {
         when(mockRepo.connect(any)).thenAnswer((_) async {});
 
@@ -344,12 +375,14 @@ void main() {
         return BleConnectionBloc(
           connectionRepository: mockRepo,
           nodeRepository: mockNodeRepo,
+          activeGraphExchange: mockActiveGraphExchange,
         );
       },
 
-      // Importante:
-      // primero dejamos que ConnectToDevice sea procesado y que el BLoC
-      // se suscriba a connectionState. Recién después emitimos true.
+      // Primero dejamos que ConnectToDevice sea procesado y que
+      // el BLoC se suscriba a connectionState.
+      //
+      // Recién después emitimos true.
       act: (bloc) async {
         bloc.add(const ConnectToDevice('BB:CC:DD:EE:FF:00', myNodeId: 42));
 

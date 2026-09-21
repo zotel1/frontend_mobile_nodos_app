@@ -8,6 +8,8 @@ import 'dart:async' as _i3;
 
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_connection_repository.dart'
     as _i2;
+import 'package:frontend_mobile_nodos_app/features/ble/domain/services/active_graph_exchange_service.dart'
+    as _i6;
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart'
     as _i5;
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart'
@@ -189,6 +191,57 @@ class MockNodeRepository extends _i1.Mock implements _i4.NodeRepository {
   _i3.Future<void> clearAllNodes() =>
       (super.noSuchMethod(
             Invocation.method(#clearAllNodes, []),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+}
+
+/// A class which mocks [ActiveGraphExchangeService].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockActiveGraphExchangeService extends _i1.Mock
+    implements _i6.ActiveGraphExchangeService {
+  @override
+  Set<String> get activeRemoteIds =>
+      (super.noSuchMethod(
+            Invocation.getter(#activeRemoteIds),
+            returnValue: <String>{},
+            returnValueForMissingStub: <String>{},
+          )
+          as Set<String>);
+
+  @override
+  _i3.Future<void> markConnected(String? remoteId) =>
+      (super.noSuchMethod(
+            Invocation.method(#markConnected, [remoteId]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Future<void> markDisconnected(String? remoteId) =>
+      (super.noSuchMethod(
+            Invocation.method(#markDisconnected, [remoteId]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Future<void> clear() =>
+      (super.noSuchMethod(
+            Invocation.method(#clear, []),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Future<void> publishCurrentSnapshot() =>
+      (super.noSuchMethod(
+            Invocation.method(#publishCurrentSnapshot, []),
             returnValue: _i3.Future<void>.value(),
             returnValueForMissingStub: _i3.Future<void>.value(),
           )

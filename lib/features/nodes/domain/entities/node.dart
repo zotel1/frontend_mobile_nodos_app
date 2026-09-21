@@ -7,8 +7,8 @@ class Node extends Equatable {
   /// UUID estable de identidad Nodos.
   ///
   /// - Self node: contiene el UUID de esta instalación.
-  /// - Otro dispositivo con Nodos: podrá contener su UUID cuando
-  ///   ARCH-003 complete el protocolo de identidad.
+  /// - Otro dispositivo con Nodos: contiene su UUID una vez conocida
+  ///   su identidad estable.
   /// - BLE genérico: null.
   final String? deviceUuid;
 
@@ -18,8 +18,22 @@ class Node extends Equatable {
   /// flutter_blue_plus.
   ///
   /// Es nullable porque el nodo local existe persistentemente aunque
-  /// no necesite descubrirse a sí mismo mediante BLE.
+  /// no necesite descubririrse a sí mismo mediante BLE y porque un nodo
+  /// aprendido remotamente puede no haber sido observado por esta instalación.
   final String? bleAddress;
+
+  /// Referencia namespaced recibida mediante Graph Exchange.
+  ///
+  /// Se utiliza únicamente para dispositivos BLE genéricos que esta
+  /// instalación conoce a través de otra instalación Nodos.
+  ///
+  /// Ejemplo: `local:reporterUuid:42`
+  ///
+  /// No representa una dirección BLE ni una identidad global.
+  ///
+  /// Es null para nodos locales y para dispositivos Nodos identificables
+  /// mediante [deviceUuid].
+  final String? remoteRef;
 
   /// Indica que este Node representa al dispositivo donde corre la app.
   ///
@@ -51,6 +65,7 @@ class Node extends Equatable {
     this.id,
     this.deviceUuid,
     this.bleAddress,
+    this.remoteRef,
     this.isSelf = false,
     this.name,
     this.color,
@@ -69,6 +84,8 @@ class Node extends Equatable {
     bool clearDeviceUuid = false,
     String? bleAddress,
     bool clearBleAddress = false,
+    String? remoteRef,
+    bool clearRemoteRef = false,
     bool? isSelf,
     String? name,
     bool clearName = false,
@@ -89,6 +106,7 @@ class Node extends Equatable {
       id: id ?? this.id,
       deviceUuid: clearDeviceUuid ? null : (deviceUuid ?? this.deviceUuid),
       bleAddress: clearBleAddress ? null : (bleAddress ?? this.bleAddress),
+      remoteRef: clearRemoteRef ? null : (remoteRef ?? this.remoteRef),
       isSelf: isSelf ?? this.isSelf,
       name: clearName ? null : (name ?? this.name),
       color: clearColor ? null : (color ?? this.color),
@@ -111,6 +129,7 @@ class Node extends Equatable {
     id,
     deviceUuid,
     bleAddress,
+    remoteRef,
     isSelf,
     name,
     color,

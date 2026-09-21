@@ -13,7 +13,7 @@ import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities
 /// - color propio del nodo mediante [GraphNode.displayColor];
 /// - nodos conocidos y desconocidos diferenciados;
 /// - self-node identificado mediante el color de perfil;
-/// - aristas directas y transitivas diferenciadas;
+/// - aristas directas, transitivas y reportadas diferenciadas;
 /// - selección mediante halo magenta;
 /// - detalles visibles únicamente para el nodo solicitado.
 ///
@@ -33,10 +33,18 @@ class GraphPainter extends CustomPainter {
   /// mediante doble toque.
   final int? detailsNodeId;
 
-  GraphPainter({required this.layout, this.selectedNodeId, this.detailsNodeId});
+  GraphPainter({
+    required this.layout,
+    this.selectedNodeId,
+    this.detailsNodeId,
+  });
 
   static const Color _edgeColor = Color(0xFF7E8A9A);
   static const Color _transitiveEdgeColor = Color(0xFF667080);
+
+  /// Una relación reportada se muestra diferenciada de una conexión
+  /// directa local, pero continúa siendo una relación explícita.
+  static const Color _reportedEdgeColor = Color(0xFF8A94A6);
 
   static const Color _nodeBorderColor = Color(0xFFE7ECF3);
 
@@ -87,8 +95,10 @@ class GraphPainter extends CustomPainter {
 
   /// Dibuja las conexiones del grafo.
   ///
-  /// Las conexiones directas son continuas.
-  /// Las transitivas utilizan línea discontinua y menor opacidad.
+  /// - direct: conexión local continua.
+  /// - transitive: inferencia local discontinua y tenue.
+  /// - reported: relación explícita recibida mediante Graph Exchange,
+  ///   continua pero visualmente más tenue que una conexión local.
   ///
   /// Las aristas terminan en el borde del nodo destino y reciben una
   /// pequeña punta de flecha para conservar visualmente la dirección
@@ -107,7 +117,6 @@ class GraphPainter extends CustomPainter {
       }
 
       final fromCenter = Offset(fromNode.x, fromNode.y);
-
       final toCenter = Offset(toNode.x, toNode.y);
 
       final distance = (toCenter - fromCenter).distance;
@@ -116,8 +125,6 @@ class GraphPainter extends CustomPainter {
         continue;
       }
 
-      final isTransitive = edge.edgeType == EdgeType.transitive;
-
       final geometry = _calculateEdgeGeometry(
         fromCenter: fromCenter,
         toCenter: toCenter,
@@ -125,14 +132,33 @@ class GraphPainter extends CustomPainter {
         toRadius: toNode.radius,
       );
 
-      final strokeWidth = isTransitive
-          ? 1.15
-          : (1.25 + edge.thickness * 0.35).clamp(1.4, 2.4).toDouble();
+      late final double strokeWidth;
+      late final Color edgeColor;
+      late final double arrowSize;
+
+      switch (edge.edgeType) {
+        case EdgeType.direct:
+          strokeWidth = (1.25 + edge.thickness * 0.35)
+              .clamp(1.4, 2.4)
+              .toDouble();
+          edgeColor = _edgeColor.withAlpha(165);
+          arrowSize = 7.5;
+
+        case EdgeType.transitive:
+          strokeWidth = 1.15;
+          edgeColor = _transitiveEdgeColor.withAlpha(105);
+          arrowSize = 6.0;
+
+        case EdgeType.reported:
+          strokeWidth = (1.1 + edge.thickness * 0.25)
+              .clamp(1.25, 1.9)
+              .toDouble();
+          edgeColor = _reportedEdgeColor.withAlpha(135);
+          arrowSize = 6.8;
+      }
 
       final paint = Paint()
-        ..color = isTransitive
-            ? _transitiveEdgeColor.withAlpha(105)
-            : _edgeColor.withAlpha(165)
+        ..color = edgeColor
         ..style = PaintingStyle.stroke
         ..strokeWidth = strokeWidth
         ..strokeCap = StrokeCap.round
@@ -147,8 +173,14 @@ class GraphPainter extends CustomPainter {
           geometry.end.dy,
         );
 
-      if (isTransitive) {
-        _drawDashedPath(canvas, path, paint, dashWidth: 7, gapWidth: 7);
+      if (edge.edgeType == EdgeType.transitive) {
+        _drawDashedPath(
+          canvas,
+          path,
+          paint,
+          dashWidth: 7,
+          gapWidth: 7,
+        );
       } else {
         canvas.drawPath(path, paint);
       }
@@ -158,7 +190,7 @@ class GraphPainter extends CustomPainter {
         tip: geometry.end,
         control: geometry.control,
         color: paint.color,
-        size: isTransitive ? 6.0 : 7.5,
+        size: arrowSize,
       );
     }
   }
@@ -192,7 +224,11 @@ class GraphPainter extends CustomPainter {
 
     final control = computeBezierControlPoint(start, end);
 
-    return _EdgeGeometry(start: start, control: control, end: end);
+    return _EdgeGeometry(
+      start: start,
+      control: control,
+      end: end,
+    );
   }
 
   /// Calcula el punto de control de una Bezier cuadrática.
@@ -203,7 +239,10 @@ class GraphPainter extends CustomPainter {
 
     final distance = sqrt((dx * dx) + (dy * dy));
 
-    final middle = Offset((from.dx + to.dx) / 2, (from.dy + to.dy) / 2);
+    final middle = Offset(
+      (from.dx + to.dx) / 2,
+      (from.dy + to.dy) / 2,
+    );
 
     if (distance <= 0.01) {
       return middle;
@@ -277,7 +316,11 @@ class GraphPainter extends CustomPainter {
         ..color = Color(node.displayColor).withAlpha(isSelected ? 45 : 24)
         ..style = PaintingStyle.fill;
 
-      canvas.drawCircle(Offset(node.x, node.y), radius, paint);
+      canvas.drawCircle(
+        Offset(node.x, node.y),
+        radius,
+        paint,
+      );
     }
   }
 
@@ -325,7 +368,12 @@ class GraphPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.4;
 
-        _drawDashedCircle(canvas, center, radius, borderPaint);
+        _drawDashedCircle(
+          canvas,
+          center,
+          radius,
+          borderPaint,
+        );
       }
     }
   }
@@ -354,21 +402,32 @@ class GraphPainter extends CustomPainter {
         ..color = selfColor.withAlpha(42)
         ..style = PaintingStyle.fill;
 
-      canvas.drawCircle(center, node.radius + 10, glowPaint);
+      canvas.drawCircle(
+        center,
+        node.radius + 10,
+        glowPaint,
+      );
 
       final ringPaint = Paint()
         ..color = selfColor.withAlpha(235)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2.5;
 
-      canvas.drawCircle(center, node.radius + 5, ringPaint);
+      canvas.drawCircle(
+        center,
+        node.radius + 5,
+        ringPaint,
+      );
 
       final markerPaint = Paint()
         ..color = selfColor
         ..style = PaintingStyle.fill;
 
       canvas.drawCircle(
-        Offset(node.x, node.y - node.radius - 5),
+        Offset(
+          node.x,
+          node.y - node.radius - 5,
+        ),
         3.2,
         markerPaint,
       );
@@ -382,7 +441,10 @@ class GraphPainter extends CustomPainter {
   /// Selección independiente de la identidad del nodo.
   ///
   /// Un nodo seleccionado recibe un halo magenta.
-  void _drawSelection(Canvas canvas, Map<int, GraphNode> nodeMap) {
+  void _drawSelection(
+    Canvas canvas,
+    Map<int, GraphNode> nodeMap,
+  ) {
     final id = selectedNodeId;
 
     if (id == null) {
@@ -401,21 +463,33 @@ class GraphPainter extends CustomPainter {
       ..color = _selectionColor.withAlpha(48)
       ..style = PaintingStyle.fill;
 
-    canvas.drawCircle(center, node.radius + 14, glowPaint);
+    canvas.drawCircle(
+      center,
+      node.radius + 14,
+      glowPaint,
+    );
 
     final ringPaint = Paint()
       ..color = _selectionColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3.0;
 
-    canvas.drawCircle(center, node.radius + 8, ringPaint);
+    canvas.drawCircle(
+      center,
+      node.radius + 8,
+      ringPaint,
+    );
 
     final outerPaint = Paint()
       ..color = _selectionColor.withAlpha(115)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
 
-    canvas.drawCircle(center, node.radius + 12, outerPaint);
+    canvas.drawCircle(
+      center,
+      node.radius + 12,
+      outerPaint,
+    );
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -426,7 +500,10 @@ class GraphPainter extends CustomPainter {
   /// doble toque.
   ///
   /// Si [detailsNodeId] es null, el grafo no muestra etiquetas.
-  void _drawDetails(Canvas canvas, Map<int, GraphNode> nodeMap) {
+  void _drawDetails(
+    Canvas canvas,
+    Map<int, GraphNode> nodeMap,
+  ) {
     final id = detailsNodeId;
 
     if (id == null) {
@@ -484,22 +561,30 @@ class GraphPainter extends CustomPainter {
     const verticalPadding = 7.0;
     const lineSpacing = 3.0;
 
-    final contentWidth = max(namePainter.width, distancePainter?.width ?? 0.0);
+    final contentWidth = max(
+      namePainter.width,
+      distancePainter?.width ?? 0.0,
+    );
 
     final contentHeight =
         namePainter.height +
-        (distancePainter != null ? lineSpacing + distancePainter.height : 0.0);
+        (distancePainter != null
+            ? lineSpacing + distancePainter.height
+            : 0.0);
 
     final boxWidth = contentWidth + horizontalPadding * 2;
-
     final boxHeight = contentHeight + verticalPadding * 2;
 
     final boxLeft = node.x - boxWidth / 2;
-
     final boxTop = node.y + node.radius + 11.0;
 
     final rect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(boxLeft, boxTop, boxWidth, boxHeight),
+      Rect.fromLTWH(
+        boxLeft,
+        boxTop,
+        boxWidth,
+        boxHeight,
+      ),
       const Radius.circular(8),
     );
 
@@ -518,14 +603,23 @@ class GraphPainter extends CustomPainter {
 
     var textY = boxTop + verticalPadding;
 
-    namePainter.paint(canvas, Offset(node.x - namePainter.width / 2, textY));
+    namePainter.paint(
+      canvas,
+      Offset(
+        node.x - namePainter.width / 2,
+        textY,
+      ),
+    );
 
     if (distancePainter != null) {
       textY += namePainter.height + lineSpacing;
 
       distancePainter.paint(
         canvas,
-        Offset(node.x - distancePainter.width / 2, textY),
+        Offset(
+          node.x - distancePainter.width / 2,
+          textY,
+        ),
       );
     }
   }
@@ -541,15 +635,26 @@ class GraphPainter extends CustomPainter {
     Paint paint,
   ) {
     final path = Path()
-      ..addOval(Rect.fromCircle(center: center, radius: radius));
+      ..addOval(
+        Rect.fromCircle(
+          center: center,
+          radius: radius,
+        ),
+      );
 
     for (final metric in path.computeMetrics()) {
       var distance = 0.0;
 
       while (distance < metric.length) {
-        final dashEnd = min(distance + 5.0, metric.length);
+        final dashEnd = min(
+          distance + 5.0,
+          metric.length,
+        );
 
-        canvas.drawPath(metric.extractPath(distance, dashEnd), paint);
+        canvas.drawPath(
+          metric.extractPath(distance, dashEnd),
+          paint,
+        );
 
         distance += 8.0;
       }
@@ -567,9 +672,15 @@ class GraphPainter extends CustomPainter {
       var distance = 0.0;
 
       while (distance < metric.length) {
-        final dashEnd = min(distance + dashWidth, metric.length);
+        final dashEnd = min(
+          distance + dashWidth,
+          metric.length,
+        );
 
-        canvas.drawPath(metric.extractPath(distance, dashEnd), paint);
+        canvas.drawPath(
+          metric.extractPath(distance, dashEnd),
+          paint,
+        );
 
         distance += dashWidth + gapWidth;
       }
@@ -580,7 +691,10 @@ class GraphPainter extends CustomPainter {
   // EMPTY STATE
   // ─────────────────────────────────────────────────────────────
 
-  void _drawEmptyState(Canvas canvas, Size size) {
+  void _drawEmptyState(
+    Canvas canvas,
+    Size size,
+  ) {
     final textPainter = TextPainter(
       text: const TextSpan(
         text: 'Sin datos de grafo',
@@ -593,7 +707,12 @@ class GraphPainter extends CustomPainter {
       textDirection: TextDirection.ltr,
       textAlign: TextAlign.center,
       maxLines: 2,
-    )..layout(maxWidth: max(size.width - 40, 1));
+    )..layout(
+      maxWidth: max(
+        size.width - 40,
+        1,
+      ),
+    );
 
     textPainter.paint(
       canvas,

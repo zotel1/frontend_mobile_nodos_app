@@ -5,6 +5,7 @@
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 
 import 'dart:async' as _i3;
+import 'dart:typed_data' as _i6;
 
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_advertiser_datasource.dart'
     as _i5;
@@ -13,7 +14,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_scan
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart'
     as _i4;
 import 'package:frontend_mobile_nodos_app/features/scan_session/domain/repositories/scan_session_repository.dart'
-    as _i6;
+    as _i7;
 import 'package:mockito/mockito.dart' as _i1;
 
 // ignore_for_file: type=lint
@@ -99,6 +100,15 @@ class MockBleAdvertiserDataSource extends _i1.Mock
           as _i3.Future<void>);
 
   @override
+  _i3.Future<void> updateGraphPayload(_i6.Uint8List? payload) =>
+      (super.noSuchMethod(
+            Invocation.method(#updateGraphPayload, [payload]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
   _i3.Future<void> stopAdvertise() =>
       (super.noSuchMethod(
             Invocation.method(#stopAdvertise, []),
@@ -112,7 +122,7 @@ class MockBleAdvertiserDataSource extends _i1.Mock
 ///
 /// See the documentation for Mockito's code generation for more information.
 class MockScanSessionRepository extends _i1.Mock
-    implements _i6.ScanSessionRepository {
+    implements _i7.ScanSessionRepository {
   @override
   _i3.Future<int> startSession() =>
       (super.noSuchMethod(

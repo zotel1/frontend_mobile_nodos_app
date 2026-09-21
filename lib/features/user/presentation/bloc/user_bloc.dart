@@ -351,55 +351,41 @@ class UserBloc extends Bloc<UserEvent, UserState> {
   /// De esta manera ningún consumidor de UserLoaded necesita conocer
   /// cómo se crea el nodo local ni preocuparse por estados intermedios.
   Future<void> _emitLoadedWithLocalNode(
-  User user,
-  AppThemeMode themeMode,
-  Emitter<UserState> emit,
-) async {
-  final ensureResult = await ensureLocalNode(user);
+    User user,
+    AppThemeMode themeMode,
+    Emitter<UserState> emit,
+  ) async {
+    final ensureResult = await ensureLocalNode(user);
 
-  if (ensureResult.isLeft()) {
-    final message = ensureResult.fold(
-      (failure) => failure.message,
-      (_) => 'Error desconocido al crear el nodo local.',
-    );
+    if (ensureResult.isLeft()) {
+      final message = ensureResult.fold(
+        (failure) => failure.message,
+        (_) => 'Error desconocido al crear el nodo local.',
+      );
 
-    emit(
-      UserError(
-        'No se pudo inicializar la identidad local: $message',
+      emit(UserError('No se pudo inicializar la identidad local: $message'));
+      return;
+    }
+
+    final localNode = ensureResult.getOrElse(
+      () => throw StateError(
+        'EnsureLocalNode retornó un resultado inconsistente.',
       ),
     );
-    return;
+
+    if (localNode.id == null) {
+      emit(const UserError('El nodo local no tiene un ID persistente.'));
+      return;
+    }
+
+    // EnsureLocalNode ya persistió Users.localNodeId.
+    // Para el estado en memoria podemos reflejar inmediatamente
+    // esa asociación sin una consulta extra.
+    final loadedUser = user.copyWith(localNodeId: localNode.id);
+
+    emit(UserLoaded(loadedUser, themeMode: themeMode));
   }
 
-  final localNode = ensureResult.getOrElse(
-    () => throw StateError(
-      'EnsureLocalNode retornó un resultado inconsistente.',
-    ),
-  );
-
-  if (localNode.id == null) {
-    emit(
-      const UserError(
-        'El nodo local no tiene un ID persistente.',
-      ),
-    );
-    return;
-  }
-
-  // EnsureLocalNode ya persistió Users.localNodeId.
-  // Para el estado en memoria podemos reflejar inmediatamente
-  // esa asociación sin una consulta extra.
-  final loadedUser = user.copyWith(
-    localNodeId: localNode.id,
-  );
-
-  emit(
-    UserLoaded(
-      loadedUser,
-      themeMode: themeMode,
-    ),
-  );
-}
   /// Lee el modo de tema desde SharedPreferences.
   ///
   /// QUÉ: convierte el string guardado bajo 'theme_mode' en un

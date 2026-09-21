@@ -47,6 +47,17 @@ class NodeDriftDataSource implements NodeLocalDataSource {
   }
 
   @override
+  Future<Node?> getNodeByRemoteRef(String remoteRef) async {
+    final row =
+        await (_db.select(_db.nodes)
+              ..where((t) => t.remoteRef.equals(remoteRef))
+              ..limit(1))
+            .getSingleOrNull();
+
+    return row != null ? _toDomain(row) : null;
+  }
+
+  @override
   Future<Node?> getSelfNode() async {
     final row =
         await (_db.select(_db.nodes)
@@ -70,7 +81,7 @@ class NodeDriftDataSource implements NodeLocalDataSource {
       await _db.into(_db.nodes).insert(_toCompanion(node, isInsert: true));
     } catch (_) {
       // Puede ocurrir si dos operaciones concurrentes intentan insertar
-      // el mismo deviceUuid o bleAddress.
+      // la misma identidad estable, dirección BLE o remoteRef.
       final raced = await _findExistingNode(node);
 
       if (raced == null) {
@@ -85,9 +96,12 @@ class NodeDriftDataSource implements NodeLocalDataSource {
   ///
   /// 1. id persistente;
   /// 2. deviceUuid estable Nodos;
-  /// 3. bleAddress / remoteId.
+  /// 3. bleAddress / remoteId observado localmente;
+  /// 4. remoteRef namespaced recibido mediante Graph Exchange.
   ///
-  /// Esto evita utilizar bleAddress como identidad universal.
+  /// Esto evita utilizar bleAddress como identidad universal y permite
+  /// materializar de forma estable dispositivos BLE genéricos conocidos
+  /// únicamente a través de otra instalación Nodos.
   Future<NodeRow?> _findExistingNode(Node node) async {
     if (node.id != null) {
       final byId = await (_db.select(
@@ -113,6 +127,16 @@ class NodeDriftDataSource implements NodeLocalDataSource {
       if (byBle != null) return byBle;
     }
 
+    if (node.remoteRef != null) {
+      final byRemoteRef =
+          await (_db.select(_db.nodes)
+                ..where((t) => t.remoteRef.equals(node.remoteRef!))
+                ..limit(1))
+              .getSingleOrNull();
+
+      if (byRemoteRef != null) return byRemoteRef;
+    }
+
     return null;
   }
 
@@ -121,12 +145,16 @@ class NodeDriftDataSource implements NodeLocalDataSource {
       // Freeze on first detection.
       suggestedName: Value(existing.suggestedName ?? incoming.suggestedName),
 
-      // No perder una identidad estable ya conocida.
+      // No perder una identidad estable Nodos ya conocida.
       deviceUuid: Value(incoming.deviceUuid ?? existing.deviceUuid),
 
       // No perder la dirección BLE conocida si el update viene
       // desde una entidad que no dispone de transporte BLE.
       bleAddress: Value(incoming.bleAddress ?? existing.bleAddress),
+
+      // No perder la referencia remota namespaced si el update proviene
+      // de otra fuente que no la conoce.
+      remoteRef: Value(incoming.remoteRef ?? existing.remoteRef),
 
       // Una vez identificado como self no debe degradarse accidentalmente.
       isSelf: Value(existing.isSelf || incoming.isSelf),
@@ -305,6 +333,8 @@ class NodeDriftDataSource implements NodeLocalDataSource {
       //
       // La dirección BLE de "current" es la observada ahora,
       // por lo que pasa a ser la dirección de transporte actual.
+      //
+      // Si alguno de los registros poseía remoteRef, se conserva.
       // -----------------------------------------------------
       await (_db.update(
         _db.nodes,
@@ -312,6 +342,7 @@ class NodeDriftDataSource implements NodeLocalDataSource {
         NodesCompanion(
           deviceUuid: Value(deviceUuid),
           bleAddress: Value(current.bleAddress ?? canonical.bleAddress),
+          remoteRef: Value(canonical.remoteRef ?? current.remoteRef),
           name: Value(name),
           color: Value(color),
           lastSeen: Value(current.lastSeen),
@@ -361,6 +392,7 @@ class NodeDriftDataSource implements NodeLocalDataSource {
       id: row.id,
       deviceUuid: row.deviceUuid,
       bleAddress: row.bleAddress,
+      remoteRef: row.remoteRef,
       isSelf: row.isSelf,
       name: row.name,
       color: row.color,
@@ -389,6 +421,7 @@ class NodeDriftDataSource implements NodeLocalDataSource {
       return NodesCompanion.insert(
         deviceUuid: Value(node.deviceUuid),
         bleAddress: Value(node.bleAddress),
+        remoteRef: Value(node.remoteRef),
         isSelf: Value(node.isSelf),
         firstSeen: node.firstSeen,
         lastSeen: node.lastSeen,
@@ -407,6 +440,7 @@ class NodeDriftDataSource implements NodeLocalDataSource {
     return NodesCompanion(
       deviceUuid: Value(node.deviceUuid),
       bleAddress: Value(node.bleAddress),
+      remoteRef: Value(node.remoteRef),
       isSelf: Value(node.isSelf),
       name: Value(node.name),
       color: Value(node.color),
