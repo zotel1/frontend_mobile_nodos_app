@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_link_request.dart';
 
 abstract class BleEvent extends Equatable {
   const BleEvent();
@@ -37,6 +38,48 @@ class BluetoothStateChanged extends BleEvent {
 
   @override
   List<Object> get props => [isOn];
+}
+
+/// Solicitud Nodos válida recibida por el peripheral local.
+///
+/// Este evento no implica que la solicitud haya sido aceptada.
+/// Solamente transporta hacia el BLoC el mensaje ya recibido mediante GATT.
+class LinkRequestReceived extends BleEvent {
+  final NodosLinkRequest request;
+
+  const LinkRequestReceived(this.request);
+
+  @override
+  List<Object> get props => [request];
+}
+
+/// El usuario local acepta una solicitud de enlace pendiente.
+///
+/// [requesterUuid] identifica de forma estable la instalación Nodos
+/// cuya solicitud está siendo aceptada.
+///
+/// Incluir el UUID evita que una acción de UI atrasada pueda resolver
+/// accidentalmente una solicitud distinta que haya llegado después.
+class AcceptLinkRequest extends BleEvent {
+  final String requesterUuid;
+
+  const AcceptLinkRequest(this.requesterUuid);
+
+  @override
+  List<Object> get props => [requesterUuid];
+}
+
+/// El usuario local rechaza una solicitud de enlace pendiente.
+///
+/// [requesterUuid] identifica de forma estable la instalación Nodos
+/// cuya solicitud está siendo rechazada.
+class RejectLinkRequest extends BleEvent {
+  final String requesterUuid;
+
+  const RejectLinkRequest(this.requesterUuid);
+
+  @override
+  List<Object> get props => [requesterUuid];
 }
 
 /// Disparado periódicamente (cada 30s) para limpiar dispositivos

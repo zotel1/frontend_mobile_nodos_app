@@ -10,23 +10,37 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_ide
 ///
 /// El advertising permite descubrir que el dispositivo ejecuta Nodos.
 ///
-/// El servicio GATT expone dos características:
+/// El servicio GATT expone las características del protocolo:
 ///
 /// serviceUuid
 ///   ├── identityCharacteristicUUID
-///   │     └── NodosIdentity
+///   │     └── identidad Nodos local
 ///   │
-///   └── graphCharacteristicUUID
-///         └── último snapshot del grafo activo
+///   ├── graphCharacteristicUUID
+///   │     └── snapshot del grafo activo local
+///   │
+///   ├── linkCharacteristicUUID
+///   │     ├── WRITE  → solicitud de enlace recibida
+///   │     └── NOTIFY → respuesta al enlace
+///   │
+///   └── peerGraphCharacteristicUUID
+///         └── WRITE → snapshot del grafo del peer
 ///
-/// La identidad permanece prácticamente estable durante la sesión.
+/// Esta capa solamente transporta bytes.
 ///
-/// El grafo, en cambio, puede actualizarse mientras el advertising continúa
-/// activo mediante [updateGraphPayload].
+/// No interpreta LinkRequest, LinkResponse ni NodosGraphPayload y tampoco
+/// decide si una solicitud debe aceptarse o rechazarse.
 class FlutterBlePeripheralDataSource implements BleAdvertiserDataSource {
   final FlutterBlePeripheral _peripheral = FlutterBlePeripheral();
 
+  final StreamController<BleGattWrite> _incomingLinkRequestsController =
+      StreamController<BleGattWrite>.broadcast();
+
+  final StreamController<BleGattWrite> _incomingPeerGraphPayloadsController =
+      StreamController<BleGattWrite>.broadcast();
+
   StreamSubscription<GattSubscription>? _subscription;
+  StreamSubscription<GattWrite>? _writeSubscription;
 
   Uint8List? _identityPayload;
   Uint8List? _graphPayload;
@@ -45,6 +59,14 @@ class FlutterBlePeripheralDataSource implements BleAdvertiserDataSource {
   }
 
   @override
+  Stream<BleGattWrite> get incomingLinkRequests =>
+      _incomingLinkRequestsController.stream;
+
+  @override
+  Stream<BleGattWrite> get incomingPeerGraphPayloads =>
+      _incomingPeerGraphPayloadsController.stream;
+
+  @override
   Future<void> startAdvertise(
     String deviceUuid,
     String name,
@@ -53,19 +75,8 @@ class FlutterBlePeripheralDataSource implements BleAdvertiserDataSource {
     _identityPayload = buildIdentityPayload(deviceUuid, name, color);
 
     await _subscription?.cancel();
+    await _writeSubscription?.cancel();
 
-    // Escuchamos las suscripciones a las características del servicio Nodos.
-    //
-    // Cuando un cliente se suscribe:
-    //
-    // - identityCharacteristicUUID:
-    //     enviamos la identidad local.
-    //
-    // - graphCharacteristicUUID:
-    //     enviamos el snapshot de grafo más reciente disponible.
-    //
-    // El snapshot no se calcula aquí. Esta capa solamente transporta
-    // los bytes preparados por las capas superiores.
     _subscription = _peripheral.onCharacteristicSubscriptionChanged.listen((
       subscription,
     ) async {
@@ -112,26 +123,70 @@ class FlutterBlePeripheralDataSource implements BleAdvertiserDataSource {
       }
     });
 
+    // Recibimos escrituras realizadas por centrales conectados al servidor
+    // GATT y las clasificamos según la característica destino.
+    //
+    // Esta capa no interpreta el contenido.
+    _writeSubscription = _peripheral.onGattWrite.listen(
+      (write) {
+        final characteristicUuid = write.characteristicUuid.toLowerCase();
+
+        if (write.data.isEmpty) {
+          return;
+        }
+
+        if (characteristicUuid == linkCharacteristicUUID.toLowerCase()) {
+          _incomingLinkRequestsController.add(
+            BleGattWrite(payload: Uint8List.fromList(write.data)),
+          );
+
+          return;
+        }
+
+        if (characteristicUuid == peerGraphCharacteristicUUID.toLowerCase()) {
+          _incomingPeerGraphPayloadsController.add(
+            BleGattWrite(payload: Uint8List.fromList(write.data)),
+          );
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        debugPrint('Nodos GATT: error recibiendo escritura: $error');
+      },
+    );
+
     // El advertisement solamente permite descubrir que este dispositivo
     // ofrece el servicio Nodos.
     //
-    // La identidad y el grafo completo se obtienen posteriormente mediante
-    // las características GATT.
+    // La identidad, handshake y grafos se intercambian posteriormente
+    // mediante las características GATT.
     const advertiseData = AndroidAdvertiseData(
       serviceUuid: serviceUuid,
       serviceUuids: [serviceUuid],
       includeDeviceName: false,
     );
 
-    // Servicio GATT Nodos.
+    // Característica de control del handshake.
     //
-    // Ambas características utilizan NOTIFY porque el cliente actual se
-    // suscribe y espera que el periférico envíe inmediatamente el valor.
+    // Debe aceptar escrituras del central y permitir al periférico responder
+    // mediante NOTIFY sobre la misma característica.
+    const linkCharacteristic = GattCharacteristic(
+      uuid: linkCharacteristicUUID,
+      properties: {
+        GattCharacteristicProperty.read,
+        GattCharacteristicProperty.write,
+        GattCharacteristicProperty.writeWithoutResponse,
+        GattCharacteristicProperty.notify,
+        GattCharacteristicProperty.indicate,
+      },
+    );
+
     const gattServer = GattServerSettings(
       serviceUuid: serviceUuid,
       characteristics: [
         GattCharacteristic.notify(identityCharacteristicUUID),
         GattCharacteristic.notify(graphCharacteristicUUID),
+        linkCharacteristic,
+        GattCharacteristic.write(peerGraphCharacteristicUUID),
       ],
     );
 
@@ -143,32 +198,37 @@ class FlutterBlePeripheralDataSource implements BleAdvertiserDataSource {
 
   @override
   Future<void> updateGraphPayload(Uint8List payload) async {
-    // Guardamos una copia defensiva.
-    //
-    // De esta forma las capas superiores pueden reutilizar o modificar
-    // su propio buffer sin alterar accidentalmente el snapshot que
-    // publicará el servidor GATT.
+    // Guardamos una copia defensiva para que las capas superiores puedan
+    // reutilizar su buffer sin alterar el snapshot publicado.
     _graphPayload = Uint8List.fromList(payload);
+  }
 
-    // No enviamos automáticamente el payload en este punto.
-    //
-    // El contrato actual es request/snapshot:
-    //
-    // cliente se suscribe
-    //        ↓
-    // servidor recibe subscription
-    //        ↓
-    // servidor envía el snapshot vigente
-    //
-    // Más adelante podemos evolucionar esto a actualizaciones push mientras
-    // el cliente permanezca suscrito, pero no es necesario para establecer
-    // el primer intercambio funcional de FEAT-002.
+  @override
+  Future<void> sendLinkResponse(Uint8List payload) async {
+    if (payload.isEmpty) {
+      return;
+    }
+
+    try {
+      await _peripheral.sendData(
+        Uint8List.fromList(payload),
+        characteristicUuid: linkCharacteristicUUID,
+      );
+    } catch (error) {
+      debugPrint(
+        'Nodos GATT: no se pudo enviar la respuesta de enlace: $error',
+      );
+      rethrow;
+    }
   }
 
   @override
   Future<void> stopAdvertise() async {
     await _subscription?.cancel();
     _subscription = null;
+
+    await _writeSubscription?.cancel();
+    _writeSubscription = null;
 
     _identityPayload = null;
     _graphPayload = null;

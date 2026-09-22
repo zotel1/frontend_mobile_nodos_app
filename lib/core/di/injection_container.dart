@@ -227,11 +227,7 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton(() => UpdateUserColor(sl<UserRepository>()));
 
   // ── Graph ──
-  //
-  // GraphRepository combina:
-  // - nodos locales/persistidos mediante NodeRepository;
-  // - relaciones locales mediante AppDatabase;
-  // - snapshots distribuidos mediante RemoteRelationRepository.
+
   sl.registerLazySingleton<GraphRepository>(
     () => GraphRepositoryImpl(
       sl<NodeRepository>(),
@@ -257,9 +253,7 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton(() => GetHistoryStats(sl<HistoryRepository>()));
 
   // ── Scan session repository ──
-  //
-  // LazySingleton porque representa el acceso compartido a las sesiones
-  // de escaneo persistidas.
+
   sl.registerLazySingleton<ScanSessionRepository>(
     () => ScanSessionRepositoryImpl(sl<AppDatabase>()),
   );
@@ -268,17 +262,27 @@ Future<void> initDependencies() async {
   //
   // Factory: cada BlocProvider obtiene una instancia nueva.
 
-  sl.registerFactory<BleBloc>(() => BleBloc(repository: sl<BleRepository>()));
+  sl.registerFactory<BleBloc>(
+    () => BleBloc(
+      repository: sl<BleRepository>(),
+      userRepository: sl<UserRepository>(),
+      remoteRelationRepository: sl<RemoteRelationRepository>(),
+      nodeRepository: sl<NodeRepository>(),
+      connectionRepository: sl<BleConnectionRepository>(),
+    ),
+  );
 
   // BleConnectionBloc coordina:
   // - operaciones GATT mediante BleConnectionRepository;
   // - resolución de nodos mediante NodeRepository;
+  // - identidad local mediante UserRepository;
   // - publicación del snapshot local mediante ActiveGraphExchangeService;
   // - persistencia de snapshots recibidos mediante RemoteRelationRepository.
   sl.registerFactory<BleConnectionBloc>(
     () => BleConnectionBloc(
       connectionRepository: sl<BleConnectionRepository>(),
       nodeRepository: sl<NodeRepository>(),
+      userRepository: sl<UserRepository>(),
       activeGraphExchange: sl<ActiveGraphExchangeService>(),
       remoteRelationRepository: sl<RemoteRelationRepository>(),
     ),
