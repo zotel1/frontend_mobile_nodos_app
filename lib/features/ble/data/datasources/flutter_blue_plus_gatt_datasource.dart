@@ -7,15 +7,19 @@ import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_gatt
 /// Implementación concreta de [BleGattDataSource] usando flutter_blue_plus.
 ///
 /// QUÉ hace: reconstruye una referencia [BluetoothDevice] desde el remoteId
-/// y delega las operaciones connect/disconnect a las APIs nativas de FBPlus.
+/// y delega las operaciones GATT a las APIs nativas de flutter_blue_plus.
 ///
 /// POR QUÉ separar datasource de BLoC: el BLoC solo depende de la interfaz
 /// [BleGattDataSource], lo que permite testear la máquina de estados con
-/// mocks sin necesidad de hardware BLE real (Clean Architecture).
+/// mocks sin necesidad de hardware BLE real.
 ///
-/// Conexión: usa [License.nonprofit] y timeout de 10 segundos (R5.5, R5.7).
+/// Esta capa solamente transporta bytes. No interpreta LinkRequest,
+/// LinkResponse, NodosIdentity ni NodosGraphPayload.
+///
+/// Conexión: usa [License.nonprofit] y timeout de 10 segundos.
 class FlutterBluePlusGattDataSource implements BleGattDataSource {
   // ── Funciones inyectables para testing ──
+
   final Future<void> Function(String remoteId) _connectFn;
   final Future<void> Function(String remoteId) _disconnectFn;
   final Stream<bool> Function(String remoteId) _connectionStateFn;
@@ -23,8 +27,15 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
   _discoverServicesFn;
   final Future<List<int>?> Function(String remoteId, String characteristicUuid)
   _readCharacteristicFn;
+  final Future<bool> Function(
+    String remoteId,
+    String characteristicUuid,
+    List<int> payload,
+  )
+  _writeCharacteristicFn;
 
   /// Último valor emitido por el stream de estado de conexión para cada device.
+  ///
   /// Usado por [isConnected] para retornar el estado actual sin esperar.
   final Map<String, bool> _lastConnectionState = {};
 
@@ -34,7 +45,8 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
       _disconnectFn = _defaultDisconnect,
       _connectionStateFn = _defaultConnectionState,
       _discoverServicesFn = _defaultDiscoverServices,
-      _readCharacteristicFn = _defaultReadCharacteristic;
+      _readCharacteristicFn = _defaultReadCharacteristic,
+      _writeCharacteristicFn = _defaultWriteCharacteristic;
 
   /// Constructor de testing — inyecta funciones mock para cada operación.
   ///
@@ -52,20 +64,28 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
       String characteristicUuid,
     )
     readCharacteristicFn,
+    required Future<bool> Function(
+      String remoteId,
+      String characteristicUuid,
+      List<int> payload,
+    )
+    writeCharacteristicFn,
   }) : _connectFn = connectFn,
        _disconnectFn = disconnectFn,
        _connectionStateFn = connectionStateFn,
        _discoverServicesFn = discoverServicesFn,
-       _readCharacteristicFn = readCharacteristicFn;
+       _readCharacteristicFn = readCharacteristicFn,
+       _writeCharacteristicFn = writeCharacteristicFn;
 
   // ── Implementaciones por defecto (producción) ──
 
-  /// Conecta al dispositivo reconstructo desde [remoteId].
+  /// Conecta al dispositivo reconstruido desde [remoteId].
   ///
-  /// Usa [BluetoothDevice.fromId] (O(1) string parse, AD5), timeout de
-  /// 10 segundos, autoConnect=false, y [License.nonprofit].
+  /// Usa [BluetoothDevice.fromId], timeout de 10 segundos,
+  /// autoConnect=false y [License.nonprofit].
   static Future<void> _defaultConnect(String remoteId) async {
     final device = BluetoothDevice.fromId(remoteId);
+
     await device.connect(
       license: License.nonprofit,
       timeout: const Duration(seconds: 10),
@@ -81,69 +101,86 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
 
   /// Stream del estado de conexión del dispositivo.
   ///
-  /// Mapea [BluetoothConnectionState] → `bool` (connected = true).
+  /// Mapea [BluetoothConnectionState] → `bool`.
   static Stream<bool> _defaultConnectionState(String remoteId) {
     final device = BluetoothDevice.fromId(remoteId);
+
     return device.connectionState.map(
-      (s) => s == BluetoothConnectionState.connected,
+      (state) => state == BluetoothConnectionState.connected,
     );
   }
 
   /// Descubre los servicios GATT del dispositivo reconstruido desde [remoteId].
   ///
-  /// Mapea cada [BluetoothService] a [BleServiceInfo] con sus
-  /// caracteristicas asociadas.
+  /// Mapea cada [BluetoothService] a [BleServiceInfo].
   static Future<List<BleServiceInfo>> _defaultDiscoverServices(
     String remoteId,
   ) async {
     final device = BluetoothDevice.fromId(remoteId);
     final services = await device.discoverServices();
+
     return services
         .map(
-          (s) => BleServiceInfo(
-            uuid: s.serviceUuid.toString(),
-            characteristicUuids: s.characteristics
-                .map((c) => c.characteristicUuid.toString())
+          (service) => BleServiceInfo(
+            uuid: service.serviceUuid.toString(),
+            characteristicUuids: service.characteristics
+                .map(
+                  (characteristic) =>
+                      characteristic.characteristicUuid.toString(),
+                )
                 .toList(),
           ),
         )
         .toList();
   }
 
-  /// Lee el valor de una característica GATT del dispositivo reconstruido.
+  /// Busca una característica GATT por UUID.
   ///
-  /// Busca la característica por UUID en los servicios descubiertos
-  /// y llama [BluetoothCharacteristic.read()].
-  /// Retorna null si la característica no existe.
-  static Future<List<int>?> _defaultReadCharacteristic(
+  /// flutter_blue_plus entrega las características dentro de los servicios
+  /// descubiertos. Este helper centraliza la búsqueda para lectura y escritura.
+  static Future<BluetoothCharacteristic?> _findCharacteristic(
     String remoteId,
     String characteristicUuid,
   ) async {
     final device = BluetoothDevice.fromId(remoteId);
     final services = await device.discoverServices();
 
-    BluetoothCharacteristic? target;
+    final normalizedUuid = characteristicUuid.toLowerCase();
 
     for (final service in services) {
       for (final characteristic in service.characteristics) {
         if (characteristic.characteristicUuid.toString().toLowerCase() ==
-            characteristicUuid.toLowerCase()) {
-          target = characteristic;
-          break;
+            normalizedUuid) {
+          return characteristic;
         }
       }
-
-      if (target != null) break;
     }
+
+    return null;
+  }
+
+  /// Lee el valor de una característica GATT del dispositivo reconstruido.
+  ///
+  /// Si la característica permite NOTIFY/INDICATE, primero se suscribe y
+  /// espera el primer payload no vacío.
+  ///
+  /// Este comportamiento es necesario para las características Nodos donde
+  /// el periférico responde a la suscripción mediante sendData().
+  ///
+  /// Si no llega una notificación dentro del timeout, intenta READ.
+  ///
+  /// Retorna null si la característica no existe o no puede obtenerse
+  /// ningún valor.
+  static Future<List<int>?> _defaultReadCharacteristic(
+    String remoteId,
+    String characteristicUuid,
+  ) async {
+    final target = await _findCharacteristic(remoteId, characteristicUuid);
 
     if (target == null) {
       return null;
     }
 
-    // Si la característica soporta notificaciones, primero nos suscribimos.
-    //
-    // El servidor Nodos detectará la suscripción y enviará inmediatamente
-    // su identidad mediante sendData().
     if (target.properties.notify || target.properties.indicate) {
       try {
         await target.setNotifyValue(true);
@@ -164,8 +201,6 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
       }
     }
 
-    // Fallback para características normales READ y para dispositivos donde
-    // la identidad ya haya quedado almacenada como último valor enviado.
     try {
       final value = await target.read();
 
@@ -173,6 +208,44 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Escribe bytes en una característica GATT remota.
+  ///
+  /// Retorna false únicamente cuando la característica solicitada no existe.
+  ///
+  /// Los errores reales producidos por la operación de escritura se propagan
+  /// al llamador para que las capas superiores puedan distinguir entre:
+  ///
+  /// - característica no disponible;
+  /// - fallo real de transporte.
+  static Future<bool> _defaultWriteCharacteristic(
+    String remoteId,
+    String characteristicUuid,
+    List<int> payload,
+  ) async {
+    final target = await _findCharacteristic(remoteId, characteristicUuid);
+
+    if (target == null) {
+      return false;
+    }
+
+    if (!target.properties.write && !target.properties.writeWithoutResponse) {
+      throw StateError(
+        'La característica $characteristicUuid no admite escritura.',
+      );
+    }
+
+    // Preferimos WRITE con respuesta cuando está disponible.
+    //
+    // Para mensajes de control como LinkRequest queremos confirmación GATT
+    // de que la escritura fue procesada por la pila BLE antes de continuar.
+    final withoutResponse =
+        !target.properties.write && target.properties.writeWithoutResponse;
+
+    await target.write(payload, withoutResponse: withoutResponse);
+
+    return true;
   }
 
   // ── Interfaz pública ──
@@ -185,7 +258,6 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
 
   @override
   Future<bool> isConnected(String remoteId) async {
-    // Retorna el último estado conocido o false si nunca se monitoreó.
     return _lastConnectionState[remoteId] ?? false;
   }
 
@@ -193,7 +265,6 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
   Stream<bool> connectionState(String remoteId) {
     final stream = _connectionStateFn(remoteId);
 
-    // Actualiza el último estado conocido para isConnected().
     return stream.map((connected) {
       _lastConnectionState[remoteId] = connected;
       return connected;
@@ -209,4 +280,11 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
     String remoteId,
     String characteristicUuid,
   ) => _readCharacteristicFn(remoteId, characteristicUuid);
+
+  @override
+  Future<bool> writeCharacteristic(
+    String remoteId,
+    String characteristicUuid,
+    List<int> payload,
+  ) => _writeCharacteristicFn(remoteId, characteristicUuid, payload);
 }

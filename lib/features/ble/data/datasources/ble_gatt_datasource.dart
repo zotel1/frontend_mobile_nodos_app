@@ -15,12 +15,15 @@ class BleServiceInfo {
 /// Interfaz de abstracción para operaciones GATT (conexión punto a punto).
 ///
 /// QUÉ hace: define el contrato para conectar, desconectar, monitorear
-/// el estado de conexión, descubrir servicios y leer características
-/// de un dispositivo BLE individual.
+/// el estado de conexión, descubrir servicios, leer características y
+/// escribir características de un dispositivo BLE individual.
 ///
 /// POR QUÉ: separa la capa de datos de la implementación concreta de
 /// flutter_blue_plus, permitiendo testear el BLoC con mocks y cambiar
 /// la implementación sin afectar al resto de la app.
+///
+/// Esta capa solamente transporta bytes. No interpreta mensajes del
+/// protocolo Nodos.
 abstract class BleGattDataSource {
   /// Conecta al dispositivo identificado por [remoteId].
   ///
@@ -41,8 +44,9 @@ abstract class BleGattDataSource {
   /// Descubre los servicios GATT del dispositivo identificado por [remoteId].
   ///
   /// Retorna una lista de [BleServiceInfo] con los UUIDs de servicios
-  /// y sus características. Requiere que el dispositivo esté conectado.
-  /// Usado para leer la característica de identidad remota (AD12).
+  /// y sus características.
+  ///
+  /// Requiere que el dispositivo esté conectado.
   Future<List<BleServiceInfo>> discoverServices(String remoteId);
 
   /// Lee el valor de la característica [characteristicUuid] del dispositivo
@@ -50,9 +54,28 @@ abstract class BleGattDataSource {
   ///
   /// Retorna los bytes crudos de la característica, o null si la
   /// característica no existe en los servicios descubiertos.
+  ///
   /// Requiere que [discoverServices] se haya llamado primero.
   Future<List<int>?> readCharacteristic(
     String remoteId,
     String characteristicUuid,
+  );
+
+  /// Escribe [payload] en la característica [characteristicUuid] del
+  /// dispositivo identificado por [remoteId].
+  ///
+  /// Retorna `true` cuando la característica existe y la escritura pudo
+  /// realizarse.
+  ///
+  /// Retorna `false` cuando la característica solicitada no existe entre
+  /// los servicios GATT descubiertos.
+  ///
+  /// Los errores reales de transporte BLE se propagan al llamador.
+  ///
+  /// Requiere que [discoverServices] se haya llamado primero.
+  Future<bool> writeCharacteristic(
+    String remoteId,
+    String characteristicUuid,
+    List<int> payload,
   );
 }
