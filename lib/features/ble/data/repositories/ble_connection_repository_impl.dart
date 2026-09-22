@@ -63,6 +63,21 @@ class BleConnectionRepositoryImpl implements BleConnectionRepository {
   }
 
   @override
+  Future<List<int>?> writeAndWaitForResponse(
+    String remoteId,
+    String characteristicUuid,
+    List<int> requestPayload, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    return _gatt.writeAndWaitForResponse(
+      remoteId,
+      characteristicUuid,
+      requestPayload,
+      timeout: timeout,
+    );
+  }
+
+  @override
   Future<void> saveConnection(int fromNodeId, int toNodeId) async {
     await _db
         .into(_db.connections)

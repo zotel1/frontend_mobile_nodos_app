@@ -4,14 +4,66 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_graph_payload.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_link_request.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_link_response.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_connection_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_repository.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remote_relation_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart';
+import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
+import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
+import 'package:frontend_mobile_nodos_app/features/user/domain/repositories/user_repository.dart';
 
 class BleBloc extends Bloc<BleEvent, BleState> {
   final BleRepository repository;
+  final UserRepository userRepository;
+  final RemoteRelationRepository remoteRelationRepository;
+  final NodeRepository nodeRepository;
+  final BleConnectionRepository connectionRepository;
+
   StreamSubscription<List<BleDevice>>? _scanSubscription;
   StreamSubscription<bool>? _btSubscription;
+  StreamSubscription<BleIncomingGattWrite>? _linkRequestSubscription;
+  StreamSubscription<BleIncomingGattWrite>? _peerGraphSubscription;
+
+  /// Solicitud de enlace Nodos actualmente pendiente de decisión local.
+  ///
+  /// En esta versión del protocolo solamente se permite una solicitud
+  /// pendiente a la vez.
+  NodosLinkRequest? _pendingLinkRequest;
+
+  /// UUID del peer cuyo NodosGraphPayload esperamos después de haber
+  /// aceptado explícitamente su LinkRequest.
+  ///
+  /// El datasource peripheral no informa qué central originó una escritura
+  /// GATT. Por eso correlacionamos el siguiente payload mediante ownerUuid.
+  ///
+  /// Una vez recibido y persistido un payload válido, esta autorización
+  /// transitoria se elimina.
+  String? _awaitingPeerGraphUuid;
+
+  /// Stream utilizado exclusivamente para avisar a la UI que debe mostrar
+  /// una solicitud de enlace.
+  ///
+  /// No forma parte de [BleState] porque una solicitud de enlace es un
+  /// efecto puntual y no reemplaza el estado operativo de escaneo/publicidad.
+  final StreamController<NodosLinkRequest> _linkRequestController =
+      StreamController<NodosLinkRequest>.broadcast();
+
+  /// Solicitudes de enlace válidas que requieren decisión del usuario.
+  Stream<NodosLinkRequest> get linkRequests => _linkRequestController.stream;
+
+  /// Solicitud pendiente actual.
+  ///
+  /// Expuesto principalmente para inspección y testing.
+  @visibleForTesting
+  NodosLinkRequest? get pendingLinkRequest => _pendingLinkRequest;
+
+  /// UUID del peer cuyo grafo esperamos actualmente.
+  @visibleForTesting
+  String? get awaitingPeerGraphUuid => _awaitingPeerGraphUuid;
 
   /// Período entre reinicios del escaneo para duty cycling.
   ///
@@ -34,19 +86,10 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   ///
   /// Cada 30 segundos dispara [EvictStaleDevices] que limpia del
   /// [_accumulatedDevices] cualquier dispositivo con timestamp mayor
-  /// a 30s de antigüedad. Esto garantiza limpieza incluso cuando
-  /// el escaneo BLE no produce nuevos resultados.
+  /// a 30s de antigüedad.
   Timer? _evictionTimer;
 
   /// Timer para duty cycling de escaneo BLE.
-  ///
-  /// QUÉ hace: reinicia periódicamente el escaneo BLE para evitar
-  /// que se detenga permanentemente tras el hard timeout de ~15s
-  /// de FlutterBluePlus. Usa [_dutyCyclePeriod] como intervalo.
-  ///
-  /// POR QUÉ: sin este timer, el escaneo se detiene a los 15s y
-  /// nunca se reinicia — el usuario deja de ver dispositivos nuevos.
-  /// Con duty cycling, el escaneo es continuo y transparente.
   Timer? _dutyCycleTimer;
 
   /// Duración máxima desde el último avistamiento antes de evicción.
@@ -56,37 +99,34 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   static const _maxDevices = 50;
 
   /// ID de la sesión de escaneo activa.
-  ///
-  /// Se resetea a null en [StopScan] y en [close] para garantizar
-  /// que no queden referencias a sesiones ya cerradas.
-  /// Expuesto como getter para verificación en tests.
   @visibleForTesting
   int? get scanSessionId => _scanSessionId;
   int? _scanSessionId;
 
-  BleBloc({required this.repository, Duration? dutyCyclePeriod})
-    : _dutyCyclePeriod =
-          dutyCyclePeriod ?? dutyCycleScanDuration + dutyCyclePauseDuration,
-      super(const BleInitial()) {
+  BleBloc({
+    required this.repository,
+    required this.userRepository,
+    required this.remoteRelationRepository,
+    required this.nodeRepository,
+    required this.connectionRepository,
+    Duration? dutyCyclePeriod,
+  }) : _dutyCyclePeriod =
+           dutyCyclePeriod ?? dutyCycleScanDuration + dutyCyclePauseDuration,
+       super(const BleInitial()) {
     on<StartScan>(_onStartScan);
     on<StopScan>(_onStopScan);
     on<StartAdvertise>(_onStartAdvertise);
     on<StopAdvertise>(_onStopAdvertise);
     on<BluetoothStateChanged>(_onBluetoothStateChanged);
+    on<LinkRequestReceived>(_onLinkRequestReceived);
+    on<AcceptLinkRequest>(_onAcceptLinkRequest);
+    on<RejectLinkRequest>(_onRejectLinkRequest);
+    on<_PeerGraphReceived>(_onPeerGraphReceived);
     on<_ScanResultsUpdated>(_onScanResultsUpdated);
     on<_ScanError>(_onScanError);
     on<EvictStaleDevices>(_onEvictStaleDevices);
 
-    /// Timer de evicción periódica: cada 30s limpia dispositivos
-    /// que no se han visto recientemente.
-    ///
-    /// QUÉ hace: dispara [EvictStaleDevices] que recorre
-    /// [_accumulatedDevices] y elimina entradas con timestamp >30s.
-    ///
-    /// POR QUÉ: sin este timer, si el escaneo se detiene (sin nuevos
-    /// datos BLE) los dispositivos acumulados NUNCA se evictarían.
-    /// Con 30s de intervalo, la UI se mantiene actualizada incluso
-    /// en períodos sin actividad BLE.
+    /// Timer de evicción periódica.
     _evictionTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!isClosed) {
         add(const EvictStaleDevices());
@@ -94,27 +134,54 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     });
 
     /// Suscripción al estado real del adaptador Bluetooth.
-    ///
-    /// QUÉ hace: escucha [repository.bluetoothState] y despacha
-    /// [BluetoothStateChanged] por cada cambio. El handler
-    /// [_onBluetoothStateChanged] mapea true→BleStopped, false→BluetoothOff.
-    ///
-    /// POR QUÉ resuelve el problema: antes _btSubscription se declaraba
-    /// pero NUNCA se asignaba, así que el stream de estado BT era
-    /// completamente ignorado y BluetoothOff era inalcanzable.
     _btSubscription = repository.bluetoothState.listen((isOn) {
       if (!isClosed) {
         add(BluetoothStateChanged(isOn));
       }
     });
+
+    /// Escucha las escrituras recibidas en la característica GATT destinada
+    /// a LinkRequest.
+    ///
+    /// El datasource entrega únicamente bytes. El protocolo se interpreta
+    /// recién en esta capa.
+    _linkRequestSubscription = repository.incomingLinkRequests.listen(
+      (write) {
+        if (isClosed) {
+          return;
+        }
+
+        try {
+          final request = NodosLinkRequest.fromBytes(write.payload);
+          add(LinkRequestReceived(request));
+        } catch (error) {
+          debugPrint('[BleBloc] LinkRequest inválido ignorado: $error');
+        }
+      },
+      onError: (Object error) {
+        debugPrint('[BleBloc] Error recibiendo LinkRequest: $error');
+      },
+    );
+
+    /// Escucha los snapshots activos escritos por un peer Nodos en la
+    /// característica peerGraph (205).
+    ///
+    /// El callback del stream solamente transporta el evento al BLoC.
+    /// La validación del protocolo y la persistencia se realizan dentro
+    /// de [_onPeerGraphReceived].
+    _peerGraphSubscription = repository.incomingPeerGraphPayloads.listen(
+      (write) {
+        if (!isClosed) {
+          add(_PeerGraphReceived(write.payload));
+        }
+      },
+      onError: (Object error) {
+        debugPrint('[BleBloc] Error recibiendo peer graph: $error');
+      },
+    );
   }
 
   Future<void> _onStartScan(StartScan event, Emitter<BleState> emit) async {
-    // PR6b: Verificar estado del adaptador Bluetooth antes de iniciar escaneo.
-    // Si BT está apagado, emitir BleError en lugar de intentar startScan
-    // que lanzaría excepción silenciosa en FlutterBluePlus.
-    // QUÉ resuelve: el usuario sabe por qué no ve dispositivos en lugar
-    // de quedarse con un BleScanning vacío sin feedback.
     if (state is BluetoothOff) {
       emit(
         const BleError(
@@ -124,16 +191,13 @@ class BleBloc extends Bloc<BleEvent, BleState> {
       return;
     }
 
-    // Cancelar duty cycling anterior si existe (por si se llama StartScan
-    // mientras ya hay un ciclo activo).
     _dutyCycleTimer?.cancel();
 
     try {
       await _scanSubscription?.cancel();
-      // Limpiar el acumulador al iniciar un nuevo escaneo.
-      // Esto evita que dispositivos de sesiones anteriores persistan
-      // en la UI después de un stop/start manual.
+
       _accumulatedDevices.clear();
+
       _scanSubscription = repository.scanResults.listen(
         (devices) {
           if (!isClosed) {
@@ -146,17 +210,13 @@ class BleBloc extends Bloc<BleEvent, BleState> {
           }
         },
       );
+
       await repository.startScan();
+
       emit(const BleScanning());
 
-      // PR6a: Iniciar duty cycling — reinicia el escaneo periódicamente
-      // para evitar que el hard timeout de ~15s de FlutterBluePlus
-      // detenga el escaneo permanentemente.
       _dutyCycleTimer = Timer.periodic(_dutyCyclePeriod, (_) {
         if (!isClosed) {
-          // startScan es idempotente en el datasource (guarda _isScanning).
-          // Si el escaneo sigue activo, esta llamada es no-op.
-          // Si FlutterBluePlus ya lo detuvo, lo reinicia.
           repository.startScan();
         }
       });
@@ -166,20 +226,16 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   }
 
   Future<void> _onStopScan(StopScan event, Emitter<BleState> emit) async {
-    // PR6a: Cancelar duty cycling al detener el escaneo manualmente.
     _dutyCycleTimer?.cancel();
     _dutyCycleTimer = null;
 
     await _scanSubscription?.cancel();
     _scanSubscription = null;
+
     await repository.stopScan();
 
-    // PR6a: Cerrar la sesión de escaneo con endedAt.
-    // Esto completa el ciclo de vida de la sesión.
     await repository.endScanSession();
 
-    // PR6b: Resetear el ID de sesión de escaneo.
-    // Garantiza que no quede referencia a una sesión ya cerrada.
     _scanSessionId = null;
 
     emit(const BleStopped());
@@ -190,6 +246,7 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     Emitter<BleState> emit,
   ) async {
     await repository.startAdvertise(event.deviceUuid, event.name, event.color);
+
     emit(const BleAdvertising());
   }
 
@@ -198,6 +255,10 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     Emitter<BleState> emit,
   ) async {
     await repository.stopAdvertise();
+
+    _pendingLinkRequest = null;
+    _awaitingPeerGraphUuid = null;
+
     emit(const BleStopped());
   }
 
@@ -208,25 +269,345 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     if (event.isOn) {
       emit(const BleStopped());
     } else {
+      _pendingLinkRequest = null;
+      _awaitingPeerGraphUuid = null;
       emit(const BluetoothOff());
     }
   }
 
+  /// Procesa una solicitud Nodos recibida mediante GATT.
+  ///
+  /// Solo puede existir una solicitud pendiente a la vez.
+  ///
+  /// Si llega nuevamente la misma solicitud mientras todavía está pendiente,
+  /// se ignora como duplicado.
+  ///
+  /// Si llega una solicitud de otro dispositivo mientras existe una pendiente,
+  /// se responde automáticamente con rechazo para no reemplazar silenciosamente
+  /// la decisión que el usuario ya tiene en pantalla.
+  Future<void> _onLinkRequestReceived(
+    LinkRequestReceived event,
+    Emitter<BleState> emit,
+  ) async {
+    final request = event.request;
+
+    final localUser = await userRepository.getUserProfile();
+
+    if (localUser == null) {
+      debugPrint('[BleBloc] LinkRequest ignorado: no existe perfil local.');
+      return;
+    }
+
+    if (request.deviceUuid == localUser.uuid) {
+      debugPrint(
+        '[BleBloc] LinkRequest ignorado: solicitud proveniente '
+        'de la propia instalación.',
+      );
+      return;
+    }
+
+    final pending = _pendingLinkRequest;
+
+    if (pending != null) {
+      if (pending.deviceUuid == request.deviceUuid) {
+        debugPrint(
+          '[BleBloc] LinkRequest duplicado ignorado: '
+          '${request.deviceUuid}',
+        );
+        return;
+      }
+
+      final rejection = NodosLinkResponse(
+        requesterUuid: request.deviceUuid,
+        responderUuid: localUser.uuid,
+        accepted: false,
+      );
+
+      try {
+        await repository.sendLinkResponse(rejection.toBytes());
+      } catch (error) {
+        debugPrint(
+          '[BleBloc] No se pudo rechazar automáticamente '
+          'LinkRequest concurrente: $error',
+        );
+      }
+
+      return;
+    }
+
+    /// Si todavía esperamos el grafo de un peer previamente aceptado,
+    /// no reemplazamos esa autorización transitoria con otra solicitud.
+    if (_awaitingPeerGraphUuid != null) {
+      final rejection = NodosLinkResponse(
+        requesterUuid: request.deviceUuid,
+        responderUuid: localUser.uuid,
+        accepted: false,
+      );
+
+      try {
+        await repository.sendLinkResponse(rejection.toBytes());
+      } catch (error) {
+        debugPrint(
+          '[BleBloc] No se pudo rechazar LinkRequest mientras '
+          'se esperaba un peer graph: $error',
+        );
+      }
+
+      return;
+    }
+
+    _pendingLinkRequest = request;
+
+    if (!_linkRequestController.isClosed) {
+      _linkRequestController.add(request);
+    }
+  }
+
+  /// Acepta una solicitud de enlace Nodos.
+  ///
+  /// Antes de responder `accepted: true`:
+  ///
+  /// 1. resuelve o materializa el Node estable del requester;
+  /// 2. obtiene el Node local;
+  /// 3. persiste la relación local self -> requester.
+  ///
+  /// Solamente después de completar esos pasos se envía la aceptación.
+  Future<void> _onAcceptLinkRequest(
+    AcceptLinkRequest event,
+    Emitter<BleState> emit,
+  ) async {
+    final pending = _pendingLinkRequest;
+
+    if (pending == null || pending.deviceUuid != event.requesterUuid) {
+      debugPrint(
+        '[BleBloc] AcceptLinkRequest ignorado: '
+        'la solicitud ya no está pendiente.',
+      );
+      return;
+    }
+
+    final localUser = await userRepository.getUserProfile();
+
+    if (localUser == null || localUser.uuid.trim().isEmpty) {
+      debugPrint(
+        '[BleBloc] No se puede aceptar LinkRequest: '
+        'no existe una identidad local válida.',
+      );
+      return;
+    }
+
+    try {
+      final peerNode = await _resolveOrCreatePeerNode(pending);
+
+      final peerNodeId = peerNode.id;
+
+      if (peerNodeId == null) {
+        throw StateError('El Node del requester no posee un id persistente.');
+      }
+
+      final selfNode = await nodeRepository.getSelfNode();
+      final selfNodeId = selfNode?.id;
+
+      if (selfNode == null || selfNodeId == null) {
+        throw StateError('No existe un Node local persistente válido.');
+      }
+
+      if (selfNode.deviceUuid == pending.deviceUuid ||
+          selfNodeId == peerNodeId) {
+        throw StateError('El requester coincide con el Node local.');
+      }
+
+      await connectionRepository.saveConnection(selfNodeId, peerNodeId);
+
+      final response = NodosLinkResponse(
+        requesterUuid: pending.deviceUuid,
+        responderUuid: localUser.uuid,
+        accepted: true,
+      );
+
+      await repository.sendLinkResponse(response.toBytes());
+
+      _awaitingPeerGraphUuid = pending.deviceUuid;
+      _pendingLinkRequest = null;
+
+      debugPrint(
+        '[BleBloc] Enlace local persistido y LinkRequest aceptado: '
+        '${pending.deviceUuid}.',
+      );
+    } catch (error) {
+      debugPrint(
+        '[BleBloc] No se pudo completar la aceptación '
+        'de LinkRequest: $error',
+      );
+    }
+  }
+
+  /// Resuelve el Node canónico de un requester Nodos.
+  ///
+  /// Si ya existe por deviceUuid, actualiza sus metadatos conservando
+  /// cualquier información de transporte previamente conocida.
+  ///
+  /// Si todavía no existe, crea un Node estable sin inventar bleAddress.
+  ///
+  /// No se intenta reconciliar por nombre o color porque esos valores
+  /// no constituyen identidad.
+  Future<Node> _resolveOrCreatePeerNode(NodosLinkRequest request) async {
+    final existing = await nodeRepository.getNodeByDeviceUuid(
+      request.deviceUuid,
+    );
+
+    final now = DateTime.now();
+
+    if (existing != null) {
+      final updated = existing.copyWith(
+        deviceUuid: request.deviceUuid,
+        name: request.name,
+        color: request.color,
+        lastSeen: now,
+      );
+
+      await nodeRepository.upsertNode(updated);
+
+      final persisted = await nodeRepository.getNodeByDeviceUuid(
+        request.deviceUuid,
+      );
+
+      if (persisted == null) {
+        throw StateError('No se pudo recuperar el Node Nodos actualizado.');
+      }
+
+      return persisted;
+    }
+
+    final peer = Node(
+      deviceUuid: request.deviceUuid,
+      bleAddress: null,
+      remoteRef: null,
+      isSelf: false,
+      name: request.name,
+      color: request.color,
+      firstSeen: now,
+      lastSeen: now,
+      connectable: false,
+    );
+
+    await nodeRepository.upsertNode(peer);
+
+    final persisted = await nodeRepository.getNodeByDeviceUuid(
+      request.deviceUuid,
+    );
+
+    if (persisted == null) {
+      throw StateError('No se pudo recuperar el Node Nodos recién creado.');
+    }
+
+    return persisted;
+  }
+
+  /// Rechaza la solicitud pendiente indicada por [RejectLinkRequest].
+  Future<void> _onRejectLinkRequest(
+    RejectLinkRequest event,
+    Emitter<BleState> emit,
+  ) async {
+    final pending = _pendingLinkRequest;
+
+    if (pending == null || pending.deviceUuid != event.requesterUuid) {
+      debugPrint(
+        '[BleBloc] RejectLinkRequest ignorado: '
+        'la solicitud ya no está pendiente.',
+      );
+      return;
+    }
+
+    final localUser = await userRepository.getUserProfile();
+
+    if (localUser == null) {
+      debugPrint(
+        '[BleBloc] No se puede rechazar LinkRequest: '
+        'no existe perfil local.',
+      );
+      return;
+    }
+
+    final response = NodosLinkResponse(
+      requesterUuid: pending.deviceUuid,
+      responderUuid: localUser.uuid,
+      accepted: false,
+    );
+
+    try {
+      await repository.sendLinkResponse(response.toBytes());
+
+      _pendingLinkRequest = null;
+    } catch (error) {
+      debugPrint('[BleBloc] Error enviando rechazo de LinkRequest: $error');
+    }
+  }
+
+  /// Procesa un NodosGraphPayload recibido mediante WRITE en la
+  /// característica peerGraph (205).
+  ///
+  /// La escritura solamente se acepta si:
+  ///
+  /// 1. existe un peer cuyo grafo estamos esperando;
+  /// 2. el payload es válido;
+  /// 3. ownerUuid coincide exactamente con el UUID del requester aceptado.
+  ///
+  /// Una vez persistido correctamente el snapshot, la autorización
+  /// transitoria se consume.
+  Future<void> _onPeerGraphReceived(
+    _PeerGraphReceived event,
+    Emitter<BleState> emit,
+  ) async {
+    final expectedUuid = _awaitingPeerGraphUuid;
+
+    if (expectedUuid == null) {
+      debugPrint(
+        '[BleBloc] Peer graph ignorado: '
+        'no existe un enlace aceptado esperando snapshot.',
+      );
+      return;
+    }
+
+    final NodosGraphPayload payload;
+
+    try {
+      payload = NodosGraphPayload.fromBytes(event.payload);
+    } catch (error) {
+      debugPrint('[BleBloc] Peer graph inválido ignorado: $error');
+      return;
+    }
+
+    if (payload.ownerUuid != expectedUuid) {
+      debugPrint(
+        '[BleBloc] Peer graph ignorado: ownerUuid inesperado '
+        '(${payload.ownerUuid}). Esperado: $expectedUuid.',
+      );
+      return;
+    }
+
+    try {
+      await remoteRelationRepository.replaceSnapshot(
+        reporterUuid: payload.ownerUuid,
+        connections: payload.connections,
+      );
+
+      _awaitingPeerGraphUuid = null;
+
+      debugPrint(
+        '[BleBloc] Peer graph persistido: '
+        '${payload.ownerUuid} '
+        '(${payload.connections.length} relaciones activas).',
+      );
+    } catch (error) {
+      debugPrint(
+        '[BleBloc] Error persistiendo peer graph '
+        '${payload.ownerUuid}: $error',
+      );
+    }
+  }
+
   /// Fusión, evicción y capping de dispositivos BLE (función pura).
-  ///
-  /// QUÉ hace: recibe un mapa acumulado y un batch entrante de dispositivos.
-  /// 1. Fusiona: inserta/actualiza cada dispositivo del batch en el mapa
-  ///    usando deviceId como clave.
-  /// 2. Evicción: elimina entradas cuyo timestamp tenga más de [staleThreshold]
-  ///    de antigüedad respecto a DateTime.now().
-  /// 3. Capping: si el mapa supera [maxDevices], ordena por timestamp
-  ///    descendente y trunca a los [maxDevices] más recientes.
-  ///
-  /// Retorna la lista resultante. Es pura: no modifica el mapa original,
-  /// opera sobre una copia. Sin side effects — ideal para testing unitario.
-  ///
-  /// POR QUÉ es estática y pública: permite testear la lógica de acumulación
-  /// sin depender de BLoC, streams, o timers. Extract-Before-Mock pattern.
   @visibleForTesting
   static List<BleDevice> accumulateDevices(
     Map<String, BleDevice> current,
@@ -238,56 +619,53 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     final effectiveNow = now ?? DateTime.now();
     final merged = Map<String, BleDevice>.from(current);
 
-    // Paso 1: Fusionar
+    // Paso 1: Fusionar.
     for (final device in incoming) {
       final existing = merged[device.deviceId];
+
       if (existing == null || device.timestamp.isAfter(existing.timestamp)) {
         merged[device.deviceId] = device;
       }
     }
 
-    // Paso 2: Evicción por antigüedad
+    // Paso 2: Evicción por antigüedad.
     merged.removeWhere((_, device) {
       final age = effectiveNow.difference(device.timestamp);
       return age > staleThreshold;
     });
 
-    // Paso 3: Capping
+    // Paso 3: Capping.
     if (merged.length > maxDevices) {
       final sorted = merged.entries.toList()
         ..sort((a, b) => b.value.timestamp.compareTo(a.value.timestamp));
+
       return sorted.take(maxDevices).map((e) => e.value).toList();
     }
 
     return merged.values.toList();
   }
 
-  /// Fusiona dispositivos del batch actual en el acumulador, aplica
-  /// evicción por antigüedad, capping a 50 y emite la lista acumulada.
-  ///
-  /// Delega la lógica pesada a [accumulateDevices] (función pura) y
-  /// actualiza [_accumulatedDevices] + emite el resultado.
+  /// Fusiona dispositivos del batch actual en el acumulador.
   void _onScanResultsUpdated(
     _ScanResultsUpdated event,
     Emitter<BleState> emit,
   ) {
     final accumulated = accumulateDevices(_accumulatedDevices, event.devices);
 
-    // Reconstruir el mapa desde la lista resultante
     _accumulatedDevices.clear();
+
     for (final device in accumulated) {
       _accumulatedDevices[device.deviceId] = device;
     }
+
     emit(BleScanning(devices: accumulated));
   }
 
   /// Limpia dispositivos stale del acumulador sin nuevos datos BLE.
-  ///
-  /// Disparado por el timer periódico cada 30s. Si después de la evicción
-  /// la lista cambió (se removió al menos un dispositivo), emite el
-  /// nuevo estado para que la UI se actualice.
   void _onEvictStaleDevices(EvictStaleDevices event, Emitter<BleState> emit) {
-    if (_accumulatedDevices.isEmpty) return;
+    if (_accumulatedDevices.isEmpty) {
+      return;
+    }
 
     final before = _accumulatedDevices.length;
     final now = DateTime.now();
@@ -307,19 +685,30 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   }
 
   @override
-  Future<void> close() {
+  Future<void> close() async {
     _scanSessionId = null;
-    _scanSubscription?.cancel();
-    _btSubscription?.cancel();
+
+    await _scanSubscription?.cancel();
+    await _btSubscription?.cancel();
+    await _linkRequestSubscription?.cancel();
+    await _peerGraphSubscription?.cancel();
+
     _evictionTimer?.cancel();
     _evictionTimer = null;
+
     _dutyCycleTimer?.cancel();
     _dutyCycleTimer = null;
+
+    _pendingLinkRequest = null;
+    _awaitingPeerGraphUuid = null;
+
+    await _linkRequestController.close();
+
     return super.close();
   }
 }
 
-/// Internal event for scan result updates.
+/// Evento interno para resultados de escaneo.
 class _ScanResultsUpdated extends BleEvent {
   final List<BleDevice> devices;
 
@@ -329,7 +718,7 @@ class _ScanResultsUpdated extends BleEvent {
   List<Object> get props => [devices];
 }
 
-/// Internal event for scan stream errors.
+/// Evento interno para errores del stream de escaneo.
 class _ScanError extends BleEvent {
   final String message;
 
@@ -337,4 +726,15 @@ class _ScanError extends BleEvent {
 
   @override
   List<Object> get props => [message];
+}
+
+/// Evento interno para transportar al BLoC un payload escrito por un peer
+/// Nodos en la característica GATT peerGraph (205).
+class _PeerGraphReceived extends BleEvent {
+  final List<int> payload;
+
+  const _PeerGraphReceived(this.payload);
+
+  @override
+  List<Object> get props => [payload];
 }

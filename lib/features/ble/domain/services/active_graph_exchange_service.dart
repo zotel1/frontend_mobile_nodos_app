@@ -128,6 +128,64 @@ class ActiveGraphExchangeService {
     return _enqueue(_publishCurrentSnapshot);
   }
 
+  /// Construye el payload correspondiente al grafo BLE activo actual.
+  ///
+  /// Este método es la única fuente de verdad para serializar las relaciones
+  /// activas que esta instalación puede compartir con otro nodo Nodos.
+  ///
+  /// Se utiliza tanto para:
+  ///
+  /// - publicar el snapshot mediante la característica GATT normal del
+  ///   peripheral;
+  /// - enviar el mismo snapshot desde el central hacia otro Nodos después
+  ///   de que un LinkRequest haya sido aceptado.
+  ///
+  /// No modifica [_activeRemoteIds] ni publica nada por sí mismo.
+  Future<NodosGraphPayload> buildCurrentPayload() async {
+    final user = await _userRepository.getUserProfile();
+
+    if (user == null) {
+      throw StateError(
+        'No se puede construir el grafo activo: '
+        'no existe un perfil local.',
+      );
+    }
+
+    final ownerUuid = user.uuid.trim();
+
+    if (ownerUuid.isEmpty) {
+      throw StateError(
+        'No se puede construir el grafo activo: '
+        'el UUID local está vacío.',
+      );
+    }
+
+    final connections = <NodosGraphConnection>[];
+
+    // Copia defensiva porque las consultas siguientes son async.
+    final remoteIds = List<String>.from(_activeRemoteIds);
+
+    for (final remoteId in remoteIds) {
+      final node = await _nodeRepository.getNodeByBleAddress(remoteId);
+
+      if (node == null) {
+        // La conexión puede haberse establecido antes de que el scan haya
+        // persistido completamente el Node.
+        //
+        // No inventamos identidad ni transmitimos el remoteId.
+        continue;
+      }
+
+      final connection = _buildConnection(ownerUuid: ownerUuid, node: node);
+
+      if (connection != null) {
+        connections.add(connection);
+      }
+    }
+
+    return NodosGraphPayload(ownerUuid: ownerUuid, connections: connections);
+  }
+
   /// Ejecuta las operaciones secuencialmente.
   ///
   /// Es importante porque una conexión y una desconexión pueden ocurrir
@@ -149,52 +207,12 @@ class ActiveGraphExchangeService {
   }
 
   /// Construye y publica el snapshot activo actual.
+  ///
+  /// La construcción real está centralizada en [buildCurrentPayload] para
+  /// garantizar que las características 203 y 205 utilicen exactamente
+  /// las mismas reglas de identidad y filtrado.
   Future<void> _publishCurrentSnapshot() async {
-    final user = await _userRepository.getUserProfile();
-
-    if (user == null) {
-      throw StateError(
-        'No se puede publicar el grafo activo: '
-        'no existe un perfil local.',
-      );
-    }
-
-    final ownerUuid = user.uuid.trim();
-
-    if (ownerUuid.isEmpty) {
-      throw StateError(
-        'No se puede publicar el grafo activo: '
-        'el UUID local está vacío.',
-      );
-    }
-
-    final connections = <NodosGraphConnection>[];
-
-    // Copia defensiva porque las consultas son async.
-    final remoteIds = List<String>.from(_activeRemoteIds);
-
-    for (final remoteId in remoteIds) {
-      final node = await _nodeRepository.getNodeByBleAddress(remoteId);
-
-      if (node == null) {
-        // La conexión puede haberse establecido antes de que el scan haya
-        // persistido completamente el Node.
-        //
-        // No inventamos identidad ni transmitimos el remoteId.
-        continue;
-      }
-
-      final connection = _buildConnection(ownerUuid: ownerUuid, node: node);
-
-      if (connection != null) {
-        connections.add(connection);
-      }
-    }
-
-    final payload = NodosGraphPayload(
-      ownerUuid: ownerUuid,
-      connections: connections,
-    );
+    final payload = await buildCurrentPayload();
 
     await _bleRepository.updateGraphPayload(
       Uint8List.fromList(payload.toBytes()),

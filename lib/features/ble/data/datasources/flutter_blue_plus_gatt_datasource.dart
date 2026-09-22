@@ -33,6 +33,13 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
     List<int> payload,
   )
   _writeCharacteristicFn;
+  final Future<List<int>?> Function(
+    String remoteId,
+    String characteristicUuid,
+    List<int> requestPayload,
+    Duration timeout,
+  )
+  _writeAndWaitForResponseFn;
 
   /// Último valor emitido por el stream de estado de conexión para cada device.
   ///
@@ -46,7 +53,8 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
       _connectionStateFn = _defaultConnectionState,
       _discoverServicesFn = _defaultDiscoverServices,
       _readCharacteristicFn = _defaultReadCharacteristic,
-      _writeCharacteristicFn = _defaultWriteCharacteristic;
+      _writeCharacteristicFn = _defaultWriteCharacteristic,
+      _writeAndWaitForResponseFn = _defaultWriteAndWaitForResponse;
 
   /// Constructor de testing — inyecta funciones mock para cada operación.
   ///
@@ -70,12 +78,20 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
       List<int> payload,
     )
     writeCharacteristicFn,
+    required Future<List<int>?> Function(
+      String remoteId,
+      String characteristicUuid,
+      List<int> requestPayload,
+      Duration timeout,
+    )
+    writeAndWaitForResponseFn,
   }) : _connectFn = connectFn,
        _disconnectFn = disconnectFn,
        _connectionStateFn = connectionStateFn,
        _discoverServicesFn = discoverServicesFn,
        _readCharacteristicFn = readCharacteristicFn,
-       _writeCharacteristicFn = writeCharacteristicFn;
+       _writeCharacteristicFn = writeCharacteristicFn,
+       _writeAndWaitForResponseFn = writeAndWaitForResponseFn;
 
   // ── Implementaciones por defecto (producción) ──
 
@@ -137,7 +153,8 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
   /// Busca una característica GATT por UUID.
   ///
   /// flutter_blue_plus entrega las características dentro de los servicios
-  /// descubiertos. Este helper centraliza la búsqueda para lectura y escritura.
+  /// descubiertos. Este helper centraliza la búsqueda para lectura,
+  /// escritura e intercambios request/response.
   static Future<BluetoothCharacteristic?> _findCharacteristic(
     String remoteId,
     String characteristicUuid,
@@ -248,6 +265,85 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
     return true;
   }
 
+  /// Realiza un intercambio request/response sobre una característica GATT.
+  ///
+  /// La escucha de [BluetoothCharacteristic.onValueReceived] se crea ANTES
+  /// de habilitar NOTIFY/INDICATE y antes de escribir la solicitud.
+  ///
+  /// Esto garantiza que una respuesta rápida del peripheral no pueda
+  /// perderse entre el WRITE y la creación de la suscripción.
+  static Future<List<int>?> _defaultWriteAndWaitForResponse(
+    String remoteId,
+    String characteristicUuid,
+    List<int> requestPayload,
+    Duration timeout,
+  ) async {
+    final target = await _findCharacteristic(remoteId, characteristicUuid);
+
+    if (target == null) {
+      return null;
+    }
+
+    if (!target.properties.write && !target.properties.writeWithoutResponse) {
+      throw StateError(
+        'La característica $characteristicUuid no admite escritura.',
+      );
+    }
+
+    if (!target.properties.notify && !target.properties.indicate) {
+      throw StateError(
+        'La característica $characteristicUuid no admite '
+        'NOTIFY ni INDICATE.',
+      );
+    }
+
+    final responseCompleter = Completer<List<int>>();
+    StreamSubscription<List<int>>? responseSubscription;
+
+    try {
+      // La suscripción Dart se crea primero para no perder ninguna
+      // actualización que pueda llegar apenas se habiliten notificaciones.
+      responseSubscription = target.onValueReceived.listen(
+        (bytes) {
+          if (bytes.isEmpty || responseCompleter.isCompleted) {
+            return;
+          }
+
+          responseCompleter.complete(List<int>.from(bytes));
+        },
+        onError: (Object error, StackTrace stackTrace) {
+          if (!responseCompleter.isCompleted) {
+            responseCompleter.completeError(error, stackTrace);
+          }
+        },
+      );
+
+      // Recién ahora habilitamos NOTIFY/INDICATE en el peripheral.
+      await target.setNotifyValue(true);
+
+      // Preferimos WRITE con respuesta si la característica lo soporta.
+      final withoutResponse =
+          !target.properties.write && target.properties.writeWithoutResponse;
+
+      await target.write(requestPayload, withoutResponse: withoutResponse);
+
+      // Para LinkRequest este timeout incluye el tiempo que tarda
+      // el usuario remoto en aceptar o rechazar la solicitud.
+      return await responseCompleter.future.timeout(timeout);
+    } finally {
+      if (responseSubscription != null) {
+        await responseSubscription.cancel();
+      }
+
+      try {
+        await target.setNotifyValue(false);
+      } catch (_) {
+        // La conexión puede haberse cerrado mientras esperábamos
+        // la respuesta. La limpieza local de la suscripción ya se realizó.
+      }
+    }
+  }
+
   // ── Interfaz pública ──
 
   @override
@@ -287,4 +383,17 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
     String characteristicUuid,
     List<int> payload,
   ) => _writeCharacteristicFn(remoteId, characteristicUuid, payload);
+
+  @override
+  Future<List<int>?> writeAndWaitForResponse(
+    String remoteId,
+    String characteristicUuid,
+    List<int> requestPayload, {
+    Duration timeout = const Duration(seconds: 30),
+  }) => _writeAndWaitForResponseFn(
+    remoteId,
+    characteristicUuid,
+    requestPayload,
+    timeout,
+  );
 }

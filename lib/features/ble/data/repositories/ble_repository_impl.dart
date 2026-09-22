@@ -56,6 +56,37 @@ class BleRepositoryImpl implements BleRepository {
   Future<void> updateGraphPayload(Uint8List payload) =>
       _advertiser.updateGraphPayload(payload);
 
+  /// Solicitudes de enlace recibidas por el peripheral local.
+  ///
+  /// El datasource entrega [BleGattWrite], perteneciente a la capa data.
+  /// El repository lo transforma en [BleIncomingGattWrite] para evitar
+  /// exponer tipos de infraestructura hacia el dominio.
+  @override
+  Stream<BleIncomingGattWrite> get incomingLinkRequests =>
+      _advertiser.incomingLinkRequests.map(
+        (write) =>
+            BleIncomingGattWrite(payload: Uint8List.fromList(write.payload)),
+      );
+
+  /// Envía al central una respuesta serializada del handshake Nodos.
+  ///
+  /// El repository no interpreta el contenido del payload.
+  @override
+  Future<void> sendLinkResponse(Uint8List payload) =>
+      _advertiser.sendLinkResponse(payload);
+
+  /// Snapshots de grafo enviados por otra instalación Nodos hacia
+  /// este peripheral.
+  ///
+  /// Al igual que con las solicitudes de enlace, convertimos el tipo
+  /// perteneciente a data en un tipo definido por el dominio.
+  @override
+  Stream<BleIncomingGattWrite> get incomingPeerGraphPayloads =>
+      _advertiser.incomingPeerGraphPayloads.map(
+        (write) =>
+            BleIncomingGattWrite(payload: Uint8List.fromList(write.payload)),
+      );
+
   @override
   Future<void> stopAdvertise() => _advertiser.stopAdvertise();
 

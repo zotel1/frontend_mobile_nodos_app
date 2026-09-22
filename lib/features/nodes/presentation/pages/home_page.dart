@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -5,6 +7,7 @@ import 'package:android_intent_plus/android_intent.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:frontend_mobile_nodos_app/core/di/injection_container.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_link_request.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
@@ -31,6 +34,8 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/wi
 /// - Con 1 o más nodos activa la vista de grafo.
 /// - Con 0 nodos vuelve a la vista de lista.
 /// - Las vistas 2D y 3D permanecen montadas mediante Stack + Offstage.
+/// - Escucha solicitudes de enlace Nodos recibidas por BLE.
+/// - Permite aceptar o rechazar explícitamente un enlace Nodos.
 ///
 /// Escucha [NodeListBloc] para cambios en la lista y
 /// [VisualizationBloc] para el estado del grafo.
@@ -51,11 +56,17 @@ class _HomePageState extends State<HomePage> {
   /// Previene múltiples BluetoothOffDialog superpuestos.
   bool _dialogVisible = false;
 
+  /// Indica si actualmente existe un diálogo de LinkRequest visible.
+  bool _linkRequestDialogVisible = false;
+
   /// GlobalKey del GraphView 2D.
   final GlobalKey<GraphViewState> _graphViewKey = GlobalKey<GraphViewState>();
 
-  /// Referencia al BleBloc para usar en dispose().
+  /// Referencia al BleBloc para usar durante dispose().
   BleBloc? _bleBloc;
+
+  /// Suscripción a solicitudes Nodos recibidas por el peripheral GATT.
+  StreamSubscription<NodosLinkRequest>? _linkRequestSubscription;
 
   /// Tooltip actualmente visible.
   OverlayEntry? _tooltipEntry;
@@ -199,6 +210,81 @@ class _HomePageState extends State<HomePage> {
     _tooltipNodeId = null;
   }
 
+  /// Procesa una solicitud de enlace recibida desde otra instalación Nodos.
+  ///
+  /// La solicitud llega por el stream transitorio de [BleBloc].
+  ///
+  /// No utilizamos BleState para este evento porque mostrar un diálogo es un
+  /// efecto puntual de UI y no debe reemplazar el estado de scanning.
+  Future<void> _showLinkRequestDialog(NodosLinkRequest request) async {
+    if (!mounted || _linkRequestDialogVisible) {
+      return;
+    }
+
+    _linkRequestDialogVisible = true;
+
+    final requesterName = request.name.trim().isEmpty
+        ? 'Otro dispositivo Nodos'
+        : request.name.trim();
+
+    final accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Solicitud de enlace'),
+          content: Text(
+            '$requesterName quiere enlazarse con este dispositivo.\n\n'
+            'Si aceptás, ambos dispositivos podrán intercambiar '
+            'su grafo BLE activo.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('Rechazar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Aceptar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    _linkRequestDialogVisible = false;
+
+    if (!mounted) {
+      return;
+    }
+
+    if (accepted == true) {
+      context.read<BleBloc>().add(AcceptLinkRequest(request.deviceUuid));
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Enlace con $requesterName aceptado'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+
+      return;
+    }
+
+    context.read<BleBloc>().add(RejectLinkRequest(request.deviceUuid));
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Solicitud de $requesterName rechazada'),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -210,6 +296,16 @@ class _HomePageState extends State<HomePage> {
     });
 
     _bleBloc = context.read<BleBloc>();
+
+    // Las solicitudes Nodos son eventos transitorios independientes del
+    // BleState utilizado por scanning/advertising.
+    _linkRequestSubscription = _bleBloc!.linkRequests.listen((request) {
+      if (!mounted) {
+        return;
+      }
+
+      unawaited(_showLinkRequestDialog(request));
+    });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
@@ -225,6 +321,8 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _bleBloc?.add(const StopScan());
+
+    _linkRequestSubscription?.cancel();
 
     _tooltipEntry?.remove();
 
@@ -268,11 +366,30 @@ class _HomePageState extends State<HomePage> {
 
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
+                  content: Text('Conexión BLE establecida'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+
+            case BleLinkAwaitingApproval(:final remoteName):
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
                   content: Text(
-                    'Conectado ✅',
-                    style: TextStyle(color: Colors.greenAccent),
+                    'Esperando que $remoteName acepte el enlace...',
                   ),
-                  duration: Duration(seconds: 3),
+                  duration: const Duration(seconds: 30),
+                ),
+              );
+
+            case BleLinkRejected():
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Solicitud de enlace rechazada'),
+                  duration: Duration(seconds: 4),
                 ),
               );
 
@@ -356,8 +473,20 @@ class _HomePageState extends State<HomePage> {
                 }
               });
 
-            case BleConnectionInitial():
             case ConnectionInserted():
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Enlace establecido ✅',
+                    style: TextStyle(color: Colors.greenAccent),
+                  ),
+                  duration: Duration(seconds: 3),
+                ),
+              );
+
+            case BleConnectionInitial():
               break;
           }
         },
