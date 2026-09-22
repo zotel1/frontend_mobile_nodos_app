@@ -37,8 +37,15 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   /// UUID del peer cuyo NodosGraphPayload esperamos después de haber
   /// aceptado explícitamente su LinkRequest.
   ///
+  /// IMPORTANTE:
+  ///
+  /// Esta autorización se establece ANTES de enviar LinkResponse accepted.
+  /// De esa manera el requester puede escribir inmediatamente su snapshot
+  /// en la característica 205 sin que exista una ventana en la que el
+  /// payload llegue antes de que este BLoC esté preparado para recibirlo.
+  ///
   /// El datasource peripheral no informa qué central originó una escritura
-  /// GATT. Por eso correlacionamos el siguiente payload mediante ownerUuid.
+  /// GATT. Por eso el payload se correlaciona además mediante ownerUuid.
   ///
   /// Una vez recibido y persistido un payload válido, esta autorización
   /// transitoria se elimina.
@@ -369,9 +376,12 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   ///
   /// 1. resuelve o materializa el Node estable del requester;
   /// 2. obtiene el Node local;
-  /// 3. persiste la relación local self -> requester.
+  /// 3. persiste la relación local self -> requester;
+  /// 4. prepara la recepción del snapshot del requester;
+  /// 5. recién entonces envía la aceptación.
   ///
-  /// Solamente después de completar esos pasos se envía la aceptación.
+  /// El paso 4 debe ocurrir antes del paso 5 porque el requester puede
+  /// reaccionar inmediatamente al LinkResponse y escribir su grafo en 205.
   Future<void> _onAcceptLinkRequest(
     AcceptLinkRequest event,
     Emitter<BleState> emit,
@@ -417,6 +427,9 @@ class BleBloc extends Bloc<BleEvent, BleState> {
         throw StateError('El requester coincide con el Node local.');
       }
 
+      // ── 1. Persistencia estricta del lado receptor ──
+      //
+      // No enviamos accepted mientras nuestra relación local no exista.
       await connectionRepository.saveConnection(selfNodeId, peerNodeId);
 
       final response = NodosLinkResponse(
@@ -425,14 +438,38 @@ class BleBloc extends Bloc<BleEvent, BleState> {
         accepted: true,
       );
 
-      await repository.sendLinkResponse(response.toBytes());
-
+      // ── 2. Armar la recepción ANTES de enviar accepted ──
+      //
+      // sendLinkResponse() puede despertar inmediatamente al central.
+      // Ese central puede escribir su NodosGraphPayload en 205 antes de que
+      // este Future retorne.
+      //
+      // Por eso la autorización debe existir previamente.
       _awaitingPeerGraphUuid = pending.deviceUuid;
+
+      try {
+        // ── 3. Enviar aceptación ──
+        await repository.sendLinkResponse(response.toBytes());
+      } catch (error) {
+        // La respuesta no llegó a enviarse correctamente. Dejamos de esperar
+        // un snapshot que el requester no debería considerar autorizado.
+        //
+        // La comparación defensiva evita borrar otro UUID si el estado
+        // hubiese cambiado antes del rollback.
+        if (_awaitingPeerGraphUuid == pending.deviceUuid) {
+          _awaitingPeerGraphUuid = null;
+        }
+
+        rethrow;
+      }
+
+      // Recién después de enviar correctamente la aceptación consumimos
+      // la solicitud pendiente.
       _pendingLinkRequest = null;
 
       debugPrint(
-        '[BleBloc] Enlace local persistido y LinkRequest aceptado: '
-        '${pending.deviceUuid}.',
+        '[BleBloc] Enlace local persistido, recepción de peer graph '
+        'preparada y LinkRequest aceptado: ${pending.deviceUuid}.',
       );
     } catch (error) {
       debugPrint(

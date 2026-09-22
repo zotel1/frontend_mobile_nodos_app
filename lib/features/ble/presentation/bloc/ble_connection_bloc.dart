@@ -12,6 +12,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_lin
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_connection_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remote_relation_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/active_graph_exchange_service.dart';
+import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/repositories/user_repository.dart';
 
@@ -135,11 +136,11 @@ class RemoteIdentityLoaded extends BleConnectionState {
   List<Object?> get props => [remoteId, uuid, name, color];
 }
 
-/// La característica de identidad Nodos no existe o no contiene datos.
+/// La característica de identidad Nodos no existe.
 ///
 /// Este estado se reserva para el caso en que el dispositivo se considera
-/// BLE genérico. Una identidad Nodos malformada o un fallo real de transporte
-/// no deben producir este estado.
+/// BLE genérico. Una identidad Nodos vacía, malformada o un fallo real de
+/// transporte no deben producir este estado.
 class RemoteIdentityUnavailable extends BleConnectionState {
   final String remoteId;
 
@@ -288,9 +289,6 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     emit(BleConnected(remoteId: remoteId));
 
     // ── 1. Descubrir servicios ──
-    //
-    // Un fallo real de service discovery no demuestra que el dispositivo
-    // sea BLE genérico. Puede tratarse de un problema temporal de transporte.
     try {
       await _connectionRepo.discoverServices(remoteId);
     } catch (error) {
@@ -307,9 +305,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
 
     // ── 2. Leer característica de identidad ──
     //
-    // El contrato del repositorio utiliza null para representar que la
-    // característica no está disponible.
-    //
+    // null significa que la característica Nodos no existe.
     // ÚNICAMENTE ese caso se degrada a BLE genérico.
     final List<int>? identityBytes;
 
@@ -337,10 +333,6 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
       return;
     }
 
-    // La característica existe pero devolvió un payload vacío.
-    //
-    // Esto ya no se interpreta como BLE genérico: existe evidencia del
-    // protocolo Nodos, pero su identidad no es utilizable.
     if (identityBytes.isEmpty) {
       await _abortNodosHandshake(remoteId);
 
@@ -354,9 +346,6 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     }
 
     // ── 3. Interpretar identidad Nodos ──
-    //
-    // Si el payload existe pero es inválido, no debemos degradar el
-    // dispositivo a BLE genérico.
     final NodosIdentity identity;
 
     try {
@@ -377,7 +366,37 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     _reporterUuids[remoteId] = identity.uuid;
 
     // ── 5. Reconciliar identidad estable ──
-    await _reconcileNodosIdentity(remoteId: remoteId, identity: identity);
+    final Node? canonicalRemoteNode;
+
+    try {
+      canonicalRemoteNode = await _reconcileNodosIdentity(
+        remoteId: remoteId,
+        identity: identity,
+      );
+    } catch (error) {
+      await _abortNodosHandshake(remoteId);
+
+      emit(
+        BleConnectionError(
+          message: 'No se pudo reconciliar la identidad Nodos remota: $error',
+          retryable: true,
+        ),
+      );
+      return;
+    }
+
+    if (canonicalRemoteNode == null || canonicalRemoteNode.id == null) {
+      await _abortNodosHandshake(remoteId);
+
+      emit(
+        const BleConnectionError(
+          message:
+              'No se pudo resolver el nodo persistente de la instalación Nodos remota',
+          retryable: true,
+        ),
+      );
+      return;
+    }
 
     emit(
       RemoteIdentityLoaded(
@@ -516,11 +535,35 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
       return;
     }
 
-    // ── 11. Enlace Nodos aceptado ──
-    await _safeMarkConnected(remoteId);
+    // ── 11. Persistencia estricta del enlace Nodos ──
+    //
+    // Una aceptación remota no alcanza para considerar establecido el
+    // enlace local. Primero debemos garantizar que la relación pueda quedar
+    // persistida contra el Node canónico.
+    try {
+      await _persistNodosConnection(
+        remoteId: remoteId,
+        remoteNodeId: canonicalRemoteNode.id!,
+      );
+    } catch (error) {
+      await _abortNodosHandshake(remoteId);
 
-    // ── 12. Persistir relación local ──
-    await _persistLocalConnection(remoteId, emit);
+      emit(
+        BleConnectionError(
+          message: 'No se pudo persistir el enlace Nodos aceptado: $error',
+          retryable: true,
+        ),
+      );
+      return;
+    }
+
+    emit(ConnectionInserted(remoteId: remoteId));
+
+    // ── 12. Incorporar al grafo activo ──
+    //
+    // Esto ocurre únicamente después de haber persistido correctamente el
+    // enlace local.
+    await _safeMarkConnected(remoteId);
 
     // ── 13. Enviar nuestro snapshot activo al peer ──
     await _trySendLocalGraph(remoteId);
@@ -529,15 +572,20 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     await _tryReceiveRemoteGraph(remoteId: remoteId, identity: identity);
   }
 
+  /// Activa y persiste un dispositivo BLE genérico.
+  ///
+  /// El comportamiento de BLE genérico continúa siendo tolerante:
+  /// una falla de persistencia no derriba una conexión GATT válida.
   Future<void> _activateGenericDevice(
     String remoteId,
     Emitter<BleConnectionState> emit,
   ) async {
     await _safeMarkConnected(remoteId);
-    await _persistLocalConnection(remoteId, emit);
+    await _persistGenericConnection(remoteId, emit);
   }
 
-  Future<void> _persistLocalConnection(
+  /// Persiste una relación local con un dispositivo BLE genérico.
+  Future<void> _persistGenericConnection(
     String remoteId,
     Emitter<BleConnectionState> emit,
   ) async {
@@ -558,31 +606,51 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
 
       emit(ConnectionInserted(remoteId: remoteId));
     } catch (_) {
-      // La persistencia local no debe derribar una conexión GATT válida.
+      // BLE genérico conserva el comportamiento tolerante.
     }
   }
 
-  Future<void> _reconcileNodosIdentity({
+  /// Persiste estrictamente una relación Nodos aceptada.
+  ///
+  /// A diferencia del camino BLE genérico, cualquier inconsistencia o error
+  /// se propaga al caller para que el handshake sea abortado.
+  Future<void> _persistNodosConnection({
+    required String remoteId,
+    required int remoteNodeId,
+  }) async {
+    final myNodeId = _localNodeIds[remoteId];
+
+    if (myNodeId == null) {
+      throw StateError('No existe un nodo local asociado a la conexión Nodos');
+    }
+
+    if (myNodeId == remoteNodeId) {
+      throw StateError(
+        'El nodo local y el nodo remoto Nodos no pueden ser el mismo',
+      );
+    }
+
+    await _connectionRepo.saveConnection(myNodeId, remoteNodeId);
+  }
+
+  /// Reconcilia el Node descubierto por BLE con la identidad Nodos estable
+  /// y devuelve el Node canónico resultante.
+  Future<Node?> _reconcileNodosIdentity({
     required String remoteId,
     required NodosIdentity identity,
   }) async {
-    try {
-      final remoteNode = await _nodeRepository.getNodeByBleAddress(remoteId);
+    final remoteNode = await _nodeRepository.getNodeByBleAddress(remoteId);
 
-      if (remoteNode == null || remoteNode.id == null) {
-        return;
-      }
-
-      await _nodeRepository.reconcileNodeIdentity(
-        remoteNode.id!,
-        deviceUuid: identity.uuid,
-        name: identity.name,
-        color: identity.color,
-      );
-    } catch (_) {
-      // La identidad GATT sigue siendo válida aunque falle temporalmente
-      // la reconciliación local.
+    if (remoteNode == null || remoteNode.id == null) {
+      return null;
     }
+
+    return _nodeRepository.reconcileNodeIdentity(
+      remoteNode.id!,
+      deviceUuid: identity.uuid,
+      name: identity.name,
+      color: identity.color,
+    );
   }
 
   Future<void> _trySendLocalGraph(String remoteId) async {
