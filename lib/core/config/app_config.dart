@@ -51,19 +51,22 @@ const String serviceUuid = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
 const String identityCharacteristicUUID =
     '4fafc202-1fb5-459e-8fcc-c5c9c331914b';
 
-/// UUID de la característica de intercambio de grafo Nodos.
+/// UUID de la característica mediante la cual el periférico Nodos publica
+/// su snapshot de grafo activo.
 ///
-/// Permite que dos instalaciones de Nodos intercambien información sobre
-/// las relaciones DIRECTAS conocidas por cada una.
+/// Dirección principal:
+///
+/// ```text
+/// Peripheral → Central
+/// ```
 ///
 /// IMPORTANTE:
 ///
 /// - No transmite la base SQLite.
-/// - No utiliza Node.id porque ese identificador es local a cada instalación.
-/// - No retransmite relaciones transitivas recibidas de terceros.
+/// - No utiliza Node.id como identidad global.
+/// - No retransmite relaciones recibidas de terceros.
 /// - El propietario del payload es siempre la instalación que lo genera.
-///
-/// El payload exacto se modelará mediante una entidad dedicada del protocolo.
+/// - Las relaciones representan el estado activo conocido por el propietario.
 ///
 /// Ejemplo conceptual:
 ///
@@ -74,11 +77,62 @@ const String identityCharacteristicUUID =
 ///   "connections": []
 /// }
 /// ```
-///
-/// Las relaciones con dispositivos Nodos utilizarán su deviceUuid estable.
-/// La representación de dispositivos BLE genéricos se definirá antes de
-/// habilitar su intercambio entre instalaciones.
 const String graphCharacteristicUUID = '4fafc203-1fb5-459e-8fcc-c5c9c331914b';
+
+/// UUID de la característica de control para el enlace entre dos
+/// instalaciones Nodos.
+///
+/// Esta característica forma parte del handshake de FEAT-003.
+///
+/// El central escribe solicitudes de enlace:
+///
+/// ```text
+/// Central → Peripheral
+///          LinkRequest
+/// ```
+///
+/// El periférico puede responder mediante notificación:
+///
+/// ```text
+/// Peripheral → Central
+///             LinkResponse
+/// ```
+///
+/// El contenido concreto de LinkRequest y LinkResponse se define mediante
+/// entidades versionadas del protocolo y no en esta capa de configuración.
+///
+/// Esta característica NO representa el bonding/pairing Bluetooth del sistema.
+/// Es un enlace lógico propio de Nodos.
+const String linkCharacteristicUUID = '4fafc204-1fb5-459e-8fcc-c5c9c331914b';
+
+/// UUID de la característica utilizada por el central para entregar al
+/// periférico su propio snapshot de grafo activo.
+///
+/// Dirección:
+///
+/// ```text
+/// Central → Peripheral
+/// ```
+///
+/// Complementa [graphCharacteristicUUID]:
+///
+/// ```text
+/// graphCharacteristicUUID
+/// Peripheral ───────────────► Central
+///
+/// peerGraphCharacteristicUUID
+/// Peripheral ◄─────────────── Central
+/// ```
+///
+/// El payload utiliza el mismo formato NodosGraphPayload.
+///
+/// El propietario indicado por ownerUuid debe ser la instalación que envía
+/// el snapshot.
+///
+/// Recibir este payload NO convierte las relaciones reportadas en conexiones
+/// locales persistentes. Deben conservarse como relaciones remotas/reportadas.
+const String peerGraphCharacteristicUUID =
+    '4fafc205-1fb5-459e-8fcc-c5c9c331914b';
 
 // ──────────────────────── RSSI / proximidad ────────────────────────
 
