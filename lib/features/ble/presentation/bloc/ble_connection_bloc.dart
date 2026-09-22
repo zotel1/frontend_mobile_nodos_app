@@ -7,14 +7,17 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_graph_payload.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_identity.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_link_request.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_link_response.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_connection_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remote_relation_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/active_graph_exchange_service.dart';
+import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
+import 'package:frontend_mobile_nodos_app/features/user/domain/repositories/user_repository.dart';
 
 // ──────────────────────── Events ────────────────────────
 
-/// Eventos del [BleConnectionBloc].
 sealed class BleConnectionEvent extends Equatable {
   const BleConnectionEvent();
 
@@ -22,13 +25,6 @@ sealed class BleConnectionEvent extends Equatable {
   List<Object?> get props => [];
 }
 
-/// Conecta al dispositivo identificado por [remoteId].
-///
-/// [myNodeId] es el ID en la tabla nodes del dispositivo local
-/// (el que inicia la conexión).
-///
-/// Se utiliza exclusivamente para persistir la relación local en
-/// `connections`.
 class ConnectToDevice extends BleConnectionEvent {
   final String remoteId;
   final int myNodeId;
@@ -39,7 +35,6 @@ class ConnectToDevice extends BleConnectionEvent {
   List<Object> get props => [remoteId, myNodeId];
 }
 
-/// Desconecta del dispositivo identificado por [remoteId].
 class DisconnectDevice extends BleConnectionEvent {
   final String remoteId;
 
@@ -51,14 +46,6 @@ class DisconnectDevice extends BleConnectionEvent {
 
 // ──────────────────────── States ────────────────────────
 
-/// Estados de la máquina de conexión GATT.
-///
-/// IMPORTANTE:
-///
-/// Estos estados representan feedback/eventos de la operación más reciente.
-///
-/// El conjunto completo de conexiones activas no vive en este estado.
-/// Ese estado agregado pertenece a [ActiveGraphExchangeService].
 sealed class BleConnectionState extends Equatable {
   const BleConnectionState();
 
@@ -66,16 +53,10 @@ sealed class BleConnectionState extends Equatable {
   List<Object?> get props => [];
 }
 
-/// Estado inicial.
-///
-/// No implica necesariamente que no exista ninguna otra conexión activa.
-/// Puede haber múltiples conexiones administradas simultáneamente por el
-/// BLoC.
 class BleConnectionInitial extends BleConnectionState {
   const BleConnectionInitial();
 }
 
-/// Intentando conectar al dispositivo [remoteId].
 class BleConnecting extends BleConnectionState {
   final String remoteId;
 
@@ -85,7 +66,6 @@ class BleConnecting extends BleConnectionState {
   List<Object?> get props => [remoteId];
 }
 
-/// Conexión GATT confirmada por el stream connectionState.
 class BleConnected extends BleConnectionState {
   final String remoteId;
 
@@ -95,7 +75,31 @@ class BleConnected extends BleConnectionState {
   List<Object?> get props => [remoteId];
 }
 
-/// Error durante la conexión.
+class BleLinkAwaitingApproval extends BleConnectionState {
+  final String remoteId;
+  final String remoteUuid;
+  final String remoteName;
+
+  const BleLinkAwaitingApproval({
+    required this.remoteId,
+    required this.remoteUuid,
+    required this.remoteName,
+  });
+
+  @override
+  List<Object?> get props => [remoteId, remoteUuid, remoteName];
+}
+
+class BleLinkRejected extends BleConnectionState {
+  final String remoteId;
+  final String remoteUuid;
+
+  const BleLinkRejected({required this.remoteId, required this.remoteUuid});
+
+  @override
+  List<Object?> get props => [remoteId, remoteUuid];
+}
+
 class BleConnectionError extends BleConnectionState {
   final String message;
   final bool retryable;
@@ -106,13 +110,6 @@ class BleConnectionError extends BleConnectionState {
   List<Object?> get props => [message, retryable];
 }
 
-/// Conexión persistida en la tabla `connections`.
-///
-/// La existencia de esta fila NO significa que el dispositivo continúe
-/// conectado.
-///
-/// El estado activo se mantiene independientemente mediante
-/// [ActiveGraphExchangeService].
 class ConnectionInserted extends BleConnectionState {
   final String remoteId;
 
@@ -122,13 +119,6 @@ class ConnectionInserted extends BleConnectionState {
   List<Object?> get props => [remoteId];
 }
 
-/// Identidad remota cargada exitosamente mediante GATT.
-///
-/// [remoteId] identifica la conexión BLE local.
-///
-/// [uuid] identifica persistentemente a la instalación remota de Nodos.
-///
-/// [name] y [color] son los metadatos configurados por el usuario remoto.
 class RemoteIdentityLoaded extends BleConnectionState {
   final String remoteId;
   final String uuid;
@@ -146,10 +136,11 @@ class RemoteIdentityLoaded extends BleConnectionState {
   List<Object?> get props => [remoteId, uuid, name, color];
 }
 
-/// No se pudo leer la identidad remota mediante GATT.
+/// La característica de identidad Nodos no existe.
 ///
-/// La UI puede solicitar metadatos manuales para dispositivos que no
-/// implementen el protocolo Nodos.
+/// Este estado se reserva para el caso en que el dispositivo se considera
+/// BLE genérico. Una identidad Nodos vacía, malformada o un fallo real de
+/// transporte no deben producir este estado.
 class RemoteIdentityUnavailable extends BleConnectionState {
   final String remoteId;
 
@@ -161,61 +152,31 @@ class RemoteIdentityUnavailable extends BleConnectionState {
 
 // ──────────────────────── BLoC ────────────────────────
 
-/// Gestiona conexiones GATT punto a punto.
-///
-/// Responsabilidades:
-///
-/// - solicitar permiso BLUETOOTH_CONNECT;
-/// - iniciar conexiones GATT;
-/// - observar el estado real de cada conexión;
-/// - soportar múltiples dispositivos simultáneamente;
-/// - persistir enlaces locales en `connections`;
-/// - leer la identidad Nodos remota;
-/// - reconciliar remoteId con el UUID estable Nodos;
-/// - leer y validar el snapshot activo remoto;
-/// - persistir ese snapshot en `remote_relations`;
-/// - eliminar el snapshot remoto cuando el reporter deja de estar conectado;
-/// - informar conexiones/desconexiones activas a
-///   [ActiveGraphExchangeService].
-///
-/// `connections` y `remote_relations` tienen semánticas diferentes:
-///
-/// `connections`
-///   relaciones persistentes creadas localmente.
-///
-/// `remote_relations`
-///   snapshot activo declarado por otra instalación Nodos mientras esa
-///   instalación permanece conectada.
 class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
   final BleConnectionRepository _connectionRepo;
   final NodeRepository _nodeRepository;
+  final UserRepository _userRepository;
   final ActiveGraphExchangeService _activeGraphExchange;
   final RemoteRelationRepository _remoteRelationRepository;
 
-  /// Suscripción al estado GATT de cada remoteId.
   final Map<String, StreamSubscription<bool>> _stateSubscriptions =
       <String, StreamSubscription<bool>>{};
 
-  /// myNodeId asociado a cada conexión.
   final Map<String, int> _localNodeIds = <String, int>{};
 
-  /// Asociación temporal entre el identificador BLE local y la identidad
-  /// estable Nodos descubierta mediante GATT.
-  ///
-  /// No se persiste porque únicamente representa el contexto de la conexión
-  /// activa administrada por este BLoC.
-  ///
-  /// Permite que, cuando `connectionState` informe una desconexión, podamos
-  /// eliminar el snapshot activo del reporter correcto.
   final Map<String, String> _reporterUuids = <String, String>{};
+
+  final Set<String> _connectedRemoteIds = <String>{};
 
   BleConnectionBloc({
     required BleConnectionRepository connectionRepository,
     required NodeRepository nodeRepository,
+    required UserRepository userRepository,
     required ActiveGraphExchangeService activeGraphExchange,
     required RemoteRelationRepository remoteRelationRepository,
   }) : _connectionRepo = connectionRepository,
        _nodeRepository = nodeRepository,
+       _userRepository = userRepository,
        _activeGraphExchange = activeGraphExchange,
        _remoteRelationRepository = remoteRelationRepository,
        super(const BleConnectionInitial()) {
@@ -224,7 +185,6 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     on<_ConnectionStateChanged>(_onConnectionStateChanged);
   }
 
-  /// Inicia o reinicia la conexión a [ConnectToDevice.remoteId].
   Future<void> _onConnect(
     ConnectToDevice event,
     Emitter<BleConnectionState> emit,
@@ -262,6 +222,9 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     try {
       await _cancelSubscription(remoteId);
 
+      _connectedRemoteIds.remove(remoteId);
+      _reporterUuids.remove(remoteId);
+
       _localNodeIds[remoteId] = event.myNodeId;
 
       _stateSubscriptions[remoteId] = _connectionRepo
@@ -289,7 +252,9 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
       await _connectionRepo.connect(remoteId);
     } catch (e) {
       await _cancelSubscription(remoteId);
+
       _localNodeIds.remove(remoteId);
+      _connectedRemoteIds.remove(remoteId);
 
       await _handleInactiveRemote(remoteId);
 
@@ -302,7 +267,6 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     }
   }
 
-  /// Procesa cambios reales del stream connectionState.
   Future<void> _onConnectionStateChanged(
     _ConnectionStateChanged event,
     Emitter<BleConnectionState> emit,
@@ -310,87 +274,128 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     final remoteId = event.remoteId;
 
     if (!event.connected) {
+      _connectedRemoteIds.remove(remoteId);
+
       await _handleInactiveRemote(remoteId);
 
       emit(const BleConnectionInitial());
       return;
     }
 
-    emit(BleConnected(remoteId: remoteId));
-
-    // ── 1. Registrar relación activa local ──
-    await _safeMarkConnected(remoteId);
-
-    // ── 2. Persistir relación local ──
-    //
-    // `connections` sigue siendo independiente del snapshot distribuido.
-    final myNodeId = _localNodeIds[remoteId];
-
-    if (myNodeId != null) {
-      try {
-        final remoteNode = await _nodeRepository.getNodeByBleAddress(remoteId);
-
-        if (remoteNode != null && remoteNode.id != null) {
-          await _connectionRepo.saveConnection(myNodeId, remoteNode.id!);
-
-          emit(ConnectionInserted(remoteId: remoteId));
-        }
-      } catch (_) {
-        // La persistencia local no debe derribar la conexión GATT.
-      }
-    }
-
-    // ── 3. Descubrir servicios ──
-    try {
-      await _connectionRepo.discoverServices(remoteId);
-    } catch (_) {
-      emit(RemoteIdentityUnavailable(remoteId: remoteId));
+    if (!_connectedRemoteIds.add(remoteId)) {
       return;
     }
 
-    // ── 4. Leer identidad Nodos ──
-    final NodosIdentity identity;
+    emit(BleConnected(remoteId: remoteId));
+
+    // ── 1. Descubrir servicios ──
+    try {
+      await _connectionRepo.discoverServices(remoteId);
+    } catch (error) {
+      await _abortNodosHandshake(remoteId);
+
+      emit(
+        BleConnectionError(
+          message: 'No se pudieron descubrir los servicios GATT: $error',
+          retryable: true,
+        ),
+      );
+      return;
+    }
+
+    // ── 2. Leer característica de identidad ──
+    //
+    // null significa que la característica Nodos no existe.
+    // ÚNICAMENTE ese caso se degrada a BLE genérico.
+    final List<int>? identityBytes;
 
     try {
-      final identityBytes = await _connectionRepo.readCharacteristic(
+      identityBytes = await _connectionRepo.readCharacteristic(
         remoteId,
         identityCharacteristicUUID,
       );
+    } catch (error) {
+      await _abortNodosHandshake(remoteId);
 
-      if (identityBytes == null || identityBytes.isEmpty) {
-        emit(RemoteIdentityUnavailable(remoteId: remoteId));
-        return;
-      }
+      emit(
+        BleConnectionError(
+          message: 'Error leyendo la identidad Nodos remota: $error',
+          retryable: true,
+        ),
+      );
+      return;
+    }
 
-      identity = NodosIdentity.fromBytes(identityBytes);
-    } catch (_) {
-      // Un BLE genérico puede no implementar el protocolo Nodos.
+    if (identityBytes == null) {
+      await _activateGenericDevice(remoteId, emit);
+
       emit(RemoteIdentityUnavailable(remoteId: remoteId));
       return;
     }
 
-    // Desde este momento conocemos qué instalación Nodos corresponde
-    // al remoteId de esta conexión.
+    if (identityBytes.isEmpty) {
+      await _abortNodosHandshake(remoteId);
+
+      emit(
+        const BleConnectionError(
+          message: 'La identidad Nodos remota está vacía',
+          retryable: false,
+        ),
+      );
+      return;
+    }
+
+    // ── 3. Interpretar identidad Nodos ──
+    final NodosIdentity identity;
+
+    try {
+      identity = NodosIdentity.fromBytes(identityBytes);
+    } catch (error) {
+      await _abortNodosHandshake(remoteId);
+
+      emit(
+        BleConnectionError(
+          message: 'La identidad Nodos remota no es válida: $error',
+          retryable: false,
+        ),
+      );
+      return;
+    }
+
+    // ── 4. Registrar identidad estable Nodos ──
     _reporterUuids[remoteId] = identity.uuid;
 
     // ── 5. Reconciliar identidad estable ──
-    //
-    // El scan conoce inicialmente al dispositivo por remoteId.
-    // Una vez leída la identidad Nodos podemos asociarlo a su UUID estable.
-    try {
-      final remoteNode = await _nodeRepository.getNodeByBleAddress(remoteId);
+    final Node? canonicalRemoteNode;
 
-      if (remoteNode != null && remoteNode.id != null) {
-        await _nodeRepository.reconcileNodeIdentity(
-          remoteNode.id!,
-          deviceUuid: identity.uuid,
-          name: identity.name,
-          color: identity.color,
-        );
-      }
-    } catch (_) {
-      // La identidad GATT sigue siendo válida aunque falle temporalmente
-      // la reconciliación local. No descartamos por eso el intercambio.
+    try {
+      canonicalRemoteNode = await _reconcileNodosIdentity(
+        remoteId: remoteId,
+        identity: identity,
+      );
+    } catch (error) {
+      await _abortNodosHandshake(remoteId);
+
+      emit(
+        BleConnectionError(
+          message: 'No se pudo reconciliar la identidad Nodos remota: $error',
+          retryable: true,
+        ),
+      );
+      return;
+    }
+
+    if (canonicalRemoteNode == null || canonicalRemoteNode.id == null) {
+      await _abortNodosHandshake(remoteId);
+
+      emit(
+        const BleConnectionError(
+          message:
+              'No se pudo resolver el nodo persistente de la instalación Nodos remota',
+          retryable: true,
+        ),
+      );
+      return;
     }
 
     emit(
@@ -402,22 +407,266 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
       ),
     );
 
-    // ── 6. Leer snapshot activo remoto ──
+    // ── 6. Obtener identidad local ──
+    final localUser = await _userRepository.getUserProfile();
+
+    if (localUser == null || localUser.uuid.trim().isEmpty) {
+      await _abortNodosHandshake(remoteId);
+
+      emit(
+        const BleConnectionError(
+          message: 'No existe una identidad Nodos local válida',
+          retryable: false,
+        ),
+      );
+      return;
+    }
+
+    if (localUser.uuid.trim() == identity.uuid.trim()) {
+      await _abortNodosHandshake(remoteId);
+
+      emit(
+        const BleConnectionError(
+          message: 'No se puede enlazar la instalación Nodos consigo misma',
+          retryable: false,
+        ),
+      );
+      return;
+    }
+
+    // ── 7. Crear LinkRequest ──
+    final request = NodosLinkRequest(
+      deviceUuid: localUser.uuid,
+      name: localUser.name,
+      color: localUser.color,
+    );
+
+    emit(
+      BleLinkAwaitingApproval(
+        remoteId: remoteId,
+        remoteUuid: identity.uuid,
+        remoteName: identity.name,
+      ),
+    );
+
+    // ── 8. Enviar solicitud y esperar decisión remota ──
+    final List<int>? responseBytes;
+
+    try {
+      responseBytes = await _connectionRepo.writeAndWaitForResponse(
+        remoteId,
+        linkCharacteristicUUID,
+        request.toBytes(),
+        timeout: const Duration(seconds: 30),
+      );
+    } on TimeoutException {
+      await _abortNodosHandshake(remoteId);
+
+      emit(
+        const BleConnectionError(
+          message: 'La solicitud de enlace expiró sin respuesta',
+          retryable: true,
+        ),
+      );
+      return;
+    } catch (error) {
+      await _abortNodosHandshake(remoteId);
+
+      emit(
+        BleConnectionError(
+          message: 'No se pudo completar la solicitud de enlace: $error',
+          retryable: true,
+        ),
+      );
+      return;
+    }
+
+    if (responseBytes == null || responseBytes.isEmpty) {
+      await _abortNodosHandshake(remoteId);
+
+      emit(
+        const BleConnectionError(
+          message:
+              'La instalación Nodos remota no soporta el protocolo de enlace',
+          retryable: false,
+        ),
+      );
+      return;
+    }
+
+    // ── 9. Validar LinkResponse ──
+    final NodosLinkResponse response;
+
+    try {
+      response = NodosLinkResponse.fromBytes(responseBytes);
+    } catch (_) {
+      await _abortNodosHandshake(remoteId);
+
+      emit(
+        const BleConnectionError(
+          message: 'La respuesta de enlace recibida no es válida',
+          retryable: false,
+        ),
+      );
+      return;
+    }
+
+    final localUuid = localUser.uuid.trim();
+    final remoteUuid = identity.uuid.trim();
+
+    if (response.requesterUuid.trim() != localUuid ||
+        response.responderUuid.trim() != remoteUuid) {
+      await _abortNodosHandshake(remoteId);
+
+      emit(
+        const BleConnectionError(
+          message: 'La respuesta de enlace no corresponde a esta solicitud',
+          retryable: false,
+        ),
+      );
+      return;
+    }
+
+    // ── 10. Rechazo explícito ──
+    if (!response.accepted) {
+      emit(BleLinkRejected(remoteId: remoteId, remoteUuid: remoteUuid));
+
+      await _abortNodosHandshake(remoteId);
+      return;
+    }
+
+    // ── 11. Persistencia estricta del enlace Nodos ──
     //
-    // IMPORTANTE:
+    // Una aceptación remota no alcanza para considerar establecido el
+    // enlace local. Primero debemos garantizar que la relación pueda quedar
+    // persistida contra el Node canónico.
+    try {
+      await _persistNodosConnection(
+        remoteId: remoteId,
+        remoteNodeId: canonicalRemoteNode.id!,
+      );
+    } catch (error) {
+      await _abortNodosHandshake(remoteId);
+
+      emit(
+        BleConnectionError(
+          message: 'No se pudo persistir el enlace Nodos aceptado: $error',
+          retryable: true,
+        ),
+      );
+      return;
+    }
+
+    emit(ConnectionInserted(remoteId: remoteId));
+
+    // ── 12. Incorporar al grafo activo ──
     //
-    // Un error, timeout, característica ausente o payload inválido NO
-    // equivale a un snapshot vacío.
-    //
-    // En esos casos conservamos el último snapshot válido almacenado
-    // mientras el reporter continúe conectado.
+    // Esto ocurre únicamente después de haber persistido correctamente el
+    // enlace local.
+    await _safeMarkConnected(remoteId);
+
+    // ── 13. Enviar nuestro snapshot activo al peer ──
+    await _trySendLocalGraph(remoteId);
+
+    // ── 14. Recibir snapshot activo del peer ──
     await _tryReceiveRemoteGraph(remoteId: remoteId, identity: identity);
   }
 
-  /// Intenta leer y persistir el snapshot activo publicado por una
-  /// instalación Nodos.
+  /// Activa y persiste un dispositivo BLE genérico.
   ///
-  /// Solo un payload válido puede reemplazar el snapshot anterior.
+  /// El comportamiento de BLE genérico continúa siendo tolerante:
+  /// una falla de persistencia no derriba una conexión GATT válida.
+  Future<void> _activateGenericDevice(
+    String remoteId,
+    Emitter<BleConnectionState> emit,
+  ) async {
+    await _safeMarkConnected(remoteId);
+    await _persistGenericConnection(remoteId, emit);
+  }
+
+  /// Persiste una relación local con un dispositivo BLE genérico.
+  Future<void> _persistGenericConnection(
+    String remoteId,
+    Emitter<BleConnectionState> emit,
+  ) async {
+    final myNodeId = _localNodeIds[remoteId];
+
+    if (myNodeId == null) {
+      return;
+    }
+
+    try {
+      final remoteNode = await _nodeRepository.getNodeByBleAddress(remoteId);
+
+      if (remoteNode == null || remoteNode.id == null) {
+        return;
+      }
+
+      await _connectionRepo.saveConnection(myNodeId, remoteNode.id!);
+
+      emit(ConnectionInserted(remoteId: remoteId));
+    } catch (_) {
+      // BLE genérico conserva el comportamiento tolerante.
+    }
+  }
+
+  /// Persiste estrictamente una relación Nodos aceptada.
+  ///
+  /// A diferencia del camino BLE genérico, cualquier inconsistencia o error
+  /// se propaga al caller para que el handshake sea abortado.
+  Future<void> _persistNodosConnection({
+    required String remoteId,
+    required int remoteNodeId,
+  }) async {
+    final myNodeId = _localNodeIds[remoteId];
+
+    if (myNodeId == null) {
+      throw StateError('No existe un nodo local asociado a la conexión Nodos');
+    }
+
+    if (myNodeId == remoteNodeId) {
+      throw StateError(
+        'El nodo local y el nodo remoto Nodos no pueden ser el mismo',
+      );
+    }
+
+    await _connectionRepo.saveConnection(myNodeId, remoteNodeId);
+  }
+
+  /// Reconcilia el Node descubierto por BLE con la identidad Nodos estable
+  /// y devuelve el Node canónico resultante.
+  Future<Node?> _reconcileNodosIdentity({
+    required String remoteId,
+    required NodosIdentity identity,
+  }) async {
+    final remoteNode = await _nodeRepository.getNodeByBleAddress(remoteId);
+
+    if (remoteNode == null || remoteNode.id == null) {
+      return null;
+    }
+
+    return _nodeRepository.reconcileNodeIdentity(
+      remoteNode.id!,
+      deviceUuid: identity.uuid,
+      name: identity.name,
+      color: identity.color,
+    );
+  }
+
+  Future<void> _trySendLocalGraph(String remoteId) async {
+    try {
+      final payload = await _activeGraphExchange.buildCurrentPayload();
+
+      await _connectionRepo.writeCharacteristic(
+        remoteId,
+        peerGraphCharacteristicUUID,
+        payload.toBytes(),
+      );
+    } catch (_) {
+      // El intercambio del grafo es adicional al enlace ya aceptado.
+    }
+  }
+
   Future<void> _tryReceiveRemoteGraph({
     required String remoteId,
     required NodosIdentity identity,
@@ -434,10 +683,6 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
 
       final payload = NodosGraphPayload.fromBytes(graphBytes);
 
-      // La identidad leída por identityCharacteristicUUID y el propietario
-      // declarado por el payload deben representar la misma instalación.
-      //
-      // Si no coinciden, el snapshot se rechaza completamente.
       if (payload.ownerUuid != identity.uuid) {
         return;
       }
@@ -447,16 +692,22 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
         connections: payload.connections,
       );
     } catch (_) {
-      // No borrar el snapshot anterior.
-      //
-      // Fallo de transporte != "el remoto ya no tiene conexiones".
-      //
-      // Un payload válido con connections: [] sí llegará hasta
-      // replaceSnapshot() y eliminará correctamente las filas anteriores.
+      // Fallo de transporte != snapshot vacío.
     }
   }
 
-  /// Desconecta únicamente el dispositivo solicitado.
+  Future<void> _abortNodosHandshake(String remoteId) async {
+    _connectedRemoteIds.remove(remoteId);
+
+    try {
+      await _connectionRepo.disconnect(remoteId);
+    } catch (_) {
+      // El transporte puede haberse cerrado antes.
+    }
+
+    await _handleInactiveRemote(remoteId);
+  }
+
   Future<void> _onDisconnect(
     DisconnectDevice event,
     Emitter<BleConnectionState> emit,
@@ -468,6 +719,8 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     }
 
     await _cancelSubscription(remoteId);
+
+    _connectedRemoteIds.remove(remoteId);
 
     try {
       await _connectionRepo.disconnect(remoteId);
@@ -483,15 +736,6 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     emit(const BleConnectionInitial());
   }
 
-  /// Procesa la pérdida de una relación activa.
-  ///
-  /// Tiene dos efectos independientes:
-  ///
-  /// 1. elimina [remoteId] del snapshot local que esta instalación publica;
-  /// 2. si [remoteId] pertenecía a otra instalación Nodos identificada,
-  ///    elimina el snapshot que esa instalación nos había reportado.
-  ///
-  /// Ninguna de estas operaciones elimina filas de `connections`.
   Future<void> _handleInactiveRemote(String remoteId) async {
     await _safeMarkDisconnected(remoteId);
 
@@ -504,11 +748,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     try {
       await _remoteRelationRepository.clearSnapshot(reporterUuid);
     } catch (_) {
-      // La limpieza de remote_relations no debe impedir que el estado
-      // activo local refleje correctamente la desconexión.
-      //
-      // TODO(FEAT-002):
-      // incorporar logging estructurado para fallos de persistencia.
+      // La limpieza remota no debe impedir la desconexión local.
     }
   }
 
@@ -524,8 +764,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     try {
       await _activeGraphExchange.markConnected(remoteId);
     } catch (_) {
-      // TODO(FEAT-002):
-      // incorporar logging estructurado para errores de intercambio.
+      // Un error publicando el snapshot no debe derribar el transporte GATT.
     }
   }
 
@@ -533,8 +772,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     try {
       await _activeGraphExchange.markDisconnected(remoteId);
     } catch (_) {
-      // TODO(FEAT-002):
-      // incorporar logging estructurado para errores de intercambio.
+      // Un error publicando el snapshot no debe impedir la desconexión.
     }
   }
 
@@ -559,6 +797,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     _stateSubscriptions.clear();
     _localNodeIds.clear();
     _reporterUuids.clear();
+    _connectedRemoteIds.clear();
 
     for (final subscription in subscriptions) {
       await subscription.cancel();
@@ -568,7 +807,6 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
   }
 }
 
-/// Evento interno emitido por cada stream connectionState.
 class _ConnectionStateChanged extends BleConnectionEvent {
   final String remoteId;
   final bool connected;

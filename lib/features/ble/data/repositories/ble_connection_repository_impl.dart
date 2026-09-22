@@ -11,6 +11,10 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_c
 /// POR QUÉ: centraliza la infraestructura de conexión en un solo punto.
 /// El [BleConnectionBloc] depende de esta abstracción en lugar de
 /// depender directamente de datasources concretos y de la base de datos.
+///
+/// Las operaciones GATT transportan bytes sin interpretar el protocolo Nodos.
+/// La persistencia mediante [saveConnection] representa exclusivamente
+/// relaciones locales persistentes.
 class BleConnectionRepositoryImpl implements BleConnectionRepository {
   final BleGattDataSource _gatt;
   final AppDatabase _db;
@@ -47,6 +51,30 @@ class BleConnectionRepositoryImpl implements BleConnectionRepository {
     String characteristicUuid,
   ) async {
     return _gatt.readCharacteristic(remoteId, characteristicUuid);
+  }
+
+  @override
+  Future<bool> writeCharacteristic(
+    String remoteId,
+    String characteristicUuid,
+    List<int> payload,
+  ) async {
+    return _gatt.writeCharacteristic(remoteId, characteristicUuid, payload);
+  }
+
+  @override
+  Future<List<int>?> writeAndWaitForResponse(
+    String remoteId,
+    String characteristicUuid,
+    List<int> requestPayload, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    return _gatt.writeAndWaitForResponse(
+      remoteId,
+      characteristicUuid,
+      requestPayload,
+      timeout: timeout,
+    );
   }
 
   @override

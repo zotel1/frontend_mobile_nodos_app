@@ -2,6 +2,16 @@ import 'dart:typed_data';
 
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart';
 
+/// Escritura GATT recibida por el peripheral Nodos.
+///
+/// La capa de dominio recibe únicamente el payload crudo.
+/// La interpretación del protocolo corresponde a capas superiores.
+class BleIncomingGattWrite {
+  const BleIncomingGattWrite({required this.payload});
+
+  final Uint8List payload;
+}
+
 abstract class BleRepository {
   Stream<List<BleDevice>> get scanResults;
 
@@ -24,6 +34,25 @@ abstract class BleRepository {
   ///
   /// Actualizar el grafo no debe reiniciar el advertising.
   Future<void> updateGraphPayload(Uint8List payload);
+
+  /// Solicitudes de enlace recibidas mediante la característica GATT
+  /// linkCharacteristicUUID.
+  ///
+  /// El payload todavía no fue interpretado como NodosLinkRequest.
+  Stream<BleIncomingGattWrite> get incomingLinkRequests;
+
+  /// Envía una respuesta al central actualmente suscripto a la
+  /// característica de control de enlace.
+  ///
+  /// El payload debe contener un NodosLinkResponse ya serializado.
+  Future<void> sendLinkResponse(Uint8List payload);
+
+  /// Snapshots de grafo enviados hacia esta instalación por un peer Nodos.
+  ///
+  /// Estos mensajes llegan mediante peerGraphCharacteristicUUID.
+  ///
+  /// El payload todavía no fue interpretado como NodosGraphPayload.
+  Stream<BleIncomingGattWrite> get incomingPeerGraphPayloads;
 
   /// Detiene el advertising y el servidor GATT.
   Future<void> stopAdvertise();
