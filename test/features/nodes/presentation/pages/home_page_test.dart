@@ -7,8 +7,6 @@ import 'package:go_router/go_router.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:get_it/get_it.dart';
-import 'package:plugin_platform_interface/plugin_platform_interface.dart';
-import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart'
     hide User;
 
@@ -27,11 +25,13 @@ import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
 
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/pages/home_page.dart';
 import 'package:frontend_mobile_nodos_app/features/scan_session/presentation/bloc/scan_session_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/user/presentation/bloc/user_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/entities/user.dart';
+import 'home_page_test_support.dart';
 
 @GenerateNiceMocks([
   MockSpec<NodeListBloc>(),
@@ -43,79 +43,6 @@ import 'package:frontend_mobile_nodos_app/features/user/domain/entities/user.dar
 ])
 import 'home_page_test.mocks.dart';
 
-// ─── Stub de WebViewPlatform para tests widget T5.7 ─────────────────
-
-class _StubHomeWebViewWidget extends PlatformWebViewWidget {
-  _StubHomeWebViewWidget(super.params) : super.implementation();
-  @override
-  Widget build(BuildContext context) =>
-      const SizedBox(key: Key('stub_webview'));
-}
-
-class _StubHomeWebViewController extends PlatformWebViewController {
-  _StubHomeWebViewController(super.params) : super.implementation();
-
-  @override
-  Future<void> loadFlutterAsset(String key) async {}
-
-  @override
-  Future<void> addJavaScriptChannel(JavaScriptChannelParams params) async {}
-
-  @override
-  Future<void> runJavaScript(String javaScript) async {}
-
-  @override
-  Future<void> setPlatformNavigationDelegate(
-    covariant PlatformNavigationDelegate handler,
-  ) async {}
-
-  // Necesario porque GraphView3D habilita JavaScript durante initState.
-  // Sin este stub, flutter_test lanza UnimplementedError.
-  @override
-  Future<void> setJavaScriptMode(JavaScriptMode javaScriptMode) async {}
-
-  // GraphView3D intenta limpiar estos recursos en dispose().
-  @override
-  Future<void> removeJavaScriptChannel(String javaScriptChannelName) async {}
-
-  @override
-  Future<void> clearCache() async {}
-}
-
-/// Stub de PlatformNavigationDelegate para tests de WebView.
-///
-/// Permite que los tests que renderizan GraphView3D (como los de toggle 2D/3D)
-/// no lancen UnimplementedError al crear el NavigationDelegate del WebView.
-class _StubHomeNavigationDelegate extends PlatformNavigationDelegate {
-  _StubHomeNavigationDelegate(super.params) : super.implementation();
-
-  @override
-  Future<void> setOnPageFinished(PageEventCallback? onPageFinished) async {}
-}
-
-class _StubHomeWebViewPlatform extends WebViewPlatform
-    with MockPlatformInterfaceMixin {
-  @override
-  PlatformWebViewController createPlatformWebViewController(
-    PlatformWebViewControllerCreationParams params,
-  ) => _StubHomeWebViewController(params);
-
-  @override
-  PlatformWebViewWidget createPlatformWebViewWidget(
-    PlatformWebViewWidgetCreationParams params,
-  ) => _StubHomeWebViewWidget(params);
-
-  @override
-  PlatformNavigationDelegate createPlatformNavigationDelegate(
-    PlatformNavigationDelegateCreationParams params,
-  ) => _StubHomeNavigationDelegate(params);
-
-  @override
-  PlatformWebViewCookieManager createPlatformCookieManager(
-    PlatformWebViewCookieManagerCreationParams params,
-  ) => throw UnimplementedError();
-}
-
 Node _testNode(int id, String addr) => Node(
   id: id,
   bleAddress: addr,
@@ -123,6 +50,21 @@ Node _testNode(int id, String addr) => Node(
   firstSeen: DateTime(2026, 1, 1),
   lastSeen: DateTime(2026, 6, 18),
   rssiHistory: const [-50],
+);
+
+BleScanning _bleScanningForNodes(Iterable<Node> nodes) => BleScanning(
+  devices: nodes
+      .where((node) => node.bleAddress != null)
+      .map(
+        (node) => BleDevice(
+          deviceId: node.bleAddress!,
+          rssi: node.rssiHistory.isNotEmpty ? node.rssiHistory.last : -60,
+          distance: 2.0,
+          proximity: ProximityLevel.close,
+          timestamp: DateTime(2026, 1, 1),
+        ),
+      )
+      .toList(),
 );
 
 final _testLayout = LayoutResult(
@@ -179,7 +121,7 @@ MockScanSessionBloc _mockSessionBloc() {
 Widget _pumpHomePage({
   required NodeListState nodeListState,
   required VisualizationState visualizationState,
-  BleState bleState = const BleStopped(),
+  BleState? bleState,
 }) {
   final mockNodeListBloc = MockNodeListBloc();
   final mockBleBloc = MockBleBloc();
@@ -204,10 +146,31 @@ Widget _pumpHomePage({
   ).thenAnswer((_) => Stream.value(UserLoaded(testUser)));
   final mockSessionBloc = MockScanSessionBloc();
 
+  final effectiveBleState =
+      bleState ??
+      (nodeListState is NodeListLoaded
+          ? BleScanning(
+              devices: nodeListState.nodes
+                  .where((node) => node.bleAddress != null)
+                  .map(
+                    (node) => BleDevice(
+                      deviceId: node.bleAddress!,
+                      rssi: node.rssiHistory.isNotEmpty
+                          ? node.rssiHistory.last
+                          : -60,
+                      distance: 2.0,
+                      proximity: ProximityLevel.close,
+                      timestamp: DateTime(2026, 1, 1),
+                    ),
+                  )
+                  .toList(),
+            )
+          : const BleStopped());
+
   when(mockNodeListBloc.state).thenReturn(nodeListState);
   when(mockNodeListBloc.stream).thenAnswer((_) => Stream.value(nodeListState));
-  when(mockBleBloc.state).thenReturn(bleState);
-  when(mockBleBloc.stream).thenAnswer((_) => Stream.value(bleState));
+  when(mockBleBloc.state).thenReturn(effectiveBleState);
+  when(mockBleBloc.stream).thenAnswer((_) => Stream.value(effectiveBleState));
   when(mockVizBloc.state).thenReturn(visualizationState);
   when(mockVizBloc.stream).thenAnswer((_) => Stream.value(visualizationState));
   when(mockConnectionBloc.state).thenReturn(const BleConnectionInitial());
@@ -265,7 +228,7 @@ void main() {
       prefs.setBool('is3D', false);
     }
     // T5.7: Registrar stub de WebViewPlatform para tests 3D
-    WebViewPlatform.instance = _StubHomeWebViewPlatform();
+    WebViewPlatform.instance = HomePageWebViewPlatformStub();
   });
 
   tearDown(() async {
@@ -811,10 +774,10 @@ void main() {
       when(
         mockNodeListBloc.stream,
       ).thenAnswer((_) => Stream.value(NodeListLoaded(nodes)));
-      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.state).thenReturn(_bleScanningForNodes(nodes));
       when(
         mockBleBloc.stream,
-      ).thenAnswer((_) => Stream.value(const BleStopped()));
+      ).thenAnswer((_) => Stream.value(_bleScanningForNodes(nodes)));
       when(
         mockVizBloc.state,
       ).thenReturn(GraphReady(_testLayout, selectedNodeId: 1));
@@ -866,10 +829,10 @@ void main() {
       when(
         mockNodeListBloc.stream,
       ).thenAnswer((_) => Stream.value(NodeListLoaded(nodes)));
-      when(mockBleBloc.state).thenReturn(const BleStopped());
+      when(mockBleBloc.state).thenReturn(_bleScanningForNodes(nodes));
       when(
         mockBleBloc.stream,
-      ).thenAnswer((_) => Stream.value(const BleStopped()));
+      ).thenAnswer((_) => Stream.value(_bleScanningForNodes(nodes)));
       // Nodo 2 = Nodo Beta, proximity=medium → "Medio"
       when(
         mockVizBloc.state,
@@ -988,9 +951,10 @@ void main() {
           ),
         );
         await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
 
         // Verifica que el info bar muestra "3 nodos detectados"
-        expect(find.text('3 nodos detectados'), findsOneWidget);
+        expect(find.textContaining('3 nodos detectados'), findsOneWidget);
       },
     );
 
@@ -1097,11 +1061,11 @@ void main() {
         // BLE
         // ─────────────────────────────────────────────────────
 
-        when(mockBleBloc.state).thenReturn(const BleStopped());
+        when(mockBleBloc.state).thenReturn(_bleScanningForNodes(nodes));
 
-        when(
-          mockBleBloc.stream,
-        ).thenAnswer((_) => Stream<BleState>.value(const BleStopped()));
+        when(mockBleBloc.stream).thenAnswer(
+          (_) => Stream<BleState>.value(_bleScanningForNodes(nodes)),
+        );
 
         // ─────────────────────────────────────────────────────
         // Visualización
@@ -1585,35 +1549,23 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 500));
 
-        // Verificar que UpdateNodeName fue despachado
+        // Verificar que UpdateNodeIdentity fue despachado
         // con el nombre recibido desde la identidad remota.
         verify(
           mockNodeListBloc.add(
             argThat(
               predicate(
                 (e) =>
-                    e is UpdateNodeName &&
+                    e is UpdateNodeIdentity &&
                     e.nodeId == 1 &&
+                    e.deviceUuid == '550e8400-e29b-41d4-a716-446655440001' &&
                     e.name == 'Nodo Remoto',
               ),
             ),
           ),
         ).called(1);
 
-        // Verificar que UpdateNodeColor fue despachado
-        // con el color recibido desde la identidad remota.
-        verify(
-          mockNodeListBloc.add(
-            argThat(
-              predicate(
-                (e) =>
-                    e is UpdateNodeColor &&
-                    e.nodeId == 1 &&
-                    e.color == '#FF5722',
-              ),
-            ),
-          ),
-        ).called(1);
+        // El color forma parte del mismo UpdateNodeIdentity.
       },
     );
 

@@ -77,9 +77,10 @@ class _HomePageState extends State<HomePage> {
   /// Timestamp del último escaneo BLE con dispositivos.
   DateTime? _lastScanTime;
 
-  /// Lista actual de nodos persistidos.
+  /// Catálogo actual de nodos persistidos.
   ///
-  /// Se usa para mapear GraphNode.id → Node.bleAddress.
+  /// Se usa para resolver metadata e IDs SQLite de los dispositivos visibles.
+  /// No representa por sí sola la presencia BLE actual.
   List<Node> _currentNodes = [];
 
   /// Último remoteId utilizado en un intento de conexión.
@@ -104,6 +105,14 @@ class _HomePageState extends State<HomePage> {
     }
 
     return userState.user.localNodeId;
+  }
+
+  List<Node> _visibleNodes(List<Node> knownNodes, BleState bleState) {
+    final visibleDeviceIds = bleState is BleScanning
+        ? bleState.devices.map((device) => device.deviceId)
+        : const <String>[];
+
+    return NodeListBloc.visibleNodesForDeviceIds(knownNodes, visibleDeviceIds);
   }
 
   /// Abre el tooltip de acciones para un nodo específico.
@@ -506,12 +515,19 @@ class _HomePageState extends State<HomePage> {
           },
           child: BlocListener<BleBloc, BleState>(
             listener: (context, bleState) {
-              if (bleState is BleScanning && bleState.devices.isNotEmpty) {
-                context.read<NodeListBloc>().add(
-                  SyncBleDevices(bleState.devices),
-                );
+              if (bleState is BleScanning) {
+                if (bleState.devices.isNotEmpty) {
+                  context.read<NodeListBloc>().add(
+                    SyncBleDevices(bleState.devices),
+                  );
 
-                _lastScanTime = DateTime.now();
+                  _lastScanTime = DateTime.now();
+                }
+
+                _updateViewMode(
+                  _visibleNodes(_currentNodes, bleState),
+                  context,
+                );
               }
 
               if (bleState is BluetoothOff) {
@@ -537,6 +553,7 @@ class _HomePageState extends State<HomePage> {
                 }
 
                 context.read<NodeListBloc>().add(const ClearNodes());
+                _updateViewMode(const [], context);
 
                 final sessionBloc = context.read<ScanSessionBloc>();
 
@@ -552,6 +569,8 @@ class _HomePageState extends State<HomePage> {
               }
 
               if (bleState is BleStopped) {
+                _updateViewMode(const [], context);
+
                 final sessionBloc = context.read<ScanSessionBloc>();
 
                 final sessionState = sessionBloc.state;
@@ -565,6 +584,11 @@ class _HomePageState extends State<HomePage> {
               listener: (context, nodeListState) {
                 if (nodeListState is NodeListLoaded) {
                   _currentNodes = nodeListState.nodes;
+
+                  final visibleNodes = _visibleNodes(
+                    nodeListState.nodes,
+                    context.read<BleBloc>().state,
+                  );
 
                   final sessionBloc = context.read<ScanSessionBloc>();
 
@@ -587,7 +611,7 @@ class _HomePageState extends State<HomePage> {
                     }
                   }
 
-                  _updateViewMode(nodeListState.nodes, context);
+                  _updateViewMode(visibleNodes, context);
                 }
               },
               child: BlocListener<ScanSessionBloc, ScanSessionState>(
@@ -621,7 +645,14 @@ class _HomePageState extends State<HomePage> {
                         BlocBuilder<NodeListBloc, NodeListState>(
                           builder: (context, nodeState) {
                             if (nodeState is NodeListLoaded) {
-                              return _buildInfoBar(nodeState.nodes.length);
+                              final visibleNodes = _visibleNodes(
+                                nodeState.nodes,
+                                context.read<BleBloc>().state,
+                              );
+
+                              if (visibleNodes.isNotEmpty) {
+                                return _buildInfoBar(visibleNodes.length);
+                              }
                             }
 
                             return const SizedBox.shrink();
@@ -742,7 +773,9 @@ class _HomePageState extends State<HomePage> {
               style: TextStyle(fontSize: 16, color: Colors.grey),
             ),
           ),
-          NodeListLoaded(:final nodes) => _buildAnimatedContent(nodes),
+          NodeListLoaded(:final nodes) => _buildAnimatedContent(
+            _visibleNodes(nodes, context.read<BleBloc>().state),
+          ),
           NodeListError(:final message) => Center(
             child: Text(
               message,
