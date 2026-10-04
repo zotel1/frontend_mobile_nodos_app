@@ -83,6 +83,9 @@ class _HomePageState extends State<HomePage> {
   /// No representa por sí sola la presencia BLE actual.
   List<Node> _currentNodes = [];
 
+  /// Indica que se solicitó una sesión y todavía falta su estado activo.
+  bool _sessionStartPending = false;
+
   /// Último remoteId utilizado en un intento de conexión.
   ///
   /// Se usa para el botón "Reintentar".
@@ -569,6 +572,7 @@ class _HomePageState extends State<HomePage> {
               }
 
               if (bleState is BleStopped) {
+                _sessionStartPending = false;
                 _updateViewMode(const [], context);
 
                 final sessionBloc = context.read<ScanSessionBloc>();
@@ -590,16 +594,19 @@ class _HomePageState extends State<HomePage> {
                     context.read<BleBloc>().state,
                   );
 
-                  final sessionBloc = context.read<ScanSessionBloc>();
+                  // NodeListLoaded representa el catálogo persistente completo.
+                  // Solo los nodos que también están en la ventana BLE actual
+                  // pueden pertenecer a esta sesión de escaneo.
+                  if (visibleNodes.isNotEmpty) {
+                    final sessionBloc = context.read<ScanSessionBloc>();
+                    final sessionState = sessionBloc.state;
 
-                  final sessionState = sessionBloc.state;
-
-                  if (sessionState is! SessionActive) {
-                    sessionBloc.add(const StartSession());
-                  } else {
-                    if (nodeListState.nodes.isNotEmpty) {
-                      final nodeIds = nodeListState.nodes
-                          .map((n) => n.id)
+                    if (sessionState is! SessionActive) {
+                      _sessionStartPending = true;
+                      sessionBloc.add(const StartSession());
+                    } else {
+                      final nodeIds = visibleNodes
+                          .map((node) => node.id)
                           .whereType<int>()
                           .toList();
 
@@ -621,6 +628,27 @@ class _HomePageState extends State<HomePage> {
                       'Sesión ${sessionState.sessionId} activa — '
                       '${sessionState.nodeCount} nodos',
                     );
+
+                    // El primer NodeListLoaded puede llegar mientras
+                    // StartSession todavía está en vuelo. Reproyectamos la
+                    // ventana BLE actual cuando la sesión queda disponible,
+                    // sin sleeps ni polling.
+                    if (_sessionStartPending && sessionState.nodeCount == 0) {
+                      _sessionStartPending = false;
+                      final visibleNodeIds = _visibleNodes(
+                        _currentNodes,
+                        context.read<BleBloc>().state,
+                      ).map((node) => node.id).whereType<int>().toList();
+
+                      if (visibleNodeIds.isNotEmpty) {
+                        context.read<ScanSessionBloc>().add(
+                          AddNodesToSession(
+                            sessionState.sessionId,
+                            visibleNodeIds,
+                          ),
+                        );
+                      }
+                    }
                   } else if (sessionState is SessionEnded) {
                     debugPrint('Sesión finalizada');
                   } else if (sessionState is SessionError) {

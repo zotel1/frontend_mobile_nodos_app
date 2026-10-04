@@ -18,9 +18,20 @@ class ScanSessionRepositoryImpl implements ScanSessionRepository {
   @override
   Future<int> startSession() async {
     final now = DateTime.now();
-    return _db
-        .into(_db.scanSessions)
-        .insert(ScanSessionsCompanion.insert(startedAt: now, nodesDetected: 0));
+
+    // Un cierre inesperado puede dejar sesiones huérfanas. La operación
+    // transaccional garantiza que nunca quede más de una sesión activa.
+    return _db.transaction(() async {
+      await (_db.update(_db.scanSessions)
+            ..where((session) => session.endedAt.isNull()))
+          .write(ScanSessionsCompanion(endedAt: Value(now)));
+
+      return _db
+          .into(_db.scanSessions)
+          .insert(
+            ScanSessionsCompanion.insert(startedAt: now, nodesDetected: 0),
+          );
+    });
   }
 
   @override

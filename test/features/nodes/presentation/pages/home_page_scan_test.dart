@@ -529,5 +529,86 @@ void main() {
         bleController.close();
       },
     );
+
+    testWidgets(
+      'FEAT-004B: la sesión recibe solo nodos presentes en BleScanning',
+      (tester) async {
+        final nodes = [
+          testNode(1, 'FEAT:B:VISIBLE:A'),
+          testNode(2, 'FEAT:B:HISTORICAL:B'),
+          testNode(3, 'FEAT:B:VISIBLE:C'),
+        ];
+        final mockNodeListBloc = MockNodeListBloc();
+        final mockBleBloc = MockBleBloc();
+        final mockVizBloc = MockVisualizationBloc();
+        final mockSessionBloc = MockScanSessionBloc();
+        final mockUserBloc = MockUserBloc();
+        final loaded = NodeListLoaded(nodes);
+        final scanning = bleScanningForNodes([nodes[0], nodes[2]]);
+
+        when(mockNodeListBloc.state).thenReturn(loaded);
+        when(mockNodeListBloc.stream).thenAnswer((_) => Stream.value(loaded));
+        when(mockBleBloc.state).thenReturn(scanning);
+        when(mockBleBloc.stream).thenAnswer((_) => Stream.value(scanning));
+        when(mockVizBloc.state).thenReturn(const VisualizationInitial());
+        when(
+          mockVizBloc.stream,
+        ).thenAnswer((_) => Stream.value(const VisualizationInitial()));
+        when(
+          mockSessionBloc.state,
+        ).thenReturn(const SessionActive(sessionId: 7, nodeCount: 0));
+        when(mockSessionBloc.stream).thenAnswer(
+          (_) => Stream.value(const SessionActive(sessionId: 7, nodeCount: 0)),
+        );
+        when(mockUserBloc.state).thenReturn(
+          UserLoaded(
+            User(
+              id: 42,
+              uuid: 'test-uuid',
+              name: 'Usuario',
+              color: '#2196F3',
+              deviceType: 'android',
+              createdAt: DateTime(2026, 1, 1),
+              localNodeId: 99,
+            ),
+          ),
+        );
+        when(
+          mockUserBloc.stream,
+        ).thenAnswer((_) => Stream.value(mockUserBloc.state));
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MultiBlocProvider(
+              providers: [
+                BlocProvider<NodeListBloc>.value(value: mockNodeListBloc),
+                BlocProvider<BleBloc>.value(value: mockBleBloc),
+                BlocProvider<VisualizationBloc>.value(value: mockVizBloc),
+                BlocProvider<BleConnectionBloc>.value(value: mockConnBloc()),
+                BlocProvider<ScanSessionBloc>.value(value: mockSessionBloc),
+                BlocProvider<UserBloc>.value(value: mockUserBloc),
+              ],
+              child: const HomePage(),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+
+        verify(
+          mockSessionBloc.add(
+            argThat(
+              predicate(
+                (event) =>
+                    event is AddNodesToSession &&
+                    event.sessionId == 7 &&
+                    event.nodeIds.toSet().containsAll({1, 3}) &&
+                    event.nodeIds.length == 2,
+              ),
+            ),
+          ),
+        ).called(1);
+      },
+    );
   });
 }
