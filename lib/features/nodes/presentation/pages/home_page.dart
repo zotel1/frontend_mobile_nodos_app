@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:frontend_mobile_nodos_app/core/di/injection_container.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_link_request.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
@@ -25,8 +24,9 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bl
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_event.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_state.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/widgets/graph_view.dart';
-import 'package:frontend_mobile_nodos_app/features/visualization/presentation/widgets/graph_view_3d.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/widgets/node_tooltip.dart';
+import 'package:frontend_mobile_nodos_app/features/nodes/presentation/widgets/home_page_info_bar.dart';
+import 'package:frontend_mobile_nodos_app/features/nodes/presentation/widgets/home_page_graph_content.dart';
 
 /// Pantalla principal: alterna entre lista de nodos y grafo.
 ///
@@ -651,14 +651,17 @@ class _HomePageState extends State<HomePage> {
                               );
 
                               if (visibleNodes.isNotEmpty) {
-                                return _buildInfoBar(visibleNodes.length);
+                                return HomePageInfoBar(
+                                  nodeCount: visibleNodes.length,
+                                  lastScanTime: _lastScanTime,
+                                );
                               }
                             }
 
                             return const SizedBox.shrink();
                           },
                         ),
-                        if (_showingGraph) _buildGraphToolbar(),
+                        if (_showingGraph) HomePageGraphToolbar(is3D: _is3D),
                         Expanded(child: _buildContent()),
                       ],
                     );
@@ -713,48 +716,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /// Barra superior con cantidad de nodos y tiempo del último escaneo.
-  Widget _buildInfoBar(int nodeCount) {
-    final timeText = _formatRelativeTime(_lastScanTime);
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: Theme.of(
-        context,
-      ).colorScheme.primaryContainer.withValues(alpha: 0.3),
-      child: Text(
-        '$nodeCount nodos detectados'
-        '${timeText != null ? ' · $timeText' : ''}',
-        style: TextStyle(
-          fontSize: 13,
-          color: Theme.of(context).colorScheme.onPrimaryContainer,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-    );
-  }
-
-  String? _formatRelativeTime(DateTime? time) {
-    if (time == null) {
-      return null;
-    }
-
-    final diff = DateTime.now().difference(time);
-
-    if (diff.inSeconds < 60) {
-      return 'Ahora';
-    }
-
-    final minutes = diff.inMinutes;
-
-    if (minutes == 1) {
-      return 'Hace 1 min';
-    }
-
-    return 'Hace $minutes min';
-  }
-
   /// Construye el contenido principal.
   Widget _buildContent() {
     return BlocBuilder<NodeListBloc, NodeListState>(
@@ -793,8 +754,6 @@ class _HomePageState extends State<HomePage> {
   /// LayoutBuilder captura las restricciones finitas proporcionadas por
   /// Expanded. SizedBox fuerza a que tanto la lista como el grafo trabajen
   /// dentro del mismo viewport.
-  ///
-  /// Las vistas 2D y 3D permanecen montadas mediante Stack + Offstage.
   Widget _buildAnimatedContent(List<Node> nodes) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -808,100 +767,20 @@ class _HomePageState extends State<HomePage> {
                       VisualizationInitial() || GraphBuilding() => const Center(
                         child: CircularProgressIndicator(),
                       ),
-
                       GraphReady(
                         :final layout,
                         :final selectedNodeId,
                         :final detailsNodeId,
                         :final barycenter,
                       ) =>
-                        ValueListenableBuilder<bool>(
-                          valueListenable: _is3D,
-                          builder: (context, is3D, _) {
-                            return Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                // ───────────────────────────────
-                                // GRAFO 2D
-                                // ───────────────────────────────
-                                Offstage(
-                                  offstage: is3D,
-                                  child: GraphView(
-                                    key: _graphViewKey,
-                                    layout: layout,
-                                    selectedNodeId: selectedNodeId,
-                                    detailsNodeId: detailsNodeId,
-                                    barycenter: barycenter,
-
-                                    // Toque simple:
-                                    // conserva el menú/selección existente.
-                                    onNodeTapped: (nodeId) {
-                                      context.read<VisualizationBloc>().add(
-                                        NodeSelected(nodeId),
-                                      );
-                                    },
-
-                                    // Doble toque:
-                                    // muestra u oculta los detalles
-                                    // visuales del nodo.
-                                    onNodeDoubleTapped: (nodeId) {
-                                      context.read<VisualizationBloc>().add(
-                                        NodeDetailsToggled(nodeId),
-                                      );
-                                    },
-
-                                    // Long press:
-                                    // el nodo queda agarrado.
-                                    onNodeDragStarted: (nodeId) {
-                                      context.read<VisualizationBloc>().add(
-                                        NodeDragStarted(nodeId),
-                                      );
-                                    },
-
-                                    // Movimiento:
-                                    // GraphView convierte la posición
-                                    // del dedo al canvas lógico 2000×2000.
-                                    onNodeDragUpdated: (nodeId, position) {
-                                      context.read<VisualizationBloc>().add(
-                                        NodeDragUpdated(
-                                          nodeId: nodeId,
-                                          x: position.dx,
-                                          y: position.dy,
-                                        ),
-                                      );
-                                    },
-
-                                    // Soltar:
-                                    // la simulación física puede continuar
-                                    // relajando el grafo.
-                                    onNodeDragEnded: (nodeId) {
-                                      context.read<VisualizationBloc>().add(
-                                        NodeDragEnded(nodeId),
-                                      );
-                                    },
-                                  ),
-                                ),
-
-                                // ───────────────────────────────
-                                // GRAFO 3D
-                                // ───────────────────────────────
-                                Offstage(
-                                  offstage: !is3D,
-                                  child: GraphView3D(
-                                    layout: layout,
-                                    selectedNodeId: selectedNodeId,
-                                    onNodeTapped: (nodeId) {
-                                      context.read<VisualizationBloc>().add(
-                                        NodeSelected(nodeId),
-                                      );
-                                    },
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
+                        HomePageGraphContent(
+                          graphViewKey: _graphViewKey,
+                          is3D: _is3D,
+                          layout: layout,
+                          selectedNodeId: selectedNodeId,
+                          detailsNodeId: detailsNodeId,
+                          barycenter: barycenter,
                         ),
-
                       GraphError(:final message) => Center(
                         child: Text(
                           message,
@@ -911,7 +790,6 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ),
                       ),
-
                       _ => const SizedBox.shrink(),
                     };
                   },
@@ -920,45 +798,6 @@ class _HomePageState extends State<HomePage> {
         );
 
         return viewport;
-      },
-    );
-  }
-
-  /// Toolbar para alternar entre vista 2D y 3D.
-  Widget _buildGraphToolbar() {
-    return ValueListenableBuilder<bool>(
-      valueListenable: _is3D,
-      builder: (context, is3D, _) {
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          color: Theme.of(
-            context,
-          ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              Text(
-                is3D ? 'Vista 3D' : 'Vista 2D',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(width: 4),
-              IconButton(
-                icon: Icon(is3D ? Icons.grid_view : Icons.view_in_ar),
-                tooltip: is3D ? 'Cambiar a vista 2D' : 'Cambiar a vista 3D',
-                onPressed: () {
-                  _is3D.value = !_is3D.value;
-
-                  sl<SharedPreferences>().setBool('is3D', _is3D.value);
-                },
-                iconSize: 24,
-                visualDensity: VisualDensity.compact,
-              ),
-            ],
-          ),
-        );
       },
     );
   }
