@@ -31,6 +31,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/usecases/stop_ble_
 
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/presentation/services/live_graph_sync_service.dart';
 
 import 'package:frontend_mobile_nodos_app/features/history/data/datasources/history_drift_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/history/data/repositories/history_repository_impl.dart';
@@ -206,6 +207,14 @@ Future<void> initDependencies() async {
     GraphExchangeSessionManager.new,
   );
 
+  sl.registerLazySingleton<LiveGraphSyncService>(
+    () => LiveGraphSyncService(
+      activeGraphExchange: sl<ActiveGraphExchangeService>(),
+      sessionManager: sl<GraphExchangeSessionManager>(),
+      connectionRepository: sl<BleConnectionRepository>(),
+    ),
+  );
+
   // ── BLE use cases ──
 
   sl.registerLazySingleton(() => StartBleScan(sl<BleRepository>()));
@@ -301,6 +310,7 @@ Future<void> initDependencies() async {
       activeGraphExchange: sl<ActiveGraphExchangeService>(),
       remoteRelationRepository: sl<RemoteRelationRepository>(),
       sessionManager: sl<GraphExchangeSessionManager>(),
+      liveGraphSync: sl<LiveGraphSyncService>(),
     ),
   );
 

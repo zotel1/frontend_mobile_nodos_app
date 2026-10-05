@@ -8,6 +8,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/services/active_gr
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/presentation/services/live_graph_sync_service.dart';
 
 /// Centraliza la invalidación del runtime BLE.
 ///
@@ -20,6 +21,7 @@ class BleLifecycleCoordinator {
   final ActiveGraphExchangeService _activeGraphExchange;
   final BleBloc _bleBloc;
   final BleConnectionBloc _connectionBloc;
+  final LiveGraphSyncService? _liveGraphSync;
 
   StreamSubscription<bool>? _adapterSubscription;
   bool _cleanupInProgress = false;
@@ -31,13 +33,16 @@ class BleLifecycleCoordinator {
     required ActiveGraphExchangeService activeGraphExchange,
     required BleBloc bleBloc,
     required BleConnectionBloc connectionBloc,
+    LiveGraphSyncService? liveGraphSync,
   }) : _bleRepository = bleRepository,
        _remoteRelationRepository = remoteRelationRepository,
        _activeGraphExchange = activeGraphExchange,
        _bleBloc = bleBloc,
-       _connectionBloc = connectionBloc;
+       _connectionBloc = connectionBloc,
+       _liveGraphSync = liveGraphSync;
 
   Future<void> initialize() async {
+    _liveGraphSync?.start();
     // Los snapshots no sobreviven una ejecución: no se pueden considerar
     // activos sin una conexión GATT observada en esta ejecución.
     await _clearAllRemoteSnapshots();
@@ -97,6 +102,7 @@ class BleLifecycleCoordinator {
     if (_bleRepository is BleRuntimeLifecycle) {
       await (_bleRepository as BleRuntimeLifecycle).disposeRuntime();
     }
+    await _liveGraphSync?.dispose();
   }
 }
 

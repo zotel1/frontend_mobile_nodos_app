@@ -9,6 +9,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_c
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remote_relation_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/active_graph_exchange_service.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/graph_exchange_session_manager.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/presentation/services/live_graph_sync_service.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/repositories/user_repository.dart';
@@ -60,8 +61,8 @@ class BleConnectionHandshakeResult {
 ///
 /// This service covers identity reconciliation, LinkRequest/LinkResponse,
 /// LINKED persistence, Graph Exchange activation, and the initial snapshot.
-/// It intentionally does not publish snapshots in response to later changes;
-/// that belongs to FEAT-004E.
+/// It intentionally does not publish later local changes; that responsibility
+/// belongs to [LiveGraphSyncService].
 class BleConnectionHandshakeCoordinator {
   final BleConnectionRepository _connectionRepo;
   final NodeRepository _nodeRepository;
@@ -69,6 +70,9 @@ class BleConnectionHandshakeCoordinator {
   final ActiveGraphExchangeService _activeGraphExchange;
   final RemoteRelationRepository _remoteRelationRepository;
   final GraphExchangeSessionManager _sessionManager;
+  final LiveGraphSyncService? _liveGraphSync;
+  final Map<String, StreamSubscription<List<int>>> _graphSubscriptions =
+      <String, StreamSubscription<List<int>>>{};
 
   BleConnectionHandshakeCoordinator({
     required BleConnectionRepository connectionRepository,
@@ -77,12 +81,14 @@ class BleConnectionHandshakeCoordinator {
     required ActiveGraphExchangeService activeGraphExchange,
     required RemoteRelationRepository remoteRelationRepository,
     required GraphExchangeSessionManager sessionManager,
+    LiveGraphSyncService? liveGraphSync,
   }) : _connectionRepo = connectionRepository,
        _nodeRepository = nodeRepository,
        _userRepository = userRepository,
        _activeGraphExchange = activeGraphExchange,
        _remoteRelationRepository = remoteRelationRepository,
-       _sessionManager = sessionManager;
+       _sessionManager = sessionManager,
+       _liveGraphSync = liveGraphSync;
 
   Future<BleConnectionHandshakeResult> handleConnected({
     required String remoteId,
@@ -273,6 +279,7 @@ class BleConnectionHandshakeCoordinator {
     _sessionManager.activate(identity.uuid, remoteId: remoteId);
     await _trySendLocalGraph(remoteId);
     await _tryReceiveRemoteGraph(remoteId: remoteId, identity: identity);
+    await _subscribeToRemoteGraph(remoteId: remoteId, identity: identity);
 
     return const BleConnectionHandshakeResult(genericDevice: false);
   }
@@ -327,6 +334,15 @@ class BleConnectionHandshakeCoordinator {
   Future<void> _trySendLocalGraph(String remoteId) async {
     try {
       final payload = await _activeGraphExchange.buildCurrentPayload();
+
+      if (_liveGraphSync != null) {
+        await _liveGraphSync.sendInitialSnapshot(
+          remoteId: remoteId,
+          payload: payload,
+        );
+        return;
+      }
+
       await _connectionRepo.writeCharacteristic(
         remoteId,
         peerGraphCharacteristicUUID,
@@ -358,6 +374,43 @@ class BleConnectionHandshakeCoordinator {
       );
       if (graphBytes == null || graphBytes.isEmpty) return;
 
+      await _replaceRemoteGraph(graphBytes, identity);
+    } catch (_) {
+      // Fallo de transporte != snapshot vacío.
+    }
+  }
+
+  Future<void> _subscribeToRemoteGraph({
+    required String remoteId,
+    required NodosIdentity identity,
+  }) async {
+    await cancelRemoteGraph(remoteId);
+
+    try {
+      final stream = _connectionRepo.characteristicValueStream(
+        remoteId,
+        graphCharacteristicUUID,
+      );
+      _graphSubscriptions[remoteId] = stream.listen(
+        (bytes) => unawaited(_replaceRemoteGraph(bytes, identity)),
+        onError: (Object error, StackTrace stackTrace) {
+          // GATT connectionState remains the authority for disconnects.
+        },
+      );
+    } catch (_) {
+      // Older transports may not expose characteristic notifications.
+    }
+  }
+
+  Future<void> _replaceRemoteGraph(
+    List<int> graphBytes,
+    NodosIdentity identity,
+  ) async {
+    if (graphBytes.isEmpty || !_sessionManager.isAuthorized(identity.uuid)) {
+      return;
+    }
+
+    try {
       final payload = NodosGraphPayload.fromBytes(graphBytes);
       if (payload.ownerUuid != identity.uuid) return;
 
@@ -366,7 +419,20 @@ class BleConnectionHandshakeCoordinator {
         connections: payload.connections,
       );
     } catch (_) {
-      // Fallo de transporte != snapshot vacío.
+      // Invalid or incomplete notifications are ignored safely.
+    }
+  }
+
+  Future<void> cancelRemoteGraph(String remoteId) async {
+    final subscription = _graphSubscriptions.remove(remoteId);
+    await subscription?.cancel();
+  }
+
+  Future<void> dispose() async {
+    final subscriptions = _graphSubscriptions.values.toList();
+    _graphSubscriptions.clear();
+    for (final subscription in subscriptions) {
+      await subscription.cancel();
     }
   }
 }

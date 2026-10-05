@@ -9,6 +9,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remot
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/active_graph_exchange_service.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/graph_exchange_session_manager.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/services/ble_connection_handshake_coordinator.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/presentation/services/live_graph_sync_service.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/repositories/user_repository.dart';
 
@@ -179,6 +180,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     required RemoteRelationRepository remoteRelationRepository,
     GraphExchangeSessionManager? sessionManager,
     BleConnectionHandshakeCoordinator? handshakeCoordinator,
+    LiveGraphSyncService? liveGraphSync,
   }) : _connectionRepo = connectionRepository,
        _nodeRepository = nodeRepository,
        _userRepository = userRepository,
@@ -195,6 +197,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
           activeGraphExchange: _activeGraphExchange,
           remoteRelationRepository: _remoteRelationRepository,
           sessionManager: _sessionManager,
+          liveGraphSync: liveGraphSync,
         );
     on<ConnectToDevice>(_onConnect);
     on<DisconnectDevice>(_onDisconnect);
@@ -448,6 +451,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
   }
 
   Future<void> _handleInactiveRemote(String remoteId) async {
+    await _handshakeCoordinator.cancelRemoteGraph(remoteId);
     await _safeMarkDisconnected(remoteId);
 
     _sessionManager.invalidateByRemoteId(remoteId);
@@ -498,6 +502,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
   @override
   Future<void> close() async {
     await _resetActiveConnections();
+    await _handshakeCoordinator.dispose();
 
     final subscriptions = _stateSubscriptions.values.toList();
 

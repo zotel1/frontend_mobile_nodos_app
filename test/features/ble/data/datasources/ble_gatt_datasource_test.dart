@@ -55,6 +55,12 @@ class _StubGattDataSource extends BleGattDataSource {
   }
 
   @override
+  Stream<List<int>> characteristicValueStream(
+    String remoteId,
+    String characteristicUuid,
+  ) => const Stream<List<int>>.empty();
+
+  @override
   Future<List<BleServiceInfo>> discoverServices(String remoteId) async {
     lastDiscoverServicesRemoteId = remoteId;
     return _discoverServicesResult;

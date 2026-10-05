@@ -27,6 +27,8 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
   _discoverServicesFn;
   final Future<List<int>?> Function(String remoteId, String characteristicUuid)
   _readCharacteristicFn;
+  final Stream<List<int>> Function(String remoteId, String characteristicUuid)
+  _characteristicValueStreamFn;
   final Future<bool> Function(
     String remoteId,
     String characteristicUuid,
@@ -53,6 +55,7 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
       _connectionStateFn = _defaultConnectionState,
       _discoverServicesFn = _defaultDiscoverServices,
       _readCharacteristicFn = _defaultReadCharacteristic,
+      _characteristicValueStreamFn = _defaultCharacteristicValueStream,
       _writeCharacteristicFn = _defaultWriteCharacteristic,
       _writeAndWaitForResponseFn = _defaultWriteAndWaitForResponse;
 
@@ -72,6 +75,8 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
       String characteristicUuid,
     )
     readCharacteristicFn,
+    Stream<List<int>> Function(String remoteId, String characteristicUuid)?
+    characteristicValueStreamFn,
     required Future<bool> Function(
       String remoteId,
       String characteristicUuid,
@@ -90,6 +95,9 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
        _connectionStateFn = connectionStateFn,
        _discoverServicesFn = discoverServicesFn,
        _readCharacteristicFn = readCharacteristicFn,
+       _characteristicValueStreamFn =
+           characteristicValueStreamFn ??
+           ((_, _) => const Stream<List<int>>.empty()),
        _writeCharacteristicFn = writeCharacteristicFn,
        _writeAndWaitForResponseFn = writeAndWaitForResponseFn;
 
@@ -224,6 +232,34 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
       return value.isEmpty ? null : value;
     } catch (_) {
       return null;
+    }
+  }
+
+  static Stream<List<int>> _defaultCharacteristicValueStream(
+    String remoteId,
+    String characteristicUuid,
+  ) async* {
+    final target = await _findCharacteristic(remoteId, characteristicUuid);
+
+    if (target == null ||
+        (!target.properties.notify && !target.properties.indicate)) {
+      return;
+    }
+
+    await target.setNotifyValue(true);
+
+    try {
+      await for (final bytes in target.onValueReceived) {
+        if (bytes.isNotEmpty) {
+          yield List<int>.from(bytes);
+        }
+      }
+    } finally {
+      try {
+        await target.setNotifyValue(false);
+      } catch (_) {
+        // The connection may have closed while the stream was active.
+      }
     }
   }
 
@@ -376,6 +412,12 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
     String remoteId,
     String characteristicUuid,
   ) => _readCharacteristicFn(remoteId, characteristicUuid);
+
+  @override
+  Stream<List<int>> characteristicValueStream(
+    String remoteId,
+    String characteristicUuid,
+  ) => _characteristicValueStreamFn(remoteId, characteristicUuid);
 
   @override
   Future<bool> writeCharacteristic(

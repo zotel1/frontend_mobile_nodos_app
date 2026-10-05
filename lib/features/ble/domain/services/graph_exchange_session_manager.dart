@@ -105,6 +105,13 @@ class GraphExchangeSessionManager {
         session.connected;
   }
 
+  bool isAuthorizedByRemoteId(String remoteId) {
+    final session = byRemoteId(remoteId);
+    return session != null &&
+        session.state == GraphExchangeSessionState.active &&
+        session.connected;
+  }
+
   GraphExchangeSession? invalidatePeer(String peerUuid) {
     return _invalidate(_key(peerUuid));
   }

@@ -89,6 +89,12 @@ class _FakeGatt implements BleGattDataSource {
   Stream<bool> connectionState(String remoteId) => Stream.value(true);
 
   @override
+  Stream<List<int>> characteristicValueStream(
+    String remoteId,
+    String characteristicUuid,
+  ) => Stream<List<int>>.empty();
+
+  @override
   Future<List<BleServiceInfo>> discoverServices(String remoteId) async {
     calls.add('discover');
     return const [];
