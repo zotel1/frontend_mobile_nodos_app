@@ -165,86 +165,74 @@
     }
   };
 
-  // ─── Escena Three.js ─────────────────────────────────────────────────
-  let scene, camera, renderer, controls, group;
+  // ─── Scene and bridge ─────────────────────────────────────────────────
+  let scene, camera, renderer, controls;
+  let nodesGroup, edgesGroup;
+  let nodeObjects = new Map();
+  let edgeObjects = new Map();
+  let lastTopologyKey = null;
+  let hasFramed = false;
+  let hasUserInteracted = false;
+  let emptyOverlay = null;
 
   function initScene() {
     const container = document.getElementById('container');
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    const w = container.clientWidth || window.innerWidth || 1;
+    const h = container.clientHeight || window.innerHeight || 1;
 
-    // Renderer
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(w, h);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setClearColor(0x1a1a2e, 1);
     container.appendChild(renderer.domElement);
 
-    // Scene
     scene = new THREE.Scene();
-
-    // Camera
     camera = new THREE.PerspectiveCamera(45, w / h, 1, 5000);
     camera.position.set(0, -800, 600);
     camera.lookAt(0, 0, 0);
 
-    // Iluminación
     scene.add(new THREE.AmbientLight(0x404060, 1.5));
     const dirLight = new THREE.DirectionalLight(0xffffff, 1);
     dirLight.position.set(500, 500, 500);
     scene.add(dirLight);
 
-    // OrbitControls
     controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(0, 0, 0);
     controls.update();
 
-    // Grupo principal para nodos y aristas
-    group = new THREE.Group();
-    scene.add(group);
+    edgesGroup = new THREE.Group();
+    nodesGroup = new THREE.Group();
+    scene.add(edgesGroup);
+    scene.add(nodesGroup);
 
-    // Raycaster para detección de tap
     const raycaster = new THREE.Raycaster();
     raycaster.params.Points.threshold = 10;
 
     function onTap(e) {
       e.preventDefault();
+      const point = e.changedTouches && e.changedTouches[0] || e.touches && e.touches[0] || e;
       const rect = renderer.domElement.getBoundingClientRect();
-      const x = ((e.clientX || (e.touches && e.touches[0].clientX)) - rect.left) / rect.width * 2 - 1;
-      const y = -((e.clientY || (e.touches && e.touches[0].clientY)) - rect.top) / rect.height * 2 + 1;
-      const mouse = new THREE.Vector2(x, y);
+      const x = (point.clientX - rect.left) / rect.width * 2 - 1;
+      const y = -(point.clientY - rect.top) / rect.height * 2 + 1;
+      raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
+      const intersects = raycaster.intersectObjects(nodesGroup.children, true);
+      if (!intersects.length) return;
 
-      raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObjects(group.children, true);
-
-      if (intersects.length > 0) {
-        let obj = intersects[0].object;
-        while (obj && obj.userData.nodeId == null) {
-          obj = obj.parent;
-        }
-        if (obj && obj.userData.nodeId != null) {
-          // Enviar nodeId a Dart vía JavaScriptChannel
-          if (window.onNodeTapped && window.onNodeTapped.postMessage) {
-            window.onNodeTapped.postMessage(String(obj.userData.nodeId));
-          }
-        }
+      let obj = intersects[0].object;
+      while (obj && obj.userData.nodeId == null) obj = obj.parent;
+      if (obj && obj.userData.nodeId != null && window.onNodeTapped && window.onNodeTapped.postMessage) {
+        window.onNodeTapped.postMessage(String(obj.userData.nodeId));
       }
     }
 
+    renderer.domElement.addEventListener('pointerdown', function () { hasUserInteracted = true; });
+    renderer.domElement.addEventListener('wheel', function () { hasUserInteracted = true; }, { passive: true });
     renderer.domElement.addEventListener('click', onTap);
     renderer.domElement.addEventListener('touchend', function (e) {
-      // Solo procesar tap si no hubo arrastre (orbit control)
       if (controls._state === STATE.NONE) onTap(e);
     });
 
-    // Resize
-    window.addEventListener('resize', function () {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-
-    // Loop de render
+    window.addEventListener('resize', resizeScene);
     function animate() {
       requestAnimationFrame(animate);
       controls.update();
@@ -253,21 +241,189 @@
     animate();
   }
 
-  // ─── API pública: carga datos del grafo ──────────────────────────────
-  /**
-   * @param {Object} data — { nodes: [{id,x,y,z,radius,color,label,isSelf}], edges: [{fromId,toId,thickness}] }
-   */
-  // Overlay para mensaje de estado vacío (R6.3)
-  let emptyOverlay = null;
+  function resizeScene() {
+    if (!renderer || !camera) return;
+    const container = document.getElementById('container');
+    const w = container.clientWidth || window.innerWidth || 1;
+    const h = container.clientHeight || window.innerHeight || 1;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  }
+
+  function disposeObject(object) {
+    object.traverse(function (child) {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        materials.forEach(function (material) {
+          if (material.map) material.map.dispose();
+          material.dispose();
+        });
+      }
+    });
+  }
+
+  function clearGroup(group) {
+    while (group.children.length) {
+      const child = group.children.pop();
+      disposeObject(child);
+    }
+  }
+
+  function createLabel(text, radius) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 96;
+    const context = canvas.getContext('2d');
+    context.font = 'bold 34px sans-serif';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillStyle = 'rgba(20, 20, 35, 0.82)';
+    context.fillRect(4, 4, 504, 88);
+    context.fillStyle = '#ffffff';
+    context.fillText(String(text || 'Desconocido').slice(0, 42), 256, 48);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false,
+    }));
+    const width = Math.min(180, Math.max(56, String(text || '').length * 7));
+    sprite.scale.set(width, 24, 1);
+    sprite.position.set(0, (radius || 15) + 20, 0);
+    sprite.userData.isLabel = true;
+    return sprite;
+  }
+
+  function edgeColor(edgeType) {
+    if (edgeType === 'transitive') return 0xffb74d;
+    if (edgeType === 'reported') return 0xba68c8;
+    return 0x4fc3f7;
+  }
+
+  function createEdge(edge, from, to) {
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(from.x, from.y, from.z || 0),
+      new THREE.Vector3(to.x, to.y, to.z || 0),
+    ]);
+    const geometry = new THREE.TubeGeometry(curve, 12, Math.max(1, Math.min(4, edge.thickness || 1)), 6, false);
+    const material = new THREE.MeshPhongMaterial({
+      color: edgeColor(edge.edgeType),
+      transparent: true,
+      opacity: edge.edgeType === 'reported' ? 0.55 : 0.4,
+    });
+    return new THREE.Mesh(geometry, material);
+  }
+
+  function createNode(node, selectedNodeId) {
+    const radius = node.radius || 15;
+    const material = new THREE.MeshPhongMaterial({
+      color: new THREE.Color(node.color || '#4CAF50'),
+      shininess: 30,
+      emissive: new THREE.Color(node.isSelf ? '#1a237e' : '#000000'),
+      emissiveIntensity: node.isSelf ? 0.6 : 0,
+    });
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 24, 12), material);
+    mesh.userData.nodeId = node.id;
+    mesh.userData.label = node.label;
+    mesh.position.set(node.x, node.y, node.z || 0);
+    mesh.scale.setScalar(node.id === selectedNodeId ? 1.18 : 1);
+
+    if (node.isSelf) {
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(radius * 1.25, 3, 12, 24),
+        new THREE.MeshBasicMaterial({
+          color: new THREE.Color(node.userColor || '#42a5f5'),
+          transparent: true,
+          opacity: 0.7,
+        }),
+      );
+      mesh.add(ring);
+    }
+    mesh.add(createLabel(node.label, radius));
+    return mesh;
+  }
+
+  function updateNode(mesh, node, selectedNodeId) {
+    mesh.position.set(node.x, node.y, node.z || 0);
+    mesh.scale.setScalar(node.id === selectedNodeId ? 1.18 : 1);
+    mesh.userData.label = node.label;
+    if (mesh.material && mesh.material.color) mesh.material.color.set(node.color || '#4CAF50');
+  }
+
+  function topologyKey(data) {
+    const nodes = (data.nodes || []).map(function (node) { return node.id; }).sort(function (a, b) { return a - b; });
+    const edges = (data.edges || []).map(function (edge) {
+      return [edge.fromId, edge.toId, edge.edgeType || 'direct'].sort().join(':') + ':' + (edge.edgeType || 'direct');
+    }).sort();
+    return nodes.join(',') + '|' + edges.join(',');
+  }
+
+  function rebuildScene(data) {
+    clearGroup(edgesGroup);
+    clearGroup(nodesGroup);
+    nodeObjects = new Map();
+    edgeObjects = new Map();
+
+    const nodeMap = new Map();
+    (data.nodes || []).forEach(function (node) { nodeMap.set(node.id, node); });
+    (data.edges || []).forEach(function (edge, index) {
+      const from = nodeMap.get(edge.fromId);
+      const to = nodeMap.get(edge.toId);
+      if (!from || !to) return;
+      const object = createEdge(edge, from, to);
+      const key = String(edge.fromId) + ':' + String(edge.toId) + ':' + (edge.edgeType || 'direct') + ':' + index;
+      edgeObjects.set(key, object);
+      edgesGroup.add(object);
+    });
+    (data.nodes || []).forEach(function (node) {
+      const object = createNode(node, data.selectedNodeId);
+      nodeObjects.set(node.id, object);
+      nodesGroup.add(object);
+    });
+  }
+
+  function updateExistingNodes(data) {
+    (data.nodes || []).forEach(function (node) {
+      const object = nodeObjects.get(node.id);
+      if (object) updateNode(object, node, data.selectedNodeId);
+    });
+  }
+
+  function frameCamera(nodes) {
+    if (!nodes.length || hasUserInteracted) return;
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    let selfNode = null;
+    nodes.forEach(function (node) {
+      const z = node.z || 0;
+      minX = Math.min(minX, node.x); maxX = Math.max(maxX, node.x);
+      minY = Math.min(minY, node.y); maxY = Math.max(maxY, node.y);
+      minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
+      if (node.isSelf) selfNode = node;
+    });
+    const center = new THREE.Vector3((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
+    let radius = 0;
+    nodes.forEach(function (node) {
+      radius = Math.max(radius, center.distanceTo(new THREE.Vector3(node.x, node.y, node.z || 0)));
+    });
+    const distance = Math.max(radius * 2.5, 500);
+    const target = selfNode ? new THREE.Vector3(selfNode.x, selfNode.y, selfNode.z || 0) : center;
+    controls.target.copy(target);
+    camera.position.set(target.x, target.y - distance, target.z + distance * 0.75);
+    camera.far = Math.min(Math.max(radius * 6, 2000), 12000);
+    camera.updateProjectionMatrix();
+    controls.update();
+    hasFramed = true;
+  }
 
   function showEmptyMessage(visible) {
     if (!emptyOverlay) {
       emptyOverlay = document.createElement('div');
       emptyOverlay.id = 'empty-overlay';
-      emptyOverlay.style.cssText =
-        'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);' +
-        'color:#9e9e9e;font-size:20px;font-family:sans-serif;' +
-        'pointer-events:none;z-index:10;text-align:center;';
+      emptyOverlay.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#9e9e9e;font-size:16px;font-family:sans-serif;pointer-events:none;z-index:10;text-align:center;';
       emptyOverlay.textContent = 'Sin nodos detectados';
       document.getElementById('container').appendChild(emptyOverlay);
     }
@@ -276,171 +432,33 @@
 
   window.loadGraphData = function (data) {
     try {
-    if (!renderer) initScene();
-    if (!data || !data.nodes || data.nodes.length === 0) {
-      _log('loadGraphData: sin nodos, mostrando mensaje de estado vacío');
-      showEmptyMessage(true);
-      // Limpiar escena anterior si existía
-      while (group.children.length > 0) {
-        group.remove(group.children[0]);
+      if (!renderer) initScene();
+      const nodes = data && Array.isArray(data.nodes) ? data.nodes : [];
+      if (!nodes.length) {
+        clearGroup(edgesGroup);
+        clearGroup(nodesGroup);
+        nodeObjects = new Map();
+        edgeObjects = new Map();
+        showEmptyMessage(true);
+        return;
       }
-      return;
-    }
-    showEmptyMessage(false);
+      showEmptyMessage(false);
 
-    _log('loadGraphData: renderizando ' + data.nodes.length + ' nodos y ' + 
-         (data.edges ? data.edges.length : 0) + ' aristas');
-
-    // Limpiar escena anterior
-    while (group.children.length > 0) {
-      const child = group.children[0];
-      if (child.geometry) child.geometry.dispose();
-      if (child.material) {
-        if (Array.isArray(child.material)) {
-          child.material.forEach(function (m) { m.dispose(); });
-        } else {
-          child.material.dispose();
-        }
-      }
-      group.remove(child);
-    }
-
-    // Crear aristas con TubeGeometry para visibilidad garantizada.
-    // THREE.Line tiene linewidth fijo de 1px en WebGL sin importar el valor
-    // seteado. TubeGeometry produce tubos cilíndricos visibles a cualquier
-    // zoom y distancia. PR7: reemplaza THREE.Line → THREE.TubeGeometry.
-    if (data.edges) {
-      const nodeMap = {};
-      data.nodes.forEach(function (n) { nodeMap[n.id] = n; });
-
-      data.edges.forEach(function (e) {
-        const from = nodeMap[e.fromId];
-        const to = nodeMap[e.toId];
-        if (!from || !to) return;
-
-        const start = new THREE.Vector3(from.x, from.y, from.z || 0);
-        const end = new THREE.Vector3(to.x, to.y, to.z || 0);
-
-        // Crear curva CatmullRom entre ambos puntos para TubeGeometry
-        const curve = new THREE.CatmullRomCurve3([start, end]);
-        const tubeRadius = 2.0; // grosor del tubo
-        const tubularSegments = 16; // segmentos a lo largo del tubo
-        const radialSegments = 8; // segmentos alrededor de la sección
-        const geometry = new THREE.TubeGeometry(
-            curve, tubularSegments, tubeRadius, radialSegments, false);
-        const material = new THREE.MeshPhongMaterial({
-          color: 0x4fc3f7,
-          transparent: true,
-          opacity: 0.35,
-          emissive: 0x000000,
-        });
-        const tube = new THREE.Mesh(geometry, material);
-        group.add(tube);
-      });
-    }
-
-    // Crear nodos como esferas
-    data.nodes.forEach(function (n) {
-      const geometry = new THREE.SphereGeometry(n.radius || 15, 32, 16);
-      const material = new THREE.MeshPhongMaterial({
-        color: new THREE.Color(n.color || '#4CAF50'),
-        shininess: 30,
-        emissive: new THREE.Color(n.isSelf ? '#1a237e' : '#000000'),
-        emissiveIntensity: n.isSelf ? 0.6 : 0,
-      });
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(n.x, n.y, n.z || 0);
-      mesh.userData.nodeId = n.id;
-      mesh.userData.label = n.label;
-
-      // Anillo de glow para self node (REQ-VR-01)
-      // Usa userColor del perfil en lugar de color hardcodeado.
-      // Fallback a #42a5f5 si userColor no está disponible.
-      if (n.isSelf) {
-        const ringGeo = new THREE.TorusGeometry((n.radius || 15) * 1.25, 3, 16, 32);
-        const ringColor = n.userColor || '#42a5f5';
-        const ringMat = new THREE.MeshBasicMaterial({
-          color: new THREE.Color(ringColor),
-          transparent: true,
-          opacity: 0.7
-        });
-        const ring = new THREE.Mesh(ringGeo, ringMat);
-        mesh.add(ring);
-      }
-
-      group.add(mesh);
-    });
-
-    // ── Cámara auto-fit (REQ-CA-01) ──
-    // Calcula BoundingBox + BoundingSphere a partir de todos los nodos
-    // para ajustar cámara, far plane y controls.target dinámicamente.
-    if (data.nodes.length > 0) {
-      // 1. BoundingBox: min/max de x, y, z
-      let minX = Infinity, minY = Infinity, minZ = Infinity;
-      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-      let selfNode = null;
-
-      data.nodes.forEach(function (n) {
-        if (n.x < minX) minX = n.x;
-        if (n.y < minY) minY = n.y;
-        const nz = n.z || 0;
-        if (nz < minZ) minZ = nz;
-        if (n.x > maxX) maxX = n.x;
-        if (n.y > maxY) maxY = n.y;
-        if (nz > maxZ) maxZ = nz;
-        if (n.isSelf) selfNode = n;
-      });
-
-      // 2. BoundingSphere: centro = promedio min/max, radio = max distancia
-      const cx = (minX + maxX) / 2;
-      const cy = (minY + maxY) / 2;
-      const cz = (minZ + maxZ) / 2;
-      const center = new THREE.Vector3(cx, cy, cz);
-
-      let maxDist = 0;
-      data.nodes.forEach(function (n) {
-        const dx = n.x - cx;
-        const dy = n.y - cy;
-        const dz = (n.z || 0) - cz;
-        const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (d > maxDist) maxDist = d;
-      });
-
-      // 3. maxDistance: radio × 4, mínimo 2000
-      const maxDistance = Math.max(maxDist * 4, 2000);
-
-      // 4. camera.far: maxDistance × 1.5, tope 8000 (mobile Z-buffer)
-      camera.far = Math.min(maxDistance * 1.5, 8000);
-      camera.updateProjectionMatrix();
-
-      // 5. Posicionar cámara: distancia = radio × 2.5, mínimo 500
-      const camDistance = Math.max(maxDist * 2.5, 500);
-      camera.position.set(0, -camDistance, camDistance * 0.75);
-
-      // 6. controls.target = posición del self-node (REQ-CA-01 S1-S3)
-      //    Si no hay self-node, usar centroide.
-      if (selfNode) {
-        controls.target.set(selfNode.x, selfNode.y, selfNode.z || 0);
+      const key = topologyKey(data);
+      if (key !== lastTopologyKey) {
+        rebuildScene(data);
+        lastTopologyKey = key;
+        frameCamera(nodes);
       } else {
-        controls.target.copy(center);
+        updateExistingNodes(data);
       }
-      controls.update();
-
-      _log('Camera auto-fit: radius=' + Math.round(maxDist) +
-           ' maxDist=' + Math.round(maxDistance) +
-           ' far=' + Math.round(camera.far) +
-           ' camDist=' + Math.round(camDistance));
-    }
     } catch (err) {
       _log('loadGraphData ERROR: ' + (err && err.message ? err.message : String(err)));
     }
   };
 
-  // Mantener referencia para el bridge de comunicación Dart→JS
   window.THREE = THREE;
 
-  /// Envía un mensaje de log al canal onConsoleLog de Dart.
-  /// Si el canal no está disponible (tests), usa console.log como fallback.
   function _log(msg) {
     if (window.onConsoleLog && window.onConsoleLog.postMessage) {
       window.onConsoleLog.postMessage(String(msg));
