@@ -845,6 +845,7 @@ class _HomePageState extends State<HomePage> {
                       ),
                       GraphReady(
                         :final layout,
+                        :final snapshot,
                         :final selectedNodeId,
                         :final detailsNodeId,
                         :final barycenter,
@@ -853,6 +854,7 @@ class _HomePageState extends State<HomePage> {
                           graphViewKey: _graphViewKey,
                           is3D: _is3D,
                           layout: layout,
+                          snapshot: snapshot,
                           selectedNodeId: selectedNodeId,
                           detailsNodeId: detailsNodeId,
                           barycenter: barycenter,

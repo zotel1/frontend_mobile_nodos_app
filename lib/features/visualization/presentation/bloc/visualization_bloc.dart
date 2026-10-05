@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
@@ -7,12 +6,13 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remote_relation_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_edge.dart';
-import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_node.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_layout_snapshot.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/usecases/build_graph.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/usecases/calculate_layout.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_event.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_state.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/presentation/services/graph_layout_physics.dart';
 
 /// Tick interno de la simulación física.
 ///
@@ -51,6 +51,7 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
   final Duration _debounceDuration;
 
   LayoutResult? _lastLayout;
+  int _layoutRevision = 0;
 
   int _debounceSeq = 0;
   int _lastNodeHash = 0;
@@ -76,15 +77,7 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
   /// Nodo fijado actualmente por el dedo.
   int? _draggedNodeId;
 
-  /// Velocidad actual de cada nodo.
-  final Map<int, Offset> _velocities = <int, Offset>{};
-
-  /// Longitud de reposo de cada resorte.
-  ///
-  /// Se captura al comenzar una interacción para que el grafo intente
-  /// conservar aproximadamente su geometría anterior en vez de colapsar
-  /// hacia una distancia arbitraria.
-  final Map<String, double> _springRestLengths = <String, double>{};
+  final GraphLayoutPhysics _physics = GraphLayoutPhysics();
 
   Timer? _physicsTimer;
 
@@ -103,32 +96,9 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
   static const double _canvasHeight = 2000.0;
   static const double _canvasDepth = 2000.0;
 
-  static const double _canvasMargin = 30.0;
-
   /// ~30 FPS es suficiente para este tipo de grafo y reduce trabajo
   /// innecesario frente a una simulación de 60 FPS.
   static const Duration _physicsInterval = Duration(milliseconds: 33);
-
-  /// Intensidad de los resortes.
-  static const double _directSpringStrength = 0.020;
-  static const double _reportedSpringStrength = 0.012;
-  static const double _transitiveSpringStrength = 0.008;
-
-  /// Amortiguación de velocidad.
-  ///
-  /// Cuanto menor sea, antes se detendrá el sistema.
-  static const double _damping = 0.82;
-
-  /// Límite de velocidad por tick para evitar explosiones numéricas.
-  static const double _maxSpeed = 24.0;
-
-  /// Repulsión local para evitar que dos nodos terminen exactamente
-  /// superpuestos durante la relajación.
-  static const double _repulsionDistance = 90.0;
-  static const double _repulsionStrength = 0.035;
-
-  /// Umbral para considerar que el sistema prácticamente se detuvo.
-  static const double _settledSpeed = 0.12;
 
   static const int _settledTicksRequired = 10;
 
@@ -321,6 +291,10 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
           previousLayout == null ||
           _hasTopologyChanged(previous: previousLayout, current: initialLayout);
 
+      if (topologyChanged) {
+        _layoutRevision++;
+      }
+
       final calcResult = await _calculateLayout(
         initialLayout,
         _canvasWidth,
@@ -337,7 +311,7 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
         (layout) {
           _lastLayout = layout;
 
-          _removeStalePhysicsData(layout);
+          _physics.removeStaleData(layout);
 
           final activeDraggedNodeId = _draggedNodeId;
 
@@ -361,6 +335,10 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
           emit(
             GraphReady(
               layout,
+              snapshot: GraphLayoutSnapshot(
+                layout: layout,
+                revision: _layoutRevision,
+              ),
               selectedNodeId: preservedSelection,
               detailsNodeId: preservedDetails,
               barycenter: _barycenter,
@@ -403,9 +381,7 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     _draggedNodeId = event.nodeId;
 
     // El nodo agarrado no debe conservar velocidad anterior.
-    _velocities[event.nodeId] = Offset.zero;
-
-    _captureSpringRestLengths(currentState.layout);
+    _physics.beginDrag(currentState.layout, event.nodeId);
 
     _settledTicks = 0;
 
@@ -427,11 +403,17 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     }
 
     final x = event.x
-        .clamp(_canvasMargin, _canvasWidth - _canvasMargin)
+        .clamp(
+          GraphLayoutPhysics.canvasMargin,
+          _canvasWidth - GraphLayoutPhysics.canvasMargin,
+        )
         .toDouble();
 
     final y = event.y
-        .clamp(_canvasMargin, _canvasHeight - _canvasMargin)
+        .clamp(
+          GraphLayoutPhysics.canvasMargin,
+          _canvasHeight - GraphLayoutPhysics.canvasMargin,
+        )
         .toDouble();
 
     var nodeFound = false;
@@ -453,7 +435,7 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
       return;
     }
 
-    _velocities[event.nodeId] = Offset.zero;
+    _physics.resetVelocity(event.nodeId);
 
     final updatedLayout = LayoutResult(
       nodes: updatedNodes,
@@ -467,6 +449,10 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     emit(
       GraphReady(
         updatedLayout,
+        snapshot: GraphLayoutSnapshot(
+          layout: updatedLayout,
+          revision: currentState.snapshot.revision,
+        ),
         selectedNodeId: currentState.selectedNodeId,
         detailsNodeId: currentState.detailsNodeId,
         barycenter: currentState.barycenter,
@@ -508,10 +494,7 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     _physicsTimer = null;
 
     _settledTicks = 0;
-
-    _velocities.removeWhere(
-      (nodeId, velocity) => velocity.distance < _settledSpeed,
-    );
+    _physics.stop();
   }
 
   void _onPhysicsTick(_PhysicsTick event, Emitter<VisualizationState> emit) {
@@ -527,92 +510,20 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
       if (_draggedNodeId == null) {
         _stopPhysics();
       }
-
       return;
     }
 
-    final nodesById = <int, GraphNode>{};
-
-    for (final node in layout.nodes) {
-      final id = node.id;
-
-      if (id != null) {
-        nodesById[id] = node;
-      }
-    }
-
-    final forces = <int, Offset>{};
-
-    for (final id in nodesById.keys) {
-      forces[id] = Offset.zero;
-    }
-
-    _applySpringForces(layout: layout, nodesById: nodesById, forces: forces);
-
-    _applyRepulsion(nodesById: nodesById, forces: forces);
-
-    var maxSpeed = 0.0;
-
-    final updatedNodes = layout.nodes
-        .map((node) {
-          final id = node.id;
-
-          if (id == null) {
-            return node;
-          }
-
-          // El nodo agarrado está fijado exactamente al dedo.
-          if (id == _draggedNodeId) {
-            _velocities[id] = Offset.zero;
-            return node;
-          }
-
-          final force = forces[id] ?? Offset.zero;
-          final previousVelocity = _velocities[id] ?? Offset.zero;
-
-          var velocity = Offset(
-            (previousVelocity.dx + force.dx) * _damping,
-            (previousVelocity.dy + force.dy) * _damping,
-          );
-
-          velocity = _limitVector(velocity, _maxSpeed);
-
-          if (velocity.distance < 0.01) {
-            velocity = Offset.zero;
-          }
-
-          _velocities[id] = velocity;
-
-          maxSpeed = math.max(maxSpeed, velocity.distance);
-
-          if (velocity == Offset.zero) {
-            return node;
-          }
-
-          final newX = (node.x + velocity.dx)
-              .clamp(_canvasMargin, _canvasWidth - _canvasMargin)
-              .toDouble();
-
-          final newY = (node.y + velocity.dy)
-              .clamp(_canvasMargin, _canvasHeight - _canvasMargin)
-              .toDouble();
-
-          return node.copyWith(x: newX, y: newY);
-        })
-        .toList(growable: false);
-
-    final updatedLayout = LayoutResult(
-      nodes: updatedNodes,
-      edges: layout.edges,
-      iterations: layout.iterations,
-      converged: _draggedNodeId == null && maxSpeed < _settledSpeed,
-    );
-
+    final step = _physics.tick(layout, draggedNodeId: _draggedNodeId);
+    final updatedLayout = step.layout;
     _lastLayout = updatedLayout;
 
     emit(
       GraphReady(
         updatedLayout,
+        snapshot: GraphLayoutSnapshot(
+          layout: updatedLayout,
+          revision: currentState.snapshot.revision,
+        ),
         selectedNodeId: currentState.selectedNodeId,
         detailsNodeId: currentState.detailsNodeId,
         barycenter: currentState.barycenter,
@@ -624,7 +535,7 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
       return;
     }
 
-    if (maxSpeed < _settledSpeed) {
+    if (step.maxSpeed < GraphLayoutPhysics.settledSpeed) {
       _settledTicks++;
     } else {
       _settledTicks = 0;
@@ -633,173 +544,6 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     if (_settledTicks >= _settledTicksRequired) {
       _stopPhysics();
     }
-  }
-
-  /// Aplica Hooke simplificado sobre las aristas.
-  ///
-  /// direct:
-  ///   vínculo local más fuerte.
-  ///
-  /// reported:
-  ///   vínculo activo declarado por otra instalación Nodos.
-  ///
-  /// transitive:
-  ///   vínculo local inferido más suave.
-  void _applySpringForces({
-    required LayoutResult layout,
-    required Map<int, GraphNode> nodesById,
-    required Map<int, Offset> forces,
-  }) {
-    for (final edge in layout.edges) {
-      final from = nodesById[edge.fromId];
-      final to = nodesById[edge.toId];
-
-      if (from == null || to == null) {
-        continue;
-      }
-
-      final dx = to.x - from.x;
-      final dy = to.y - from.y;
-
-      final distanceSquared = dx * dx + dy * dy;
-
-      if (distanceSquared < 0.0001) {
-        continue;
-      }
-
-      final distance = math.sqrt(distanceSquared);
-
-      final direction = Offset(dx / distance, dy / distance);
-
-      final restLength =
-          _springRestLengths[_edgeKey(edge)] ??
-          distance.clamp(80.0, 500.0).toDouble();
-
-      final displacement = distance - restLength;
-
-      final springStrength = switch (edge.edgeType) {
-        EdgeType.direct => _directSpringStrength,
-        EdgeType.reported => _reportedSpringStrength,
-        EdgeType.transitive => _transitiveSpringStrength,
-      };
-
-      // thickness aporta ligeramente más influencia, sin convertir
-      // las aristas gruesas en resortes excesivamente agresivos.
-      final thicknessMultiplier =
-          1.0 + ((edge.thickness - 1.0).clamp(0.0, 2.0) * 0.12);
-
-      final magnitude = displacement * springStrength * thicknessMultiplier;
-
-      final force = direction * magnitude;
-
-      forces[edge.fromId] = (forces[edge.fromId] ?? Offset.zero) + force;
-
-      forces[edge.toId] = (forces[edge.toId] ?? Offset.zero) - force;
-    }
-  }
-
-  /// Repulsión local.
-  ///
-  /// No intenta reemplazar Fruchterman-Reingold. Su único objetivo es
-  /// impedir que nodos cercanos terminen visualmente uno encima del otro.
-  void _applyRepulsion({
-    required Map<int, GraphNode> nodesById,
-    required Map<int, Offset> forces,
-  }) {
-    final entries = nodesById.entries.toList(growable: false);
-
-    for (var i = 0; i < entries.length; i++) {
-      for (var j = i + 1; j < entries.length; j++) {
-        final first = entries[i];
-        final second = entries[j];
-
-        final dx = second.value.x - first.value.x;
-        final dy = second.value.y - first.value.y;
-
-        final distanceSquared = dx * dx + dy * dy;
-
-        if (distanceSquared < 0.0001) {
-          continue;
-        }
-
-        final distance = math.sqrt(distanceSquared);
-
-        if (distance >= _repulsionDistance) {
-          continue;
-        }
-
-        final direction = Offset(dx / distance, dy / distance);
-
-        final overlap = _repulsionDistance - distance;
-
-        final magnitude = overlap * _repulsionStrength;
-
-        final force = direction * magnitude;
-
-        forces[first.key] = (forces[first.key] ?? Offset.zero) - force;
-
-        forces[second.key] = (forces[second.key] ?? Offset.zero) + force;
-      }
-    }
-  }
-
-  void _captureSpringRestLengths(LayoutResult layout) {
-    final nodesById = <int, GraphNode>{};
-
-    for (final node in layout.nodes) {
-      final id = node.id;
-
-      if (id != null) {
-        nodesById[id] = node;
-      }
-    }
-
-    for (final edge in layout.edges) {
-      final from = nodesById[edge.fromId];
-      final to = nodesById[edge.toId];
-
-      if (from == null || to == null) {
-        continue;
-      }
-
-      final dx = to.x - from.x;
-      final dy = to.y - from.y;
-
-      final distance = math.sqrt(dx * dx + dy * dy);
-
-      _springRestLengths[_edgeKey(edge)] = distance
-          .clamp(60.0, 600.0)
-          .toDouble();
-    }
-  }
-
-  String _edgeKey(GraphEdge edge) {
-    final first = math.min(edge.fromId, edge.toId);
-    final second = math.max(edge.fromId, edge.toId);
-
-    return '$first:$second:${edge.edgeType.name}';
-  }
-
-  Offset _limitVector(Offset vector, double maximum) {
-    final magnitude = vector.distance;
-
-    if (magnitude <= maximum || magnitude == 0) {
-      return vector;
-    }
-
-    final factor = maximum / magnitude;
-
-    return Offset(vector.dx * factor, vector.dy * factor);
-  }
-
-  void _removeStalePhysicsData(LayoutResult layout) {
-    final ids = _nodeIds(layout);
-
-    _velocities.removeWhere((id, _) => !ids.contains(id));
-
-    final validEdges = _edgeKeys(layout.edges);
-
-    _springRestLengths.removeWhere((key, _) => !validEdges.contains(key));
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -847,6 +591,12 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     return result;
   }
 
+  String _edgeKey(GraphEdge edge) {
+    final first = edge.fromId < edge.toId ? edge.fromId : edge.toId;
+    final second = edge.fromId < edge.toId ? edge.toId : edge.fromId;
+    return '$first:$second:${edge.edgeType.name}';
+  }
+
   bool _sameSet<T>(Set<T> first, Set<T> second) {
     if (first.length != second.length) {
       return false;
@@ -879,6 +629,7 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     emit(
       GraphReady(
         currentState.layout,
+        snapshot: currentState.snapshot,
         selectedNodeId: event.nodeId,
         detailsNodeId: currentState.detailsNodeId,
         barycenter: currentState.barycenter,
@@ -899,6 +650,7 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     emit(
       GraphReady(
         currentState.layout,
+        snapshot: currentState.snapshot,
         detailsNodeId: currentState.detailsNodeId,
         barycenter: currentState.barycenter,
       ),
@@ -930,6 +682,7 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     emit(
       GraphReady(
         currentState.layout,
+        snapshot: currentState.snapshot,
         selectedNodeId: currentState.selectedNodeId,
         detailsNodeId: nextDetailsNodeId,
         barycenter: currentState.barycenter,
@@ -954,6 +707,7 @@ class VisualizationBloc extends Bloc<VisualizationEvent, VisualizationState> {
     emit(
       GraphReady(
         currentState.layout,
+        snapshot: currentState.snapshot,
         selectedNodeId: currentState.selectedNodeId,
         barycenter: currentState.barycenter,
       ),

@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_node.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_layout_snapshot.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/painters/graph_painter.dart';
 
@@ -26,6 +27,7 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/pa
 /// Cambiar de modo nunca modifica la transformación actual del viewport.
 class GraphView extends StatefulWidget {
   final LayoutResult layout;
+  final GraphLayoutSnapshot? snapshot;
   final int? selectedNodeId;
   final int? detailsNodeId;
   final Offset? barycenter;
@@ -50,6 +52,7 @@ class GraphView extends StatefulWidget {
   const GraphView({
     super.key,
     required this.layout,
+    this.snapshot,
     this.selectedNodeId,
     this.detailsNodeId,
     this.barycenter,
@@ -102,6 +105,8 @@ class GraphViewState extends State<GraphView> {
   bool _hasCentered = false;
 
   TransformationController get transformController => _transformController;
+
+  LayoutResult get _effectiveLayout => widget.snapshot?.layout ?? widget.layout;
 
   bool get _isNavigationMode =>
       _interactionMode == _GraphInteractionMode.navigation;
@@ -213,7 +218,7 @@ class GraphViewState extends State<GraphView> {
                 child: CustomPaint(
                   size: _canvasSize,
                   painter: GraphPainter(
-                    layout: widget.layout,
+                    layout: _effectiveLayout,
                     selectedNodeId: widget.selectedNodeId,
                     detailsNodeId: widget.detailsNodeId,
                   ),
@@ -410,7 +415,7 @@ class GraphViewState extends State<GraphView> {
     GraphNode? closestNode;
     double closestDistance = double.infinity;
 
-    for (final node in widget.layout.nodes) {
+    for (final node in _effectiveLayout.nodes) {
       if (node.id == null) {
         continue;
       }
@@ -438,7 +443,7 @@ class GraphViewState extends State<GraphView> {
   }
 
   bool _containsNode(int nodeId) {
-    for (final node in widget.layout.nodes) {
+    for (final node in _effectiveLayout.nodes) {
       if (node.id == nodeId) {
         return true;
       }

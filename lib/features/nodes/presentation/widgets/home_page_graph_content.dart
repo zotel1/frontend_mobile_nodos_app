@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:frontend_mobile_nodos_app/core/di/injection_container.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_layout_snapshot.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bloc/visualization_event.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/widgets/graph_view.dart';
@@ -16,6 +17,7 @@ class HomePageGraphContent extends StatelessWidget {
     required this.graphViewKey,
     required this.is3D,
     required this.layout,
+    this.snapshot,
     required this.selectedNodeId,
     required this.detailsNodeId,
     required this.barycenter,
@@ -24,6 +26,7 @@ class HomePageGraphContent extends StatelessWidget {
   final GlobalKey<GraphViewState> graphViewKey;
   final ValueNotifier<bool> is3D;
   final LayoutResult layout;
+  final GraphLayoutSnapshot? snapshot;
   final int? selectedNodeId;
   final int? detailsNodeId;
   final Offset? barycenter;
@@ -41,6 +44,7 @@ class HomePageGraphContent extends StatelessWidget {
               child: GraphView(
                 key: graphViewKey,
                 layout: layout,
+                snapshot: snapshot,
                 selectedNodeId: selectedNodeId,
                 detailsNodeId: detailsNodeId,
                 barycenter: barycenter,
@@ -69,6 +73,7 @@ class HomePageGraphContent extends StatelessWidget {
               offstage: !showing3D,
               child: GraphView3D(
                 layout: layout,
+                snapshot: snapshot,
                 selectedNodeId: selectedNodeId,
                 onNodeTapped: (nodeId) =>
                     context.read<VisualizationBloc>().add(NodeSelected(nodeId)),
