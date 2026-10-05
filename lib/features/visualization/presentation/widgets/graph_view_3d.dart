@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -61,6 +62,7 @@ class _GraphView3DState extends State<GraphView3D> {
   bool _isLoading = true;
   bool _hasError = false;
   String? _errorMessage;
+  bool _disposed = false;
 
   LayoutResult get _effectiveLayout => widget.snapshot?.layout ?? widget.layout;
 
@@ -115,14 +117,22 @@ class _GraphView3DState extends State<GraphView3D> {
         },
 
         onWebResourceError: (error) {
-          // Algunos WebResourceError pueden corresponder a recursos
-          // secundarios del documento. Solo registramos el problema para
-          // diagnóstico; la carga principal continúa controlándose también
-          // mediante el try/catch de _loadContent().
           debugPrint(
             '[3D WebView] Resource error: '
             '${error.errorCode} ${error.description}',
           );
+
+          // Subresource errors (for example a WebGL diagnostic resource)
+          // must not hide a working scene. A main-frame failure is a real
+          // render failure and needs an explicit UI state.
+          if (error.isForMainFrame != false && mounted && !_disposed) {
+            setState(() {
+              _hasError = true;
+              _isLoading = false;
+              _pageLoaded = false;
+              _errorMessage = error.description;
+            });
+          }
         },
       ),
     );
@@ -163,7 +173,7 @@ class _GraphView3DState extends State<GraphView3D> {
       // En ese caso _injectData() guarda el payload como pendiente.
       _injectData();
     } catch (e) {
-      if (!mounted) {
+      if (!mounted || _disposed) {
         return;
       }
 
@@ -181,6 +191,9 @@ class _GraphView3DState extends State<GraphView3D> {
   /// porque la selección forma parte del estado visual compartido entre
   /// las vistas 2D y 3D.
   void _injectData() {
+    if (_disposed) {
+      return;
+    }
     final payload = layoutResultToJson(
       _effectiveLayout,
       selectedNodeId: widget.selectedNodeId,
@@ -217,7 +230,7 @@ class _GraphView3DState extends State<GraphView3D> {
   /// Se mantiene aislada para centralizar el manejo de errores de
   /// comunicación Flutter → JavaScript.
   Future<void> _runGraphInjection(String json) async {
-    if (!_pageLoaded) {
+    if (_disposed || !_pageLoaded) {
       _pendingData = json;
       return;
     }
@@ -225,6 +238,9 @@ class _GraphView3DState extends State<GraphView3D> {
     try {
       await _controller.runJavaScript('window.loadGraphData($json);');
     } catch (e) {
+      if (_disposed) {
+        return;
+      }
       debugPrint('[3D WebView] Error inyectando datos: $e');
     }
   }
@@ -306,24 +322,19 @@ class _GraphView3DState extends State<GraphView3D> {
 
   @override
   void dispose() {
-    try {
-      _controller.removeJavaScriptChannel('onNodeTapped');
-    } catch (_) {
-      // El canal puede no estar disponible en ciertos entornos de test.
-    }
+    _disposed = true;
+    _pageLoaded = false;
+    _pendingData = null;
 
-    try {
-      _controller.removeJavaScriptChannel('onConsoleLog');
-    } catch (_) {
-      // El canal puede no estar disponible en ciertos entornos de test.
-    }
-
-    try {
-      _controller.clearCache();
-    } catch (_) {
-      // Ignorar errores de plataforma durante dispose.
-    }
-
+    // These platform calls are asynchronous. Attach the error handlers to
+    // avoid an unhandled Future when a test or a platform is already torn
+    // down, while still releasing the bridge on real WebViews.
+    unawaited(
+      _controller.removeJavaScriptChannel('onNodeTapped').catchError((_) {}),
+    );
+    unawaited(
+      _controller.removeJavaScriptChannel('onConsoleLog').catchError((_) {}),
+    );
     super.dispose();
   }
 }
@@ -424,5 +435,5 @@ Map<String, dynamic> layoutResultToJson(
 String _colorToHex(int argb) {
   final rgb = argb & 0x00FFFFFF;
 
-  return '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
+  return '#${rgb.toRadixString(16).padLeft(6, '0')}';
 }
