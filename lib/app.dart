@@ -8,6 +8,11 @@ import 'package:frontend_mobile_nodos_app/core/utils/app_theme_mode.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/presentation/services/ble_lifecycle_coordinator.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/presentation/services/live_graph_sync_service.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_repository.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remote_relation_repository.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/services/active_graph_exchange_service.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/bloc/node_list_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/pages/home_page.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/pages/node_detail_page.dart';
@@ -145,9 +150,23 @@ class _NodosAppBody extends StatefulWidget {
 }
 
 class _NodosAppBodyState extends State<_NodosAppBody> {
+  BleLifecycleCoordinator? _bleLifecycleCoordinator;
+
   @override
   void initState() {
     super.initState();
+    if (sl.isRegistered<BleRepository>() &&
+        sl.isRegistered<RemoteRelationRepository>() &&
+        sl.isRegistered<ActiveGraphExchangeService>()) {
+      _bleLifecycleCoordinator = BleLifecycleCoordinator(
+        bleRepository: sl<BleRepository>(),
+        remoteRelationRepository: sl<RemoteRelationRepository>(),
+        activeGraphExchange: sl<ActiveGraphExchangeService>(),
+        bleBloc: context.read<BleBloc>(),
+        connectionBloc: context.read<BleConnectionBloc>(),
+        liveGraphSync: sl<LiveGraphSyncService>(),
+      );
+    }
     // Despachar LoadProfile en el primer frame para que el UserBloc
     // cargue (o cree) el perfil antes de cualquier operación.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -172,7 +191,7 @@ class _NodosAppBodyState extends State<_NodosAppBody> {
           AppThemeMode.system => ThemeMode.system,
         };
 
-        return MaterialApp.router(
+        final app = MaterialApp.router(
           title: 'Nodos',
           theme: AppTheme.light,
           // Tema oscuro: misma semilla de color, solo cambia el brillo.
@@ -180,6 +199,11 @@ class _NodosAppBodyState extends State<_NodosAppBody> {
           themeMode: themeMode,
           routerConfig: _router,
         );
+
+        final coordinator = _bleLifecycleCoordinator;
+        if (coordinator == null) return app;
+
+        return BleLifecycleHost(coordinator: coordinator, child: app);
       },
     );
   }

@@ -84,8 +84,16 @@ class FlutterBluePlusDataSource implements BleScannerDataSource {
        _btStateStream = btStateStream,
        _scanStateStream = scanStateStream {
     stream.listen((results) {
-      if (results.isNotEmpty) {
-        _controller.add(results);
+      final nodosDevices = results
+          .where(
+            (device) =>
+                device.kind == BleDeviceKind.nodos ||
+                device.serviceUuids?.any(DeviceClassifier.isNodosServiceUuid) ==
+                    true,
+          )
+          .toList(growable: false);
+      if (nodosDevices.isNotEmpty) {
+        _controller.add(nodosDevices);
       }
     });
 
@@ -101,11 +109,10 @@ class FlutterBluePlusDataSource implements BleScannerDataSource {
         return;
       }
 
-      // PR6a:
-      // No filtramos por RSSI en datasource.
-      // Todos los dispositivos detectados se persisten y el filtrado
-      // visual se realiza posteriormente en presentación.
-      final mapped = results.map(mapScanResultToDevice).toList();
+      final mapped = results
+          .map(mapScanResultToDevice)
+          .where((device) => device.kind == BleDeviceKind.nodos)
+          .toList();
 
       if (mapped.isNotEmpty) {
         _controller.add(mapped);
@@ -175,6 +182,10 @@ class FlutterBluePlusDataSource implements BleScannerDataSource {
       serviceUuidsStrings,
       manufacturerId,
     );
+    final kind = DeviceClassifier.classifyKind(
+      serviceUuidsStrings,
+      manufacturerId: manufacturerId,
+    );
 
     return BleDevice(
       deviceId: r.device.remoteId.toString(),
@@ -192,6 +203,7 @@ class FlutterBluePlusDataSource implements BleScannerDataSource {
       connectable: r.advertisementData.connectable,
       serviceUuids: serviceUuidsStrings.isNotEmpty ? serviceUuidsStrings : null,
       deviceType: deviceType,
+      kind: kind,
     );
   }
 

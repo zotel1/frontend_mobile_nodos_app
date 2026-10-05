@@ -113,6 +113,8 @@ class SessionError extends ScanSessionState {
 /// respeta Single Responsibility Principle.
 class ScanSessionBloc extends Bloc<ScanSessionEvent, ScanSessionState> {
   final ScanSessionRepository _repository;
+  final Set<int> _sessionNodeIds = <int>{};
+  bool _startInProgress = false;
 
   ScanSessionBloc({required ScanSessionRepository repository})
     : _repository = repository,
@@ -127,11 +129,20 @@ class ScanSessionBloc extends Bloc<ScanSessionEvent, ScanSessionState> {
     StartSession event,
     Emitter<ScanSessionState> emit,
   ) async {
+    if (_startInProgress || state is SessionActive) {
+      return;
+    }
+
+    _startInProgress = true;
+
     try {
       final sessionId = await _repository.startSession();
+      _sessionNodeIds.clear();
       emit(SessionActive(sessionId: sessionId, nodeCount: 0));
     } catch (e) {
       emit(SessionError('Error al iniciar sesión: $e'));
+    } finally {
+      _startInProgress = false;
     }
   }
 
@@ -142,6 +153,7 @@ class ScanSessionBloc extends Bloc<ScanSessionEvent, ScanSessionState> {
   ) async {
     try {
       await _repository.endSession(event.sessionId);
+      _sessionNodeIds.clear();
       emit(const SessionEnded());
     } catch (e) {
       emit(SessionError('Error al cerrar sesión: $e'));
@@ -157,14 +169,20 @@ class ScanSessionBloc extends Bloc<ScanSessionEvent, ScanSessionState> {
     Emitter<ScanSessionState> emit,
   ) async {
     try {
-      await _repository.addNodesToSession(event.sessionId, event.nodeIds);
+      final uniqueNodeIds = event.nodeIds.toSet();
+      await _repository.addNodesToSession(
+        event.sessionId,
+        uniqueNodeIds.toList(),
+      );
 
       final currentState = state;
       if (currentState is SessionActive) {
+        final newNodeIds = uniqueNodeIds.difference(_sessionNodeIds);
+        _sessionNodeIds.addAll(newNodeIds);
         emit(
           SessionActive(
             sessionId: currentState.sessionId,
-            nodeCount: currentState.nodeCount + event.nodeIds.length,
+            nodeCount: currentState.nodeCount + newNodeIds.length,
           ),
         );
       }

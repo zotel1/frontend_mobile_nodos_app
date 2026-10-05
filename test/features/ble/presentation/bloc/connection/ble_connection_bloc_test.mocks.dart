@@ -4,16 +4,26 @@
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 
-import 'dart:async' as _i3;
+import 'dart:async' as _i4;
 
-import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_connection_repository.dart'
+import 'package:frontend_mobile_nodos_app/core/database/app_database.dart'
+    as _i11;
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_graph_payload.dart'
     as _i2;
+import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_connection_repository.dart'
+    as _i3;
+import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remote_relation_repository.dart'
+    as _i10;
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/active_graph_exchange_service.dart'
-    as _i6;
+    as _i7;
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart'
-    as _i5;
+    as _i6;
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart'
-    as _i4;
+    as _i5;
+import 'package:frontend_mobile_nodos_app/features/user/domain/entities/user.dart'
+    as _i9;
+import 'package:frontend_mobile_nodos_app/features/user/domain/repositories/user_repository.dart'
+    as _i8;
 import 'package:mockito/mockito.dart' as _i1;
 
 // ignore_for_file: type=lint
@@ -32,49 +42,55 @@ import 'package:mockito/mockito.dart' as _i1;
 // ignore_for_file: subtype_of_sealed_class
 // ignore_for_file: invalid_use_of_internal_member
 
+class _FakeNodosGraphPayload_0 extends _i1.SmartFake
+    implements _i2.NodosGraphPayload {
+  _FakeNodosGraphPayload_0(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
 /// A class which mocks [BleConnectionRepository].
 ///
 /// See the documentation for Mockito's code generation for more information.
 class MockBleConnectionRepository extends _i1.Mock
-    implements _i2.BleConnectionRepository {
+    implements _i3.BleConnectionRepository {
   @override
-  _i3.Future<void> connect(String? remoteId) =>
+  _i4.Future<void> connect(String? remoteId) =>
       (super.noSuchMethod(
             Invocation.method(#connect, [remoteId]),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i4.Future<void>);
 
   @override
-  _i3.Future<void> disconnect(String? remoteId) =>
+  _i4.Future<void> disconnect(String? remoteId) =>
       (super.noSuchMethod(
             Invocation.method(#disconnect, [remoteId]),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i4.Future<void>);
 
   @override
-  _i3.Stream<bool> connectionState(String? remoteId) =>
+  _i4.Stream<bool> connectionState(String? remoteId) =>
       (super.noSuchMethod(
             Invocation.method(#connectionState, [remoteId]),
-            returnValue: _i3.Stream<bool>.empty(),
-            returnValueForMissingStub: _i3.Stream<bool>.empty(),
+            returnValue: _i4.Stream<bool>.empty(),
+            returnValueForMissingStub: _i4.Stream<bool>.empty(),
           )
-          as _i3.Stream<bool>);
+          as _i4.Stream<bool>);
 
   @override
-  _i3.Future<void> discoverServices(String? remoteId) =>
+  _i4.Future<void> discoverServices(String? remoteId) =>
       (super.noSuchMethod(
             Invocation.method(#discoverServices, [remoteId]),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i4.Future<void>);
 
   @override
-  _i3.Future<List<int>?> readCharacteristic(
+  _i4.Future<List<int>?> readCharacteristic(
     String? remoteId,
     String? characteristicUuid,
   ) =>
@@ -83,81 +99,125 @@ class MockBleConnectionRepository extends _i1.Mock
               remoteId,
               characteristicUuid,
             ]),
-            returnValue: _i3.Future<List<int>?>.value(),
-            returnValueForMissingStub: _i3.Future<List<int>?>.value(),
+            returnValue: _i4.Future<List<int>?>.value(),
+            returnValueForMissingStub: _i4.Future<List<int>?>.value(),
           )
-          as _i3.Future<List<int>?>);
+          as _i4.Future<List<int>?>);
 
   @override
-  _i3.Future<void> saveConnection(int? fromNodeId, int? toNodeId) =>
+  _i4.Future<bool> writeCharacteristic(
+    String? remoteId,
+    String? characteristicUuid,
+    List<int>? payload,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#writeCharacteristic, [
+              remoteId,
+              characteristicUuid,
+              payload,
+            ]),
+            returnValue: _i4.Future<bool>.value(false),
+            returnValueForMissingStub: _i4.Future<bool>.value(false),
+          )
+          as _i4.Future<bool>);
+
+  @override
+  _i4.Future<List<int>?> writeAndWaitForResponse(
+    String? remoteId,
+    String? characteristicUuid,
+    List<int>? requestPayload, {
+    Duration? timeout = const Duration(seconds: 30),
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(
+              #writeAndWaitForResponse,
+              [remoteId, characteristicUuid, requestPayload],
+              {#timeout: timeout},
+            ),
+            returnValue: _i4.Future<List<int>?>.value(),
+            returnValueForMissingStub: _i4.Future<List<int>?>.value(),
+          )
+          as _i4.Future<List<int>?>);
+
+  @override
+  _i4.Future<void> saveConnection(int? fromNodeId, int? toNodeId) =>
       (super.noSuchMethod(
             Invocation.method(#saveConnection, [fromNodeId, toNodeId]),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i4.Future<void>);
 }
 
 /// A class which mocks [NodeRepository].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockNodeRepository extends _i1.Mock implements _i4.NodeRepository {
+class MockNodeRepository extends _i1.Mock implements _i5.NodeRepository {
   @override
-  _i3.Stream<List<_i5.Node>> observeNodes() =>
+  _i4.Stream<List<_i6.Node>> observeNodes() =>
       (super.noSuchMethod(
             Invocation.method(#observeNodes, []),
-            returnValue: _i3.Stream<List<_i5.Node>>.empty(),
-            returnValueForMissingStub: _i3.Stream<List<_i5.Node>>.empty(),
+            returnValue: _i4.Stream<List<_i6.Node>>.empty(),
+            returnValueForMissingStub: _i4.Stream<List<_i6.Node>>.empty(),
           )
-          as _i3.Stream<List<_i5.Node>>);
+          as _i4.Stream<List<_i6.Node>>);
 
   @override
-  _i3.Future<_i5.Node?> getNodeById(int? id) =>
+  _i4.Future<_i6.Node?> getNodeById(int? id) =>
       (super.noSuchMethod(
             Invocation.method(#getNodeById, [id]),
-            returnValue: _i3.Future<_i5.Node?>.value(),
-            returnValueForMissingStub: _i3.Future<_i5.Node?>.value(),
+            returnValue: _i4.Future<_i6.Node?>.value(),
+            returnValueForMissingStub: _i4.Future<_i6.Node?>.value(),
           )
-          as _i3.Future<_i5.Node?>);
+          as _i4.Future<_i6.Node?>);
 
   @override
-  _i3.Future<_i5.Node?> getNodeByBleAddress(String? bleAddress) =>
+  _i4.Future<_i6.Node?> getNodeByBleAddress(String? bleAddress) =>
       (super.noSuchMethod(
             Invocation.method(#getNodeByBleAddress, [bleAddress]),
-            returnValue: _i3.Future<_i5.Node?>.value(),
-            returnValueForMissingStub: _i3.Future<_i5.Node?>.value(),
+            returnValue: _i4.Future<_i6.Node?>.value(),
+            returnValueForMissingStub: _i4.Future<_i6.Node?>.value(),
           )
-          as _i3.Future<_i5.Node?>);
+          as _i4.Future<_i6.Node?>);
 
   @override
-  _i3.Future<_i5.Node?> getNodeByDeviceUuid(String? deviceUuid) =>
+  _i4.Future<_i6.Node?> getNodeByDeviceUuid(String? deviceUuid) =>
       (super.noSuchMethod(
             Invocation.method(#getNodeByDeviceUuid, [deviceUuid]),
-            returnValue: _i3.Future<_i5.Node?>.value(),
-            returnValueForMissingStub: _i3.Future<_i5.Node?>.value(),
+            returnValue: _i4.Future<_i6.Node?>.value(),
+            returnValueForMissingStub: _i4.Future<_i6.Node?>.value(),
           )
-          as _i3.Future<_i5.Node?>);
+          as _i4.Future<_i6.Node?>);
 
   @override
-  _i3.Future<_i5.Node?> getSelfNode() =>
+  _i4.Future<_i6.Node?> getNodeByRemoteRef(String? remoteRef) =>
+      (super.noSuchMethod(
+            Invocation.method(#getNodeByRemoteRef, [remoteRef]),
+            returnValue: _i4.Future<_i6.Node?>.value(),
+            returnValueForMissingStub: _i4.Future<_i6.Node?>.value(),
+          )
+          as _i4.Future<_i6.Node?>);
+
+  @override
+  _i4.Future<_i6.Node?> getSelfNode() =>
       (super.noSuchMethod(
             Invocation.method(#getSelfNode, []),
-            returnValue: _i3.Future<_i5.Node?>.value(),
-            returnValueForMissingStub: _i3.Future<_i5.Node?>.value(),
+            returnValue: _i4.Future<_i6.Node?>.value(),
+            returnValueForMissingStub: _i4.Future<_i6.Node?>.value(),
           )
-          as _i3.Future<_i5.Node?>);
+          as _i4.Future<_i6.Node?>);
 
   @override
-  _i3.Future<void> upsertNode(_i5.Node? node) =>
+  _i4.Future<void> upsertNode(_i6.Node? node) =>
       (super.noSuchMethod(
             Invocation.method(#upsertNode, [node]),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i4.Future<void>);
 
   @override
-  _i3.Future<_i5.Node?> reconcileNodeIdentity(
+  _i4.Future<_i6.Node?> reconcileNodeIdentity(
     int? nodeId, {
     required String? deviceUuid,
     required String? name,
@@ -169,39 +229,39 @@ class MockNodeRepository extends _i1.Mock implements _i4.NodeRepository {
               [nodeId],
               {#deviceUuid: deviceUuid, #name: name, #color: color},
             ),
-            returnValue: _i3.Future<_i5.Node?>.value(),
-            returnValueForMissingStub: _i3.Future<_i5.Node?>.value(),
+            returnValue: _i4.Future<_i6.Node?>.value(),
+            returnValueForMissingStub: _i4.Future<_i6.Node?>.value(),
           )
-          as _i3.Future<_i5.Node?>);
+          as _i4.Future<_i6.Node?>);
 
   @override
-  _i3.Future<void> updateNodeMetadata(int? id, {String? name, String? color}) =>
+  _i4.Future<void> updateNodeMetadata(int? id, {String? name, String? color}) =>
       (super.noSuchMethod(
             Invocation.method(
               #updateNodeMetadata,
               [id],
               {#name: name, #color: color},
             ),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i4.Future<void>);
 
   @override
-  _i3.Future<void> clearAllNodes() =>
+  _i4.Future<void> clearAllNodes() =>
       (super.noSuchMethod(
             Invocation.method(#clearAllNodes, []),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i4.Future<void>);
 }
 
 /// A class which mocks [ActiveGraphExchangeService].
 ///
 /// See the documentation for Mockito's code generation for more information.
 class MockActiveGraphExchangeService extends _i1.Mock
-    implements _i6.ActiveGraphExchangeService {
+    implements _i7.ActiveGraphExchangeService {
   @override
   Set<String> get activeRemoteIds =>
       (super.noSuchMethod(
@@ -212,38 +272,161 @@ class MockActiveGraphExchangeService extends _i1.Mock
           as Set<String>);
 
   @override
-  _i3.Future<void> markConnected(String? remoteId) =>
+  _i4.Future<void> markConnected(String? remoteId) =>
       (super.noSuchMethod(
             Invocation.method(#markConnected, [remoteId]),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i4.Future<void>);
 
   @override
-  _i3.Future<void> markDisconnected(String? remoteId) =>
+  _i4.Future<void> markDisconnected(String? remoteId) =>
       (super.noSuchMethod(
             Invocation.method(#markDisconnected, [remoteId]),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i4.Future<void>);
 
   @override
-  _i3.Future<void> clear() =>
+  _i4.Future<void> clear() =>
       (super.noSuchMethod(
             Invocation.method(#clear, []),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i4.Future<void>);
 
   @override
-  _i3.Future<void> publishCurrentSnapshot() =>
+  _i4.Future<void> publishCurrentSnapshot() =>
       (super.noSuchMethod(
             Invocation.method(#publishCurrentSnapshot, []),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i4.Future<void>);
+
+  @override
+  _i4.Future<_i2.NodosGraphPayload> buildCurrentPayload() =>
+      (super.noSuchMethod(
+            Invocation.method(#buildCurrentPayload, []),
+            returnValue: _i4.Future<_i2.NodosGraphPayload>.value(
+              _FakeNodosGraphPayload_0(
+                this,
+                Invocation.method(#buildCurrentPayload, []),
+              ),
+            ),
+            returnValueForMissingStub: _i4.Future<_i2.NodosGraphPayload>.value(
+              _FakeNodosGraphPayload_0(
+                this,
+                Invocation.method(#buildCurrentPayload, []),
+              ),
+            ),
+          )
+          as _i4.Future<_i2.NodosGraphPayload>);
+}
+
+/// A class which mocks [UserRepository].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockUserRepository extends _i1.Mock implements _i8.UserRepository {
+  @override
+  _i4.Future<_i9.User?> getUserProfile() =>
+      (super.noSuchMethod(
+            Invocation.method(#getUserProfile, []),
+            returnValue: _i4.Future<_i9.User?>.value(),
+            returnValueForMissingStub: _i4.Future<_i9.User?>.value(),
+          )
+          as _i4.Future<_i9.User?>);
+
+  @override
+  _i4.Future<void> updateName(String? name) =>
+      (super.noSuchMethod(
+            Invocation.method(#updateName, [name]),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
+          )
+          as _i4.Future<void>);
+
+  @override
+  _i4.Future<void> updateColor(String? color) =>
+      (super.noSuchMethod(
+            Invocation.method(#updateColor, [color]),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
+          )
+          as _i4.Future<void>);
+
+  @override
+  _i4.Future<void> createUser(_i9.User? user) =>
+      (super.noSuchMethod(
+            Invocation.method(#createUser, [user]),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
+          )
+          as _i4.Future<void>);
+
+  @override
+  _i4.Future<void> setLocalNodeId(int? nodeId) =>
+      (super.noSuchMethod(
+            Invocation.method(#setLocalNodeId, [nodeId]),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
+          )
+          as _i4.Future<void>);
+}
+
+/// A class which mocks [RemoteRelationRepository].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockRemoteRelationRepository extends _i1.Mock
+    implements _i10.RemoteRelationRepository {
+  @override
+  _i4.Future<void> replaceSnapshot({
+    required String? reporterUuid,
+    required List<_i2.NodosGraphConnection>? connections,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(#replaceSnapshot, [], {
+              #reporterUuid: reporterUuid,
+              #connections: connections,
+            }),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
+          )
+          as _i4.Future<void>);
+
+  @override
+  _i4.Future<void> clearSnapshot(String? reporterUuid) =>
+      (super.noSuchMethod(
+            Invocation.method(#clearSnapshot, [reporterUuid]),
+            returnValue: _i4.Future<void>.value(),
+            returnValueForMissingStub: _i4.Future<void>.value(),
+          )
+          as _i4.Future<void>);
+
+  @override
+  _i4.Future<List<_i11.RemoteRelation>> getSnapshot(String? reporterUuid) =>
+      (super.noSuchMethod(
+            Invocation.method(#getSnapshot, [reporterUuid]),
+            returnValue: _i4.Future<List<_i11.RemoteRelation>>.value(
+              <_i11.RemoteRelation>[],
+            ),
+            returnValueForMissingStub:
+                _i4.Future<List<_i11.RemoteRelation>>.value(
+                  <_i11.RemoteRelation>[],
+                ),
+          )
+          as _i4.Future<List<_i11.RemoteRelation>>);
+
+  @override
+  _i4.Stream<List<_i11.RemoteRelation>> watchAll() =>
+      (super.noSuchMethod(
+            Invocation.method(#watchAll, []),
+            returnValue: _i4.Stream<List<_i11.RemoteRelation>>.empty(),
+            returnValueForMissingStub:
+                _i4.Stream<List<_i11.RemoteRelation>>.empty(),
+          )
+          as _i4.Stream<List<_i11.RemoteRelation>>);
 }

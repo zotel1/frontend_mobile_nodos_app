@@ -10,6 +10,9 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_lin
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_connection_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remote_relation_repository.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/services/ble_identity_discovery_service.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/services/graph_exchange_session_manager.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/transport/ble_message_reassembler.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
@@ -22,11 +25,13 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   final RemoteRelationRepository remoteRelationRepository;
   final NodeRepository nodeRepository;
   final BleConnectionRepository connectionRepository;
+  final BleIdentityDiscoveryService? identityDiscovery;
 
   StreamSubscription<List<BleDevice>>? _scanSubscription;
   StreamSubscription<bool>? _btSubscription;
   StreamSubscription<BleIncomingGattWrite>? _linkRequestSubscription;
   StreamSubscription<BleIncomingGattWrite>? _peerGraphSubscription;
+  final BleMessageReassembler _peerGraphReassembler = BleMessageReassembler();
 
   /// Solicitud de enlace Nodos actualmente pendiente de decisión local.
   ///
@@ -34,22 +39,7 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   /// pendiente a la vez.
   NodosLinkRequest? _pendingLinkRequest;
 
-  /// UUID del peer cuyo NodosGraphPayload esperamos después de haber
-  /// aceptado explícitamente su LinkRequest.
-  ///
-  /// IMPORTANTE:
-  ///
-  /// Esta autorización se establece ANTES de enviar LinkResponse accepted.
-  /// De esa manera el requester puede escribir inmediatamente su snapshot
-  /// en la característica 205 sin que exista una ventana en la que el
-  /// payload llegue antes de que este BLoC esté preparado para recibirlo.
-  ///
-  /// El datasource peripheral no informa qué central originó una escritura
-  /// GATT. Por eso el payload se correlaciona además mediante ownerUuid.
-  ///
-  /// Una vez recibido y persistido un payload válido, esta autorización
-  /// transitoria se elimina.
-  String? _awaitingPeerGraphUuid;
+  final GraphExchangeSessionManager _sessionManager;
 
   /// Stream utilizado exclusivamente para avisar a la UI que debe mostrar
   /// una solicitud de enlace.
@@ -68,9 +58,14 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   @visibleForTesting
   NodosLinkRequest? get pendingLinkRequest => _pendingLinkRequest;
 
-  /// UUID del peer cuyo grafo esperamos actualmente.
+  /// Compatibilidad de inspección: retorna un peer activo si existe.
   @visibleForTesting
-  String? get awaitingPeerGraphUuid => _awaitingPeerGraphUuid;
+  String? get awaitingPeerGraphUuid {
+    for (final session in _sessionManager.activeSessions) {
+      return session.peerUuid;
+    }
+    return null;
+  }
 
   /// Período entre reinicios del escaneo para duty cycling.
   ///
@@ -116,9 +111,12 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     required this.remoteRelationRepository,
     required this.nodeRepository,
     required this.connectionRepository,
+    this.identityDiscovery,
     Duration? dutyCyclePeriod,
+    GraphExchangeSessionManager? sessionManager,
   }) : _dutyCyclePeriod =
            dutyCyclePeriod ?? dutyCycleScanDuration + dutyCyclePauseDuration,
+       _sessionManager = sessionManager ?? GraphExchangeSessionManager(),
        super(const BleInitial()) {
     on<StartScan>(_onStartScan);
     on<StopScan>(_onStopScan);
@@ -179,7 +177,14 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     _peerGraphSubscription = repository.incomingPeerGraphPayloads.listen(
       (write) {
         if (!isClosed) {
-          add(_PeerGraphReceived(write.payload));
+          try {
+            final payload = _peerGraphReassembler.add(write.payload);
+            if (payload != null) {
+              add(_PeerGraphReceived(payload));
+            }
+          } catch (error) {
+            debugPrint('[BleBloc] Fragmento peer graph inválido: $error');
+          }
         }
       },
       onError: (Object error) {
@@ -264,20 +269,46 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     await repository.stopAdvertise();
 
     _pendingLinkRequest = null;
-    _awaitingPeerGraphUuid = null;
+    _sessionManager.clear();
+    _peerGraphReassembler.dispose();
 
     emit(const BleStopped());
   }
 
-  void _onBluetoothStateChanged(
+  Future<void> _onBluetoothStateChanged(
     BluetoothStateChanged event,
     Emitter<BleState> emit,
-  ) {
+  ) async {
     if (event.isOn) {
       emit(const BleStopped());
     } else {
+      _dutyCycleTimer?.cancel();
+      _dutyCycleTimer = null;
+      await _scanSubscription?.cancel();
+      _scanSubscription = null;
+      _accumulatedDevices.clear();
+
+      try {
+        await repository.stopScan();
+      } catch (_) {
+        // El adaptador ya puede haber detenido el scan.
+      }
+
+      try {
+        await repository.endScanSession();
+      } catch (_) {
+        // No hay sesión activa o el datasource ya fue cerrado.
+      }
+
+      try {
+        await repository.stopAdvertise();
+      } catch (_) {
+        // Advertising puede no haber sido iniciado.
+      }
+
+      _scanSessionId = null;
       _pendingLinkRequest = null;
-      _awaitingPeerGraphUuid = null;
+      _sessionManager.clear();
       emit(const BluetoothOff());
     }
   }
@@ -342,28 +373,8 @@ class BleBloc extends Bloc<BleEvent, BleState> {
       return;
     }
 
-    /// Si todavía esperamos el grafo de un peer previamente aceptado,
-    /// no reemplazamos esa autorización transitoria con otra solicitud.
-    if (_awaitingPeerGraphUuid != null) {
-      final rejection = NodosLinkResponse(
-        requesterUuid: request.deviceUuid,
-        responderUuid: localUser.uuid,
-        accepted: false,
-      );
-
-      try {
-        await repository.sendLinkResponse(rejection.toBytes());
-      } catch (error) {
-        debugPrint(
-          '[BleBloc] No se pudo rechazar LinkRequest mientras '
-          'se esperaba un peer graph: $error',
-        );
-      }
-
-      return;
-    }
-
     _pendingLinkRequest = request;
+    _sessionManager.registerPending(request.deviceUuid);
 
     if (!_linkRequestController.isClosed) {
       _linkRequestController.add(request);
@@ -444,8 +455,9 @@ class BleBloc extends Bloc<BleEvent, BleState> {
       // Ese central puede escribir su NodosGraphPayload en 205 antes de que
       // este Future retorne.
       //
-      // Por eso la autorización debe existir previamente.
-      _awaitingPeerGraphUuid = pending.deviceUuid;
+      // Por eso la sesión debe existir previamente y se activa antes de
+      // enviar la respuesta.
+      _sessionManager.activate(pending.deviceUuid);
 
       try {
         // ── 3. Enviar aceptación ──
@@ -456,9 +468,7 @@ class BleBloc extends Bloc<BleEvent, BleState> {
         //
         // La comparación defensiva evita borrar otro UUID si el estado
         // hubiese cambiado antes del rollback.
-        if (_awaitingPeerGraphUuid == pending.deviceUuid) {
-          _awaitingPeerGraphUuid = null;
-        }
+        _sessionManager.invalidatePeer(pending.deviceUuid);
 
         rethrow;
       }
@@ -472,6 +482,7 @@ class BleBloc extends Bloc<BleEvent, BleState> {
         'preparada y LinkRequest aceptado: ${pending.deviceUuid}.',
       );
     } catch (error) {
+      _sessionManager.invalidatePeer(pending.deviceUuid);
       debugPrint(
         '[BleBloc] No se pudo completar la aceptación '
         'de LinkRequest: $error',
@@ -576,6 +587,7 @@ class BleBloc extends Bloc<BleEvent, BleState> {
       await repository.sendLinkResponse(response.toBytes());
 
       _pendingLinkRequest = null;
+      _sessionManager.invalidatePeer(pending.deviceUuid);
     } catch (error) {
       debugPrint('[BleBloc] Error enviando rechazo de LinkRequest: $error');
     }
@@ -586,26 +598,16 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   ///
   /// La escritura solamente se acepta si:
   ///
-  /// 1. existe un peer cuyo grafo estamos esperando;
+  /// 1. existe una sesión Graph Exchange ACTIVE para el reporter;
   /// 2. el payload es válido;
   /// 3. ownerUuid coincide exactamente con el UUID del requester aceptado.
   ///
-  /// Una vez persistido correctamente el snapshot, la autorización
-  /// transitoria se consume.
+  /// La sesión permanece autorizada para snapshots sucesivos mientras siga
+  /// ACTIVE. Un disconnect o cleanup global la invalida.
   Future<void> _onPeerGraphReceived(
     _PeerGraphReceived event,
     Emitter<BleState> emit,
   ) async {
-    final expectedUuid = _awaitingPeerGraphUuid;
-
-    if (expectedUuid == null) {
-      debugPrint(
-        '[BleBloc] Peer graph ignorado: '
-        'no existe un enlace aceptado esperando snapshot.',
-      );
-      return;
-    }
-
     final NodosGraphPayload payload;
 
     try {
@@ -615,10 +617,10 @@ class BleBloc extends Bloc<BleEvent, BleState> {
       return;
     }
 
-    if (payload.ownerUuid != expectedUuid) {
+    if (!_sessionManager.isAuthorized(payload.ownerUuid)) {
       debugPrint(
-        '[BleBloc] Peer graph ignorado: ownerUuid inesperado '
-        '(${payload.ownerUuid}). Esperado: $expectedUuid.',
+        '[BleBloc] Peer graph ignorado: reporter sin sesión ACTIVE '
+        '(${payload.ownerUuid}).',
       );
       return;
     }
@@ -628,8 +630,6 @@ class BleBloc extends Bloc<BleEvent, BleState> {
         reporterUuid: payload.ownerUuid,
         connections: payload.connections,
       );
-
-      _awaitingPeerGraphUuid = null;
 
       debugPrint(
         '[BleBloc] Peer graph persistido: '
@@ -696,6 +696,13 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     }
 
     emit(BleScanning(devices: accumulated));
+
+    final discovery = identityDiscovery;
+    if (discovery != null) {
+      for (final device in accumulated) {
+        unawaited(discovery.identify(device));
+      }
+    }
   }
 
   /// Limpia dispositivos stale del acumulador sin nuevos datos BLE.
@@ -725,6 +732,13 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   Future<void> close() async {
     _scanSessionId = null;
 
+    try {
+      await repository.stopScan();
+    } catch (_) {}
+    try {
+      await repository.stopAdvertise();
+    } catch (_) {}
+
     await _scanSubscription?.cancel();
     await _btSubscription?.cancel();
     await _linkRequestSubscription?.cancel();
@@ -737,9 +751,11 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     _dutyCycleTimer = null;
 
     _pendingLinkRequest = null;
-    _awaitingPeerGraphUuid = null;
+    _sessionManager.clear();
 
     await _linkRequestController.close();
+
+    identityDiscovery?.dispose();
 
     return super.close();
   }

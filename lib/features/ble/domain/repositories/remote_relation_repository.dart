@@ -32,3 +32,12 @@ abstract class RemoteRelationRepository {
   /// cuando llegue información nueva desde otro dispositivo Nodos.
   Stream<List<RemoteRelation>> watchAll();
 }
+
+/// Capacidad opcional de lifecycle para invalidar la caché completa.
+///
+/// Se mantiene separada del contrato de lectura/escritura de snapshots para
+/// no forzar a dobles de prueba ni a adaptadores históricos a implementar una
+/// operación global que no necesitan.
+abstract class RemoteRelationLifecycle {
+  Future<void> clearAllSnapshots();
+}

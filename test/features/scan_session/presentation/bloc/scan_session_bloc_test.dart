@@ -54,9 +54,7 @@ void main() {
       },
       seed: () => const SessionActive(sessionId: 42, nodeCount: 5),
       act: (bloc) => bloc.add(const EndSession(42)),
-      expect: () => [
-        isA<SessionEnded>(),
-      ],
+      expect: () => [isA<SessionEnded>()],
       verify: (_) {
         verify(mockRepository.endSession(42)).called(1);
       },
@@ -65,8 +63,9 @@ void main() {
     blocTest<ScanSessionBloc, ScanSessionState>(
       'AddNodesToSession registra nodos y actualiza nodeCount',
       build: () {
-        when(mockRepository.addNodesToSession(any, any))
-            .thenAnswer((_) async {});
+        when(
+          mockRepository.addNodesToSession(any, any),
+        ).thenAnswer((_) async {});
         return ScanSessionBloc(repository: mockRepository);
       },
       seed: () => const SessionActive(sessionId: 42, nodeCount: 3),
@@ -84,8 +83,7 @@ void main() {
     blocTest<ScanSessionBloc, ScanSessionState>(
       'StartSession emite SessionError cuando el repositorio falla',
       build: () {
-        when(mockRepository.startSession())
-            .thenThrow(Exception('DB error'));
+        when(mockRepository.startSession()).thenThrow(Exception('DB error'));
         return ScanSessionBloc(repository: mockRepository);
       },
       act: (bloc) => bloc.add(const StartSession()),
@@ -101,8 +99,9 @@ void main() {
     blocTest<ScanSessionBloc, ScanSessionState>(
       'EndSession emite SessionError cuando el repositorio falla',
       build: () {
-        when(mockRepository.endSession(any))
-            .thenThrow(Exception('Close error'));
+        when(
+          mockRepository.endSession(any),
+        ).thenThrow(Exception('Close error'));
         return ScanSessionBloc(repository: mockRepository);
       },
       act: (bloc) => bloc.add(const EndSession(1)),
@@ -116,10 +115,55 @@ void main() {
     );
 
     blocTest<ScanSessionBloc, ScanSessionState>(
+      'AddNodesToSession no incrementa nodeCount al repetir un nodo',
+      build: () {
+        when(
+          mockRepository.addNodesToSession(any, any),
+        ).thenAnswer((_) async {});
+        return ScanSessionBloc(repository: mockRepository);
+      },
+      seed: () => const SessionActive(sessionId: 42, nodeCount: 0),
+      act: (bloc) {
+        bloc.add(const AddNodesToSession(42, [10]));
+        bloc.add(const AddNodesToSession(42, [10]));
+      },
+      expect: () => [
+        isA<SessionActive>().having(
+          (s) => s.nodeCount,
+          'nodeCount after repeated observation',
+          equals(1),
+        ),
+      ],
+      verify: (_) {
+        verify(mockRepository.addNodesToSession(42, [10])).called(2);
+      },
+    );
+
+    blocTest<ScanSessionBloc, ScanSessionState>(
+      'AddNodesToSession cuenta apariciones incrementales como únicos',
+      build: () {
+        when(
+          mockRepository.addNodesToSession(any, any),
+        ).thenAnswer((_) async {});
+        return ScanSessionBloc(repository: mockRepository);
+      },
+      seed: () => const SessionActive(sessionId: 42, nodeCount: 0),
+      act: (bloc) {
+        bloc.add(const AddNodesToSession(42, [10]));
+        bloc.add(const AddNodesToSession(42, [20]));
+      },
+      expect: () => [
+        isA<SessionActive>().having((s) => s.nodeCount, 'nodeCount', equals(1)),
+        isA<SessionActive>().having((s) => s.nodeCount, 'nodeCount', equals(2)),
+      ],
+    );
+
+    blocTest<ScanSessionBloc, ScanSessionState>(
       'AddNodesToSession emite SessionError cuando el repositorio falla',
       build: () {
-        when(mockRepository.addNodesToSession(any, any))
-            .thenThrow(Exception('Add error'));
+        when(
+          mockRepository.addNodesToSession(any, any),
+        ).thenThrow(Exception('Add error'));
         return ScanSessionBloc(repository: mockRepository);
       },
       act: (bloc) => bloc.add(const AddNodesToSession(1, [1, 2])),
@@ -135,8 +179,9 @@ void main() {
     blocTest<ScanSessionBloc, ScanSessionState>(
       'AddNodesToSession sobre SessionInitial emite SessionError',
       build: () {
-        when(mockRepository.addNodesToSession(any, any))
-            .thenAnswer((_) async {});
+        when(
+          mockRepository.addNodesToSession(any, any),
+        ).thenAnswer((_) async {});
         return ScanSessionBloc(repository: mockRepository);
       },
       act: (bloc) => bloc.add(const AddNodesToSession(1, [5])),
