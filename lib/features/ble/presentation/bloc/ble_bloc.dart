@@ -269,13 +269,38 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     emit(const BleStopped());
   }
 
-  void _onBluetoothStateChanged(
+  Future<void> _onBluetoothStateChanged(
     BluetoothStateChanged event,
     Emitter<BleState> emit,
-  ) {
+  ) async {
     if (event.isOn) {
       emit(const BleStopped());
     } else {
+      _dutyCycleTimer?.cancel();
+      _dutyCycleTimer = null;
+      await _scanSubscription?.cancel();
+      _scanSubscription = null;
+      _accumulatedDevices.clear();
+
+      try {
+        await repository.stopScan();
+      } catch (_) {
+        // El adaptador ya puede haber detenido el scan.
+      }
+
+      try {
+        await repository.endScanSession();
+      } catch (_) {
+        // No hay sesión activa o el datasource ya fue cerrado.
+      }
+
+      try {
+        await repository.stopAdvertise();
+      } catch (_) {
+        // Advertising puede no haber sido iniciado.
+      }
+
+      _scanSessionId = null;
       _pendingLinkRequest = null;
       _awaitingPeerGraphUuid = null;
       emit(const BluetoothOff());
@@ -724,6 +749,13 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   @override
   Future<void> close() async {
     _scanSessionId = null;
+
+    try {
+      await repository.stopScan();
+    } catch (_) {}
+    try {
+      await repository.stopAdvertise();
+    } catch (_) {}
 
     await _scanSubscription?.cancel();
     await _btSubscription?.cancel();

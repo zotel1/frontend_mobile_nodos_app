@@ -14,7 +14,8 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remot
 /// `remote_relations` representa el último snapshot activo recibido de cada
 /// instalación Nodos. No debe confundirse con `connections`, que contiene
 /// relaciones locales persistentes.
-class RemoteRelationRepositoryImpl implements RemoteRelationRepository {
+class RemoteRelationRepositoryImpl
+    implements RemoteRelationRepository, RemoteRelationLifecycle {
   final RemoteRelationDriftDataSource _dataSource;
 
   RemoteRelationRepositoryImpl(this._dataSource);
@@ -33,6 +34,11 @@ class RemoteRelationRepositoryImpl implements RemoteRelationRepository {
   @override
   Future<void> clearSnapshot(String reporterUuid) {
     return _dataSource.clearSnapshot(reporterUuid);
+  }
+
+  @override
+  Future<void> clearAllSnapshots() {
+    return _dataSource.clearAllSnapshots();
   }
 
   @override

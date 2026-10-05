@@ -44,6 +44,11 @@ class DisconnectDevice extends BleConnectionEvent {
   List<Object?> get props => [remoteId];
 }
 
+/// Invalida todo el estado GATT activo sin tocar las relaciones persistentes.
+class ResetActiveConnections extends BleConnectionEvent {
+  const ResetActiveConnections();
+}
+
 // ──────────────────────── States ────────────────────────
 
 sealed class BleConnectionState extends Equatable {
@@ -182,6 +187,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
        super(const BleConnectionInitial()) {
     on<ConnectToDevice>(_onConnect);
     on<DisconnectDevice>(_onDisconnect);
+    on<ResetActiveConnections>(_onResetActiveConnections);
     on<_ConnectionStateChanged>(_onConnectionStateChanged);
   }
 
@@ -274,7 +280,9 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     final remoteId = event.remoteId;
 
     if (!event.connected) {
+      await _cancelSubscription(remoteId);
       _connectedRemoteIds.remove(remoteId);
+      _localNodeIds.remove(remoteId);
 
       await _handleInactiveRemote(remoteId);
 
@@ -736,6 +744,61 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     emit(const BleConnectionInitial());
   }
 
+  Future<void> _onResetActiveConnections(
+    ResetActiveConnections event,
+    Emitter<BleConnectionState> emit,
+  ) async {
+    await _resetActiveConnections();
+    emit(const BleConnectionInitial());
+  }
+
+  Future<void> _resetActiveConnections() async {
+    final remoteIds = <String>{
+      ..._stateSubscriptions.keys,
+      ..._connectedRemoteIds,
+      ..._localNodeIds.keys,
+    };
+
+    for (final remoteId in remoteIds) {
+      await _cancelSubscription(remoteId);
+
+      try {
+        await _connectionRepo.disconnect(remoteId);
+      } catch (_) {
+        // El transporte puede ya estar cerrado.
+      }
+
+      _localNodeIds.remove(remoteId);
+      _connectedRemoteIds.remove(remoteId);
+      await _handleInactiveRemote(remoteId);
+    }
+
+    _stateSubscriptions.clear();
+    _localNodeIds.clear();
+    _connectedRemoteIds.clear();
+    _reporterUuids.clear();
+
+    try {
+      await _activeGraphExchange.clear();
+    } catch (_) {
+      // La invalidación del grafo no debe bloquear el cleanup de BLE.
+    }
+
+    try {
+      await _clearAllRemoteSnapshots();
+    } catch (_) {
+      // El próximo ciclo de lifecycle volverá a limpiar la caché.
+    }
+  }
+
+  Future<void> _clearAllRemoteSnapshots() {
+    if (_remoteRelationRepository is RemoteRelationLifecycle) {
+      return (_remoteRelationRepository as RemoteRelationLifecycle)
+          .clearAllSnapshots();
+    }
+    return Future<void>.value();
+  }
+
   Future<void> _handleInactiveRemote(String remoteId) async {
     await _safeMarkDisconnected(remoteId);
 
@@ -792,6 +855,8 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
 
   @override
   Future<void> close() async {
+    await _resetActiveConnections();
+
     final subscriptions = _stateSubscriptions.values.toList();
 
     _stateSubscriptions.clear();

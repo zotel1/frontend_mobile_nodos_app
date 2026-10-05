@@ -7,7 +7,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_devic
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/scan_session/domain/repositories/scan_session_repository.dart';
 
-class BleRepositoryImpl implements BleRepository {
+class BleRepositoryImpl implements BleRepository, BleRuntimeLifecycle {
   final BleScannerDataSource _scanner;
   final BleAdvertiserDataSource _advertiser;
   final ScanSessionRepository? _sessionRepository;
@@ -113,5 +113,12 @@ class BleRepositoryImpl implements BleRepository {
     if (activeId != null) {
       await _sessionRepository.endSession(activeId);
     }
+  }
+
+  @override
+  Future<void> disposeRuntime() async {
+    await _scanner.stopScan();
+    _scanner.dispose();
+    await _advertiser.stopAdvertise();
   }
 }
