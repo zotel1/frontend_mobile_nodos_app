@@ -7,6 +7,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_c
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/active_graph_exchange_service.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/graph_exchange_session_manager.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/transport/ble_frame_codec.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/transport/ble_mtu_policy.dart';
 
 /// Publishes local active snapshots to currently authorized central peers.
 ///
@@ -104,7 +105,9 @@ class LiveGraphSyncService {
     final payloadBytes = payload.toBytes();
     final frames = _framer.frame(
       payloadBytes,
-      mtu: await _connectionRepository.mtu(normalizedRemoteId),
+      chunkPayloadSize: BleMtuPolicy.centralWriteCapacity(
+        await _connectionRepository.mtu(normalizedRemoteId),
+      ),
     );
 
     for (final frame in frames) {

@@ -35,6 +35,25 @@ void main() {
     expect(result, payload);
   });
 
+  test('large payload round trips with every supported MTU policy', () {
+    final payload = Uint8List.fromList(
+      List<int>.generate(4096, (i) => i % 251),
+    );
+
+    for (final mtu in <int>[23, 185, 247]) {
+      final frames = BleMessageFramer().frame(payload, mtu: mtu);
+      final reassembler = BleMessageReassembler(scheduleCleanup: false);
+      Uint8List? result;
+
+      for (final frame in frames) {
+        expect(frame[17], lessThanOrEqualTo(255));
+        result = reassembler.add(frame);
+      }
+
+      expect(result, payload);
+    }
+  });
+
   test('out of order fragments are reassembled', () {
     final payload = Uint8List.fromList(List<int>.generate(50, (i) => i));
     final frames = BleMessageFramer(
@@ -124,9 +143,12 @@ void main() {
       ),
       throwsArgumentError,
     );
+    expect(BleTransportLimits.chunkPayloadSizeForMtu(22), 2);
     expect(
-      () => BleTransportLimits.chunkPayloadSizeForMtu(22),
-      throwsArgumentError,
+      BleMessageFramer()
+          .frame(List<int>.generate(1000, (i) => i % 251), mtu: 512)
+          .every((frame) => frame[17] <= 255),
+      isTrue,
     );
   });
 

@@ -8,6 +8,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_peri
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_peripheral_platform.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_identity.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/transport/ble_frame_codec.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/transport/ble_mtu_policy.dart';
 
 /// Implementación del periférico BLE de Nodos.
 ///
@@ -226,7 +227,7 @@ class FlutterBlePeripheralDataSource implements BleAdvertiserDataSource {
     try {
       final frames = _graphFramer.frame(
         payload,
-        mtu: BleTransportLimits.defaultMtu,
+        chunkPayloadSize: BleMtuPolicy.peripheralNotificationCapacity(),
       );
       for (final frame in frames) {
         await _peripheral.sendData(
