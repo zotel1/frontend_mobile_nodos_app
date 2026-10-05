@@ -9,6 +9,8 @@ import 'dart:async' as _i19;
 import 'package:bloc/bloc.dart' as _i21;
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_repository.dart'
     as _i2;
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_link_request.dart'
+    as _i27;
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart'
     as _i18;
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart'
@@ -199,6 +201,16 @@ class MockBleBloc extends _i1.Mock implements _i18.BleBloc {
             ),
           )
           as _i3.BleState);
+
+  @override
+  _i19.Stream<_i27.NodosLinkRequest> get linkRequests =>
+      (super.noSuchMethod(
+            Invocation.getter(#linkRequests),
+            returnValue: _i19.Stream<_i27.NodosLinkRequest>.empty(),
+            returnValueForMissingStub:
+                _i19.Stream<_i27.NodosLinkRequest>.empty(),
+          )
+          as _i19.Stream<_i27.NodosLinkRequest>);
 
   @override
   _i19.Stream<_i3.BleState> get stream =>

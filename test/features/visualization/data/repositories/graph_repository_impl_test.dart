@@ -4,6 +4,8 @@ import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_graph_payload.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remote_relation_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/data/repositories/graph_repository_impl.dart';
@@ -11,6 +13,23 @@ import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities
 
 @GenerateNiceMocks([MockSpec<NodeRepository>()])
 import 'graph_repository_impl_test.mocks.dart';
+
+class _EmptyRemoteRelationRepository implements RemoteRelationRepository {
+  @override
+  Future<void> replaceSnapshot({
+    required String reporterUuid,
+    required List<NodosGraphConnection> connections,
+  }) async {}
+
+  @override
+  Future<void> clearSnapshot(String reporterUuid) async {}
+
+  @override
+  Future<List<RemoteRelation>> getSnapshot(String reporterUuid) async => [];
+
+  @override
+  Stream<List<RemoteRelation>> watchAll() => Stream.value(const []);
+}
 
 void main() {
   late AppDatabase db;
@@ -20,7 +39,11 @@ void main() {
   setUp(() async {
     db = AppDatabase.inMemory();
     mockNodeRepository = MockNodeRepository();
-    repository = GraphRepositoryImpl(mockNodeRepository, db);
+    repository = GraphRepositoryImpl(
+      mockNodeRepository,
+      db,
+      _EmptyRemoteRelationRepository(),
+    );
   });
 
   tearDown(() async {

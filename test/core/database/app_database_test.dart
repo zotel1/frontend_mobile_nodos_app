@@ -19,8 +19,8 @@ void main() {
   });
 
   group('AppDatabase schema', () {
-    test('schema version is 7', () {
-      expect(db.schemaVersion, 7);
+    test('schema version is 9', () {
+      expect(db.schemaVersion, 9);
     });
 
     test('creates users table', () async {
