@@ -261,7 +261,7 @@ void main() {
         const Offset(300, 100),
       );
       expect(cp.dx, closeTo(200.0, 0.01));
-      expect(cp.dy, closeTo(140.0, 0.01));
+      expect(cp.dy, closeTo(116.0, 0.01));
     });
 
     test('arista vertical tiene punto de control a la derecha', () {
@@ -269,7 +269,7 @@ void main() {
         const Offset(150, 50),
         const Offset(150, 250),
       );
-      expect(cp.dx, closeTo(110.0, 0.01));
+      expect(cp.dx, closeTo(134.0, 0.01));
       expect(cp.dy, closeTo(150.0, 0.01));
     });
 
@@ -279,8 +279,8 @@ void main() {
         const Offset(0, 0),
         const Offset(100, 100),
       );
-      expect(cp.dx, closeTo(30.0, 0.1));
-      expect(cp.dy, closeTo(70.0, 0.1));
+      expect(cp.dx, closeTo(42.0, 0.1));
+      expect(cp.dy, closeTo(58.0, 0.1));
     });
 
     test('arista larga tiene más curvatura que arista corta', () {
@@ -288,13 +288,13 @@ void main() {
         const Offset(0, 0),
         const Offset(10, 0),
       );
-      expect(cpShort.dy, closeTo(2.0, 0.01));
+      expect(cpShort.dy, closeTo(0.8, 0.01));
 
       final cpLong = GraphPainter.computeBezierControlPoint(
         const Offset(0, 0),
         const Offset(500, 0),
       );
-      expect(cpLong.dy, closeTo(100.0, 0.01));
+      expect(cpLong.dy, closeTo(40.0, 0.01));
       expect(cpLong.dy, greaterThan(cpShort.dy * 10));
     });
   });

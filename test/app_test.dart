@@ -80,6 +80,8 @@ void main() {
     when(mockBleBloc.state).thenReturn(const BleStopped());
     when(mockBleBloc.stream)
         .thenAnswer((_) => Stream.value(const BleStopped()));
+    when(mockBleBloc.linkRequests)
+        .thenAnswer((_) => const Stream.empty());
     when(mockNodeListBloc.state).thenReturn(const NodeListInitial());
     when(mockNodeListBloc.stream)
         .thenAnswer((_) => Stream.value(const NodeListInitial()));
