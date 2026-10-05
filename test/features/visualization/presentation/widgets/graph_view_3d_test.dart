@@ -5,6 +5,7 @@ import 'package:webview_flutter_platform_interface/webview_flutter_platform_inte
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_node.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_edge.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_layout_snapshot.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/widgets/graph_view_3d.dart';
 
@@ -27,9 +28,11 @@ class _StubWebViewController extends PlatformWebViewController {
   final List<String> loadedAssets = [];
   final List<JavaScriptChannelParams> channels = [];
   final List<String> executedJs = [];
+  JavaScriptMode? javaScriptMode;
 
   /// Callback que simula onPageFinished desde el stub.
   void Function(String)? onPageFinished;
+  void Function(WebResourceError)? onWebResourceError;
 
   @override
   Future<void> loadFlutterAsset(String key) async {
@@ -42,8 +45,18 @@ class _StubWebViewController extends PlatformWebViewController {
   }
 
   @override
+  Future<void> removeJavaScriptChannel(String channelName) async {
+    channels.removeWhere((channel) => channel.name == channelName);
+  }
+
+  @override
   Future<void> runJavaScript(String javaScript) async {
     executedJs.add(javaScript);
+  }
+
+  @override
+  Future<void> setJavaScriptMode(JavaScriptMode javaScriptMode) async {
+    this.javaScriptMode = javaScriptMode;
   }
 
   Future<void> setNavigationDelegate(
@@ -68,6 +81,10 @@ class _StubWebViewController extends PlatformWebViewController {
   void simulatePageFinished(String url) {
     onPageFinished?.call(url);
   }
+
+  void simulateWebResourceError(WebResourceError error) {
+    onWebResourceError?.call(error);
+  }
 }
 
 /// Stub de PlatformNavigationDelegate para tests de WebView.
@@ -79,12 +96,20 @@ class _StubNavigationDelegate extends PlatformNavigationDelegate {
 
   /// Callback onPageFinished capturado desde los params.
   void Function(String)? onPageFinished;
+  WebResourceErrorCallback? onWebResourceError;
 
   @override
   Future<void> setOnPageFinished(PageEventCallback? onPageFinished) async {
     if (onPageFinished != null) {
       this.onPageFinished = onPageFinished;
     }
+  }
+
+  @override
+  Future<void> setOnWebResourceError(
+    WebResourceErrorCallback onWebResourceError,
+  ) async {
+    this.onWebResourceError = onWebResourceError;
   }
 }
 
@@ -116,8 +141,12 @@ class _StubWebViewPlatform extends WebViewPlatform
   ) {
     final delegate = _StubNavigationDelegate(params);
     // Conectar el callback onPageFinished del delegate al controller
-    if (_controller != null && delegate.onPageFinished != null) {
-      _controller!.onPageFinished = delegate.onPageFinished;
+    // Los callbacks se configuran después de crear el delegate; el controller
+    // consulta el delegate al asociarlo para mantener el contrato real.
+    if (_controller != null) {
+      _controller!.onPageFinished = (url) => delegate.onPageFinished?.call(url);
+      _controller!.onWebResourceError =
+          (error) => delegate.onWebResourceError?.call(error);
     }
     return delegate;
   }
@@ -733,6 +762,122 @@ void main() {
       // _hasError = true → debe mostrar texto de error (R8)
       expect(find.textContaining('Error al cargar'), findsOneWidget,
           reason: 'Debe mostrar mensaje de error cuando falla la carga del WebView');
+    });
+
+    testWidgets('muestra error cuando falla el documento principal',
+        (WidgetTester tester) async {
+      final layout = LayoutResult(
+        nodes: [const GraphNode(id: 1, x: 0, y: 0, proximity: ProximityLevel.close)],
+        edges: [],
+        iterations: 1,
+        converged: true,
+      );
+
+      await tester.pumpWidget(MaterialApp(home: GraphView3D(layout: layout)));
+      stubPlatform.controller.simulateWebResourceError(
+        const WebResourceError(
+          errorCode: -1,
+          description: 'main document failed',
+          isForMainFrame: true,
+        ),
+      );
+      await tester.pump();
+
+      expect(find.textContaining('Error al cargar'), findsOneWidget);
+    });
+  });
+
+  group('FEAT-008 shared snapshot and lifecycle', () {
+    testWidgets('serializes the snapshot layout instead of the fallback layout',
+        (WidgetTester tester) async {
+      final fallback = LayoutResult(
+        nodes: [const GraphNode(id: 1, x: 1, y: 1, proximity: ProximityLevel.close)],
+        edges: [],
+        iterations: 1,
+        converged: true,
+      );
+      final shared = LayoutResult(
+        nodes: [const GraphNode(id: 99, x: 9, y: 9, proximity: ProximityLevel.close)],
+        edges: [],
+        iterations: 1,
+        converged: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: GraphView3D(
+            layout: fallback,
+            snapshot: GraphLayoutSnapshot(layout: shared, revision: 1),
+          ),
+        ),
+      );
+      stubPlatform.controller.simulatePageFinished('asset://graph_3d.html');
+
+      final calls = stubPlatform.controller.executedJs
+          .where((call) => call.contains('loadGraphData'))
+          .toList();
+      expect(calls.single, contains('"id":99'));
+      expect(calls.single, isNot(contains('"id":1')));
+    });
+
+    testWidgets('updates selection after page load without rebuilding the WebView',
+        (WidgetTester tester) async {
+      final layout = LayoutResult(
+        nodes: [
+          const GraphNode(id: 1, x: 0, y: 0, proximity: ProximityLevel.close),
+          const GraphNode(id: 2, x: 20, y: 0, proximity: ProximityLevel.close),
+        ],
+        edges: [],
+        iterations: 1,
+        converged: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(home: GraphView3D(layout: layout, selectedNodeId: 1)),
+      );
+      final controller = stubPlatform.controller;
+      controller.simulatePageFinished('asset://graph_3d.html');
+      final initialCount = controller.executedJs.length;
+
+      await tester.pumpWidget(
+        MaterialApp(home: GraphView3D(layout: layout, selectedNodeId: 2)),
+      );
+      expect(controller.executedJs.length, greaterThan(initialCount));
+      expect(controller.executedJs.last, contains('"selectedNodeId":2'));
+    });
+
+    testWidgets('does not inject JavaScript after dispose',
+        (WidgetTester tester) async {
+      final layout = LayoutResult(
+        nodes: [const GraphNode(id: 1, x: 0, y: 0, proximity: ProximityLevel.close)],
+        edges: [],
+        iterations: 1,
+        converged: true,
+      );
+      await tester.pumpWidget(MaterialApp(home: GraphView3D(layout: layout)));
+      final controller = stubPlatform.controller;
+      await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+      final count = controller.executedJs.length;
+      controller.simulatePageFinished('asset://late-finish');
+      expect(controller.executedJs.length, count);
+    });
+
+    test('builds a payload for 100 nodes without dropping shared positions', () {
+      final nodes = List<GraphNode>.generate(
+        100,
+        (index) => GraphNode(
+          id: index,
+          x: index.toDouble(),
+          y: (index * 2).toDouble(),
+          z: (index % 3).toDouble(),
+          proximity: ProximityLevel.close,
+        ),
+      );
+      final payload = layoutResultToJson(
+        LayoutResult(nodes: nodes, edges: [], iterations: 1, converged: true),
+      );
+      expect((payload['nodes'] as List<dynamic>).length, 100);
+      expect((payload['nodes'] as List<dynamic>)[98]['z'], 2.0);
     });
   });
 }
