@@ -32,6 +32,9 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/usecases/stop_ble_
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/services/live_graph_sync_service.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/platform/ble_permission_policy.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/platform/ble_platform_capabilities.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/platform/ble_settings_navigator.dart';
 
 import 'package:frontend_mobile_nodos_app/features/history/data/datasources/history_drift_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/history/data/repositories/history_repository_impl.dart';
@@ -77,6 +80,12 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bl
 final sl = GetIt.instance;
 
 Future<void> initDependencies() async {
+  sl.registerLazySingleton<BlePermissionPolicy>(BlePermissionPolicy.platform);
+  sl.registerLazySingleton<BleSettingsNavigator>(BleSettingsNavigator.platform);
+  sl.registerLazySingleton<BlePlatformCapabilities>(
+    BlePlatformCapabilities.platform,
+  );
+
   // ── BLE Platform Config ──
   // R5.6: Modo de cola de operaciones por dispositivo.
   FlutterBluePlus.setOperationQueueMode(OperationQueueMode.perDevice);
@@ -299,6 +308,7 @@ Future<void> initDependencies() async {
       connectionRepository: sl<BleConnectionRepository>(),
       identityDiscovery: sl<BleIdentityDiscoveryService>(),
       sessionManager: sl<GraphExchangeSessionManager>(),
+      permissionPolicy: sl<BlePermissionPolicy>(),
     ),
   );
 
@@ -317,6 +327,7 @@ Future<void> initDependencies() async {
       remoteRelationRepository: sl<RemoteRelationRepository>(),
       sessionManager: sl<GraphExchangeSessionManager>(),
       liveGraphSync: sl<LiveGraphSyncService>(),
+      permissionPolicy: sl<BlePermissionPolicy>(),
     ),
   );
 
