@@ -8,15 +8,19 @@ import 'package:mockito/mockito.dart';
 
 import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_connection_repository.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remote_relation_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/active_graph_exchange_service.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
+import 'package:frontend_mobile_nodos_app/features/user/domain/repositories/user_repository.dart';
 
 @GenerateNiceMocks([
   MockSpec<BleConnectionRepository>(),
   MockSpec<NodeRepository>(),
   MockSpec<ActiveGraphExchangeService>(),
+  MockSpec<UserRepository>(),
+  MockSpec<RemoteRelationRepository>(),
 ])
 import 'ble_connection_bloc_test.mocks.dart';
 
@@ -24,12 +28,16 @@ void main() {
   late MockBleConnectionRepository mockRepo;
   late MockNodeRepository mockNodeRepo;
   late MockActiveGraphExchangeService mockActiveGraphExchange;
+  late MockUserRepository mockUserRepository;
+  late MockRemoteRelationRepository mockRemoteRelationRepository;
   late StreamController<bool> stateController;
 
   setUp(() async {
     mockRepo = MockBleConnectionRepository();
     mockNodeRepo = MockNodeRepository();
     mockActiveGraphExchange = MockActiveGraphExchangeService();
+    mockUserRepository = MockUserRepository();
+    mockRemoteRelationRepository = MockRemoteRelationRepository();
     stateController = StreamController<bool>.broadcast();
 
     // Configurar mocks por defecto.
@@ -61,6 +69,8 @@ void main() {
         connectionRepository: mockRepo,
         nodeRepository: mockNodeRepo,
         activeGraphExchange: mockActiveGraphExchange,
+        userRepository: mockUserRepository,
+        remoteRelationRepository: mockRemoteRelationRepository,
       ),
       verify: (bloc) => expect(bloc.state, isA<BleConnectionInitial>()),
     );
@@ -76,16 +86,20 @@ void main() {
           mockRepo.connectionState(any),
         ).thenAnswer((_) => stateController.stream);
 
-        Future.microtask(() => stateController.add(true));
-
         return BleConnectionBloc(
           connectionRepository: mockRepo,
           nodeRepository: mockNodeRepo,
           activeGraphExchange: mockActiveGraphExchange,
+          userRepository: mockUserRepository,
+          remoteRelationRepository: mockRemoteRelationRepository,
         );
       },
-      act: (bloc) =>
-          bloc.add(const ConnectToDevice('AA:BB:CC:DD:EE:FF', myNodeId: 1)),
+      act: (bloc) async {
+        bloc.add(const ConnectToDevice('AA:BB:CC:DD:EE:FF', myNodeId: 1));
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+        stateController.add(true);
+      },
+      wait: const Duration(milliseconds: 100),
       expect: () => [
         isA<BleConnecting>().having(
           (state) => state.remoteId,
@@ -97,6 +111,7 @@ void main() {
           'remoteId',
           equals('AA:BB:CC:DD:EE:FF'),
         ),
+        isA<RemoteIdentityUnavailable>(),
       ],
       verify: (_) {
         verify(mockRepo.connect('AA:BB:CC:DD:EE:FF')).called(1);
@@ -116,6 +131,8 @@ void main() {
           connectionRepository: mockRepo,
           nodeRepository: mockNodeRepo,
           activeGraphExchange: mockActiveGraphExchange,
+          userRepository: mockUserRepository,
+          remoteRelationRepository: mockRemoteRelationRepository,
         );
       },
       act: (bloc) =>
@@ -147,6 +164,8 @@ void main() {
           connectionRepository: mockRepo,
           nodeRepository: mockNodeRepo,
           activeGraphExchange: mockActiveGraphExchange,
+          userRepository: mockUserRepository,
+          remoteRelationRepository: mockRemoteRelationRepository,
         );
       },
       act: (bloc) =>
@@ -176,6 +195,8 @@ void main() {
           connectionRepository: mockRepo,
           nodeRepository: mockNodeRepo,
           activeGraphExchange: mockActiveGraphExchange,
+          userRepository: mockUserRepository,
+          remoteRelationRepository: mockRemoteRelationRepository,
         );
       },
       act: (bloc) =>
@@ -201,6 +222,8 @@ void main() {
           connectionRepository: mockRepo,
           nodeRepository: mockNodeRepo,
           activeGraphExchange: mockActiveGraphExchange,
+          userRepository: mockUserRepository,
+          remoteRelationRepository: mockRemoteRelationRepository,
         );
       },
       seed: () => const BleConnected(remoteId: 'AA:BB:CC:DD:EE:FF'),
@@ -220,6 +243,8 @@ void main() {
           connectionRepository: mockRepo,
           nodeRepository: mockNodeRepo,
           activeGraphExchange: mockActiveGraphExchange,
+          userRepository: mockUserRepository,
+          remoteRelationRepository: mockRemoteRelationRepository,
         );
       },
       seed: () =>
@@ -237,17 +262,18 @@ void main() {
           connectionRepository: mockRepo,
           nodeRepository: mockNodeRepo,
           activeGraphExchange: mockActiveGraphExchange,
+          userRepository: mockUserRepository,
+          remoteRelationRepository: mockRemoteRelationRepository,
         );
       },
       act: (bloc) => bloc.add(const DisconnectDevice('any-id')),
-      expect: () => <BleConnectionState>[],
+      expect: () => [isA<BleConnectionInitial>()],
     );
 
     // ─────────── T3.3: identidad y conexión ───────────
 
     blocTest<BleConnectionBloc, BleConnectionState>(
-      'T3.3: emite ConnectionInserted + RemoteIdentityLoaded '
-      'cuando GATT read tiene éxito',
+      'T3.3: rechaza identidad cuando no puede resolver el Node canónico',
       build: () {
         when(mockRepo.connect(any)).thenAnswer((_) async {});
 
@@ -277,17 +303,29 @@ void main() {
           ),
         );
 
-        Future.microtask(() => stateController.add(true));
-
         return BleConnectionBloc(
           connectionRepository: mockRepo,
           nodeRepository: mockNodeRepo,
           activeGraphExchange: mockActiveGraphExchange,
+          userRepository: mockUserRepository,
+          remoteRelationRepository: mockRemoteRelationRepository,
         );
       },
-      act: (bloc) =>
-          bloc.add(const ConnectToDevice('AA:BB:CC:DD:EE:FF', myNodeId: 1)),
-      expect: () => [isA<BleConnecting>(), isA<BleConnected>()],
+      act: (bloc) async {
+        bloc.add(const ConnectToDevice('AA:BB:CC:DD:EE:FF', myNodeId: 1));
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+        stateController.add(true);
+      },
+      wait: const Duration(milliseconds: 100),
+      expect: () => [
+        isA<BleConnecting>(),
+        isA<BleConnected>(),
+        isA<BleConnectionError>().having(
+          (state) => state.message,
+          'message',
+          contains('No se pudo resolver el nodo persistente'),
+        ),
+      ],
       verify: (_) {
         verify(mockRepo.connect('AA:BB:CC:DD:EE:FF')).called(1);
       },
@@ -315,17 +353,31 @@ void main() {
           ),
         );
 
-        Future.microtask(() => stateController.add(true));
+        Future<void>.delayed(
+          const Duration(milliseconds: 20),
+          () => stateController.add(true),
+        );
 
         return BleConnectionBloc(
           connectionRepository: mockRepo,
           nodeRepository: mockNodeRepo,
           activeGraphExchange: mockActiveGraphExchange,
+          userRepository: mockUserRepository,
+          remoteRelationRepository: mockRemoteRelationRepository,
         );
       },
       act: (bloc) =>
           bloc.add(const ConnectToDevice('AA:BB:CC:DD:EE:FF', myNodeId: 1)),
-      expect: () => [isA<BleConnecting>(), isA<BleConnected>()],
+      wait: const Duration(milliseconds: 100),
+      expect: () => [
+        isA<BleConnecting>(),
+        isA<BleConnected>(),
+        isA<BleConnectionError>().having(
+          (state) => state.message,
+          'message',
+          contains('No se pudieron descubrir los servicios GATT'),
+        ),
+      ],
     );
 
     // ───────────────────────────────────────────────────────
@@ -359,7 +411,10 @@ void main() {
 
         // Después de persistir la conexión hacemos fallar la lectura
         // de identidad para terminar por el fallback conocido.
-        when(mockRepo.discoverServices(any)).thenThrow(Exception('fail'));
+        when(mockRepo.discoverServices(any)).thenAnswer((_) async {});
+        when(
+          mockRepo.readCharacteristic(any, identityCharacteristicUUID),
+        ).thenAnswer((_) async => null);
 
         when(mockNodeRepo.getNodeByBleAddress('BB:CC:DD:EE:FF:00')).thenAnswer(
           (_) async => Node(
@@ -376,6 +431,8 @@ void main() {
           connectionRepository: mockRepo,
           nodeRepository: mockNodeRepo,
           activeGraphExchange: mockActiveGraphExchange,
+          userRepository: mockUserRepository,
+          remoteRelationRepository: mockRemoteRelationRepository,
         );
       },
 

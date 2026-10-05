@@ -378,18 +378,21 @@ void main() {
       );
     }
 
-    test('T1.2: pasa txPowerLevel a rssiToDistance y lo almacena', () {
-      final scan = scanResult(
-        remoteId: '01:02:03:04:05:06',
-        txPowerLevel: -40,
-        rssi: -60,
-      );
+    test(
+      'T1.2: conserva txPowerLevel pero usa la referencia común de distancia',
+      () {
+        final scan = scanResult(
+          remoteId: '01:02:03:04:05:06',
+          txPowerLevel: -40,
+          rssi: -60,
+        );
 
-      final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
+        final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
 
-      expect(device.txPowerLevel, -40);
-      expect(device.distance, closeTo(10.0, 0.5));
-    });
+        expect(device.txPowerLevel, -40);
+        expect(device.distance, closeTo(3.16, 0.2));
+      },
+    );
 
     test('T1.2: txPowerLevel null → usa fallback -50', () {
       final scan = scanResult(
