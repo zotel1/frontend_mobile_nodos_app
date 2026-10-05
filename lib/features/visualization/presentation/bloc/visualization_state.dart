@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:equatable/equatable.dart';
 
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_layout_snapshot.dart';
 
 /// Estados posibles de la visualización del grafo.
 ///
@@ -58,7 +59,13 @@ class GraphBuilding extends VisualizationState {
 /// Después del centrado inicial, GraphView conserva la transformación
 /// elegida por el usuario.
 class GraphReady extends VisualizationState {
-  final LayoutResult layout;
+  final LayoutResult _layout;
+  final GraphLayoutSnapshot? _snapshot;
+
+  LayoutResult get layout => _layout;
+
+  GraphLayoutSnapshot get snapshot =>
+      _snapshot ?? GraphLayoutSnapshot(layout: _layout);
 
   /// Nodo seleccionado mediante toque simple.
   final int? selectedNodeId;
@@ -72,15 +79,17 @@ class GraphReady extends VisualizationState {
   final Offset? barycenter;
 
   const GraphReady(
-    this.layout, {
+    LayoutResult layout, {
+    GraphLayoutSnapshot? snapshot,
     this.selectedNodeId,
     this.detailsNodeId,
     this.barycenter,
-  });
+  }) : _layout = layout,
+       _snapshot = snapshot;
 
   @override
   List<Object?> get props => [
-    layout,
+    snapshot,
     selectedNodeId,
     detailsNodeId,
     barycenter,

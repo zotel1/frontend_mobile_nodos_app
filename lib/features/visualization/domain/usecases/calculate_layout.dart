@@ -7,6 +7,7 @@ import 'package:frontend_mobile_nodos_app/features/visualization/data/models/gra
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/algorithms/layout_algorithm.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_node.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_layout_snapshot.dart';
 
 /// Caso de uso encargado de calcular y preservar la distribución espacial
 /// del grafo.
@@ -98,7 +99,7 @@ class CalculateLayout {
         k: physics.idealDistance,
         temperature: physics.temperature,
         coolingFactor: physics.coolingFactor,
-        seed: seed,
+        seed: seed ?? GraphLayoutSnapshot.stableSeedFor(source),
       );
 
       final resultMap = await layoutAlgorithm.calculate(params);
