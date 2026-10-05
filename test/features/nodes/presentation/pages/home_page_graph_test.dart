@@ -297,6 +297,7 @@ void main() {
             firstSeen: DateTime(2026, 1, 1),
             lastSeen: DateTime(2026, 6, 19),
             rssiHistory: const [-50],
+            connectable: true,
           ),
           ...List.generate(
             4,

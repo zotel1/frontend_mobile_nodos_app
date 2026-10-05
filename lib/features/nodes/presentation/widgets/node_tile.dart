@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/widgets/proximity_badge.dart';
+import 'package:frontend_mobile_nodos_app/features/nodes/presentation/models/node_interaction_state.dart';
 
 /// ListTile displaying a detected node with proximity indicator.
 ///
@@ -13,8 +14,16 @@ import 'package:frontend_mobile_nodos_app/features/nodes/presentation/widgets/pr
 class NodeTile extends StatelessWidget {
   final Node node;
   final VoidCallback? onTap;
+  final NodeInteractionState? interactionState;
+  final VoidCallback? onInteractionAction;
 
-  const NodeTile({super.key, required this.node, this.onTap});
+  const NodeTile({
+    super.key,
+    required this.node,
+    this.onTap,
+    this.interactionState,
+    this.onInteractionAction,
+  });
 
   int get _lastRssi =>
       node.rssiHistory.isNotEmpty ? node.rssiHistory.last : -100;
@@ -68,9 +77,25 @@ class NodeTile extends StatelessWidget {
               'Visto: ${_formatLastSeen(node.lastSeen)}',
               style: Theme.of(context).textTheme.bodySmall,
             ),
+            if (interactionState != null)
+              Text(
+                interactionState!.statusLabel,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: _statusColor(interactionState!),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
           ],
         ),
-        trailing: node.isKnown
+        trailing: interactionState?.actionLabel != null
+            ? TextButton(
+                onPressed:
+                    interactionState!.action == NodeInteractionAction.connecting
+                    ? null
+                    : onInteractionAction,
+                child: Text(interactionState!.actionLabel!),
+              )
+            : node.isKnown
             ? null
             : Icon(Icons.help_outline, color: Colors.grey.shade400),
         onTap: onTap,
@@ -85,6 +110,13 @@ class NodeTile extends StatelessWidget {
     if (diff.inMinutes < 60) return 'Hace ${diff.inMinutes} min';
     if (diff.inHours < 24) return 'Hace ${diff.inHours}h';
     return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
+  }
+
+  Color _statusColor(NodeInteractionState state) {
+    if (state.connected) return Colors.green.shade700;
+    if (state.linked) return Colors.blue.shade700;
+    if (state.visible) return Colors.orange.shade800;
+    return Colors.grey.shade600;
   }
 }
 

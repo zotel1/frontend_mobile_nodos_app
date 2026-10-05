@@ -150,6 +150,35 @@ void main() {
     );
 
     blocTest<BleConnectionBloc, BleConnectionState>(
+      'ignora un segundo ConnectToDevice mientras el primero está en curso',
+      build: () {
+        when(mockRepo.connect(any)).thenAnswer(
+          (_) async => Future<void>.delayed(const Duration(milliseconds: 40)),
+        );
+        when(
+          mockRepo.connectionState(any),
+        ).thenAnswer((_) => stateController.stream);
+        return BleConnectionBloc(
+          connectionRepository: mockRepo,
+          nodeRepository: mockNodeRepo,
+          activeGraphExchange: mockActiveGraphExchange,
+          userRepository: mockUserRepository,
+          remoteRelationRepository: mockRemoteRelationRepository,
+        );
+      },
+      act: (bloc) {
+        bloc
+          ..add(const ConnectToDevice('duplicate-device', myNodeId: 1))
+          ..add(const ConnectToDevice('duplicate-device', myNodeId: 1));
+      },
+      wait: const Duration(milliseconds: 100),
+      expect: () => [isA<BleConnecting>()],
+      verify: (_) {
+        verify(mockRepo.connect('duplicate-device')).called(1);
+      },
+    );
+
+    blocTest<BleConnectionBloc, BleConnectionState>(
       'emite BleConnectionError con retryable=true ante timeout',
       build: () {
         when(

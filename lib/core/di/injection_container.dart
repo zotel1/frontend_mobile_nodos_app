@@ -44,7 +44,9 @@ import 'package:frontend_mobile_nodos_app/features/history/presentation/bloc/his
 import 'package:frontend_mobile_nodos_app/features/nodes/data/datasources/node_drift_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/data/datasources/node_local_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/data/repositories/node_repository_impl.dart';
+import 'package:frontend_mobile_nodos_app/features/nodes/data/repositories/node_link_repository_impl.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
+import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_link_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/usecases/ensure_local_node.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/usecases/get_node_detail.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/usecases/observe_nodes.dart';
@@ -148,6 +150,10 @@ Future<void> initDependencies() async {
 
   sl.registerLazySingleton<NodeRepository>(
     () => NodeRepositoryImpl(sl<NodeLocalDataSource>()),
+  );
+
+  sl.registerLazySingleton<NodeLinkRepository>(
+    () => NodeLinkRepositoryImpl(sl<AppDatabase>()),
   );
 
   sl.registerLazySingleton<UserRepository>(
