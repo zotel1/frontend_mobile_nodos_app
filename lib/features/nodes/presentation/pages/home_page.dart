@@ -13,6 +13,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_eve
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/widgets/bluetooth_off_banner.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/widgets/bluetooth_off_dialog.dart';
+import 'package:frontend_mobile_nodos_app/core/di/injection_container.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/bloc/node_list_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/widgets/node_metadata_sheet.dart';
@@ -27,6 +28,10 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/wi
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/widgets/node_tooltip.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/widgets/home_page_info_bar.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/widgets/home_page_graph_content.dart';
+import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_link_repository.dart';
+import 'package:frontend_mobile_nodos_app/features/nodes/presentation/models/node_interaction_state.dart';
+import 'package:frontend_mobile_nodos_app/features/nodes/presentation/services/node_interaction_projector.dart';
+import 'package:frontend_mobile_nodos_app/features/nodes/presentation/services/node_interaction_action_dispatcher.dart';
 
 /// Pantalla principal: alterna entre lista de nodos y grafo.
 ///
@@ -67,6 +72,7 @@ class _HomePageState extends State<HomePage> {
 
   /// Suscripción a solicitudes Nodos recibidas por el peripheral GATT.
   StreamSubscription<NodosLinkRequest>? _linkRequestSubscription;
+  StreamSubscription<Set<int>>? _linkedNodesSubscription;
 
   /// Tooltip actualmente visible.
   OverlayEntry? _tooltipEntry;
@@ -82,6 +88,7 @@ class _HomePageState extends State<HomePage> {
   /// Se usa para resolver metadata e IDs SQLite de los dispositivos visibles.
   /// No representa por sí sola la presencia BLE actual.
   List<Node> _currentNodes = [];
+  Set<int> _linkedNodeIds = const <int>{};
 
   /// Indica que se solicitó una sesión y todavía falta su estado activo.
   bool _sessionStartPending = false;
@@ -116,6 +123,25 @@ class _HomePageState extends State<HomePage> {
         : const <String>[];
 
     return NodeListBloc.visibleNodesForDeviceIds(knownNodes, visibleDeviceIds);
+  }
+
+  NodeInteractionState _interactionFor(Node node) {
+    return NodeInteractionProjector.forNode(
+      node: node,
+      bleState: context.read<BleBloc>().state,
+      linkedNodeIds: _linkedNodeIds,
+      connectionBloc: context.read<BleConnectionBloc>(),
+    );
+  }
+
+  void _performNodeAction(Node node) {
+    final interaction = _interactionFor(node);
+    NodeInteractionActionDispatcher.dispatch(
+      context,
+      node: node,
+      interaction: interaction,
+      localNodeId: _getLocalNodeId(),
+    );
   }
 
   /// Abre el tooltip de acciones para un nodo específico.
@@ -180,6 +206,21 @@ class _HomePageState extends State<HomePage> {
           }
         },
 
+        interactionState:
+            NodeInteractionProjector.nodeForId(_currentNodes, node.id) == null
+            ? null
+            : _interactionFor(
+                NodeInteractionProjector.nodeForId(_currentNodes, node.id)!,
+              ),
+        onInteractionAction: () {
+          final sourceNode = NodeInteractionProjector.nodeForId(
+            _currentNodes,
+            node.id,
+          );
+          if (sourceNode != null) _performNodeAction(sourceNode);
+          _dismissTooltip();
+        },
+
         // BUG-001:
         //
         // Antes se usaba User.id como myNodeId.
@@ -194,10 +235,8 @@ class _HomePageState extends State<HomePage> {
               .where((n) => n.id == node.id)
               .map((n) => n.bleAddress)
               .firstOrNull;
-
           if (bleAddress != null && mounted) {
             final myNodeId = _getLocalNodeId();
-
             if (myNodeId != null) {
               context.read<BleConnectionBloc>().add(
                 ConnectToDevice(bleAddress, myNodeId: myNodeId),
@@ -319,6 +358,14 @@ class _HomePageState extends State<HomePage> {
       unawaited(_showLinkRequestDialog(request));
     });
 
+    if (sl.isRegistered<NodeLinkRepository>()) {
+      _linkedNodesSubscription = sl<NodeLinkRepository>()
+          .observeLinkedNodeIds()
+          .listen((ids) {
+            if (mounted) setState(() => _linkedNodeIds = ids);
+          });
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
@@ -335,6 +382,7 @@ class _HomePageState extends State<HomePage> {
     _bleBloc?.add(const StopScan());
 
     _linkRequestSubscription?.cancel();
+    _linkedNodesSubscription?.cancel();
 
     _tooltipEntry?.remove();
 
@@ -837,6 +885,8 @@ class _HomePageState extends State<HomePage> {
       itemCount: nodes.length,
       itemBuilder: (context, index) => NodeTile(
         node: nodes[index],
+        interactionState: _interactionFor(nodes[index]),
+        onInteractionAction: () => _performNodeAction(nodes[index]),
         onTap: () => context.push('/node/${nodes[index].id}'),
       ),
     );

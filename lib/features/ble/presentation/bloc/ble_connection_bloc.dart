@@ -171,6 +171,19 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
   final Map<String, String> _reporterUuids = <String, String>{};
 
   final Set<String> _connectedRemoteIds = <String>{};
+  final Set<String> _connectingRemoteIds = <String>{};
+
+  /// Runtime projections consumed by the interaction UI. They are never
+  /// reconstructed from persistent LINKED relationships.
+  Set<String> get connectedRemoteIds =>
+      Set<String>.unmodifiable(_connectedRemoteIds);
+
+  Set<String> get connectingRemoteIds =>
+      Set<String>.unmodifiable(_connectingRemoteIds);
+
+  bool isConnected(String remoteId) => _connectedRemoteIds.contains(remoteId);
+
+  bool isConnecting(String remoteId) => _connectingRemoteIds.contains(remoteId);
 
   BleConnectionBloc({
     required BleConnectionRepository connectionRepository,
@@ -221,12 +234,20 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
       return;
     }
 
+    if (_connectingRemoteIds.contains(remoteId) ||
+        _connectedRemoteIds.contains(remoteId)) {
+      return;
+    }
+
+    _connectingRemoteIds.add(remoteId);
+
     emit(BleConnecting(remoteId: remoteId));
 
     try {
       final permission = await Permission.bluetoothConnect.request();
 
       if (!permission.isGranted) {
+        _connectingRemoteIds.remove(remoteId);
         emit(
           const BleConnectionError(
             message: 'Permiso BLUETOOTH_CONNECT requerido',
@@ -271,6 +292,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
 
       await _connectionRepo.connect(remoteId);
     } catch (e) {
+      _connectingRemoteIds.remove(remoteId);
       await _cancelSubscription(remoteId);
 
       _localNodeIds.remove(remoteId);
@@ -294,6 +316,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     final remoteId = event.remoteId;
 
     if (!event.connected) {
+      _connectingRemoteIds.remove(remoteId);
       await _cancelSubscription(remoteId);
       _connectedRemoteIds.remove(remoteId);
       _localNodeIds.remove(remoteId);
@@ -305,8 +328,11 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     }
 
     if (!_connectedRemoteIds.add(remoteId)) {
+      _connectingRemoteIds.remove(remoteId);
       return;
     }
+
+    _connectingRemoteIds.remove(remoteId);
 
     emit(BleConnected(remoteId: remoteId));
 
@@ -376,6 +402,8 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
       return;
     }
 
+    _connectingRemoteIds.remove(remoteId);
+
     await _cancelSubscription(remoteId);
 
     _connectedRemoteIds.remove(remoteId);
@@ -420,12 +448,14 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
 
       _localNodeIds.remove(remoteId);
       _connectedRemoteIds.remove(remoteId);
+      _connectingRemoteIds.remove(remoteId);
       await _handleInactiveRemote(remoteId);
     }
 
     _stateSubscriptions.clear();
     _localNodeIds.clear();
     _connectedRemoteIds.clear();
+    _connectingRemoteIds.clear();
     _reporterUuids.clear();
     _sessionManager.clear();
 
@@ -510,6 +540,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     _localNodeIds.clear();
     _reporterUuids.clear();
     _connectedRemoteIds.clear();
+    _connectingRemoteIds.clear();
     _sessionManager.clear();
 
     for (final subscription in subscriptions) {

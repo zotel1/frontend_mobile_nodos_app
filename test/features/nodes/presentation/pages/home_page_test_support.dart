@@ -137,6 +137,7 @@ Node testNode(int id, String addr) => Node(
   firstSeen: DateTime(2026, 1, 1),
   lastSeen: DateTime(2026, 6, 18),
   rssiHistory: const [-50],
+  connectable: true,
 );
 
 BleScanning bleScanningForNodes(Iterable<Node> nodes) => BleScanning(
