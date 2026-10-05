@@ -1,27 +1,18 @@
 import 'dart:typed_data';
 
 import 'ble_frame.dart';
+import 'ble_mtu_policy.dart';
 
 /// Limits and framing rules shared by central and peripheral transports.
 class BleTransportLimits {
-  static const int frameHeaderLength = 18;
-  static const int defaultMtu = 23;
+  static const int frameHeaderLength = BleMtuPolicy.frameHeaderLength;
+  static const int defaultMtu = BleMtuPolicy.fallbackMtu;
   static const int maxMessageSize = 0xffff;
   static const int maxFragments = 0xffff;
   static const int maxConcurrentMessages = 8;
 
   static int chunkPayloadSizeForMtu(int mtu) {
-    if (mtu < defaultMtu) {
-      throw ArgumentError.value(mtu, 'mtu', 'must be at least 23');
-    }
-
-    final attPayload = mtu - 3;
-    final chunkSize = attPayload - frameHeaderLength;
-    if (chunkSize <= 0) {
-      throw ArgumentError.value(mtu, 'mtu', 'cannot fit a transport frame');
-    }
-
-    return chunkSize > 255 ? 255 : chunkSize;
+    return BleMtuPolicy.fromMtu(mtu).framedPayloadCapacity;
   }
 }
 
@@ -142,12 +133,17 @@ class BleMessageFramer {
   List<Uint8List> frame(
     List<int> payload, {
     int mtu = BleTransportLimits.defaultMtu,
+    int? chunkPayloadSize,
   }) {
     if (payload.isEmpty || payload.length > BleTransportLimits.maxMessageSize) {
       throw ArgumentError.value(payload.length, 'payload');
     }
 
-    final chunkSize = BleTransportLimits.chunkPayloadSizeForMtu(mtu);
+    final chunkSize =
+        chunkPayloadSize ?? BleMtuPolicy.centralWriteCapacity(mtu);
+    if (chunkSize <= 0 || chunkSize > BleMtuPolicy.maxFragmentPayload) {
+      throw ArgumentError.value(chunkSize, 'chunkPayloadSize');
+    }
     final totalFragments = (payload.length + chunkSize - 1) ~/ chunkSize;
     if (totalFragments > BleTransportLimits.maxFragments) {
       throw ArgumentError('Payload requires too many BLE fragments');

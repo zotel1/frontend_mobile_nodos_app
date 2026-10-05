@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_gatt_datasource.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/transport/ble_mtu_policy.dart';
 
 /// Implementación concreta de [BleGattDataSource] usando flutter_blue_plus.
 ///
@@ -129,8 +130,7 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
 
   static Future<int> _defaultMtu(String remoteId) async {
     final device = BluetoothDevice.fromId(remoteId);
-    final negotiated = device.mtuNow;
-    return negotiated < 23 ? 23 : negotiated;
+    return BleMtuPolicy.fromMtu(device.mtuNow).effectiveMtu;
   }
 
   /// Stream del estado de conexión del dispositivo.
