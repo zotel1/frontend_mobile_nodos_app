@@ -14,7 +14,10 @@ abstract class NodeRepository {
 
   Future<Node?> getNodeById(int id);
 
-  /// Busca por remoteId / dirección BLE observada localmente.
+  /// Busca por el último identificador de transporte BLE observado.
+  ///
+  /// Esta operación solo resuelve presencia/transporte local. La identidad
+  /// durable de un dispositivo Nodos se resuelve por [deviceUuid].
   Future<Node?> getNodeByBleAddress(String bleAddress);
 
   /// Busca un dispositivo Nodos por su UUID estable.

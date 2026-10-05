@@ -4,6 +4,11 @@ import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 enum BleDeviceKind { nodos, genericBle, unknown }
 
 class BleDevice extends Equatable {
+  /// Opaque transport identifier supplied by the BLE platform/plugin.
+  ///
+  /// Android may expose a MAC-like value while iOS exposes a CoreBluetooth
+  /// UUID. It is valid for runtime GATT operations, but is not a durable
+  /// Nodos identity and must not be used as one.
   final String deviceId;
   final String? deviceUuid;
   final int rssi;
