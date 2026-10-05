@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/layout_result.dart';
+import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_layout_snapshot.dart';
 
 /// Vista interactiva 3D del grafo.
 ///
@@ -22,6 +23,7 @@ import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities
 /// La única diferencia intencional es la representación espacial 3D.
 class GraphView3D extends StatefulWidget {
   final LayoutResult layout;
+  final GraphLayoutSnapshot? snapshot;
 
   /// Nodo seleccionado actualmente.
   ///
@@ -35,6 +37,7 @@ class GraphView3D extends StatefulWidget {
   const GraphView3D({
     super.key,
     required this.layout,
+    this.snapshot,
     this.selectedNodeId,
     this.onNodeTapped,
   });
@@ -59,6 +62,8 @@ class _GraphView3DState extends State<GraphView3D> {
   bool _hasError = false;
   String? _errorMessage;
 
+  LayoutResult get _effectiveLayout => widget.snapshot?.layout ?? widget.layout;
+
   @override
   void initState() {
     super.initState();
@@ -77,7 +82,9 @@ class _GraphView3DState extends State<GraphView3D> {
   void didUpdateWidget(covariant GraphView3D oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    final layoutChanged = widget.layout != oldWidget.layout;
+    final oldLayout = oldWidget.snapshot?.layout ?? oldWidget.layout;
+    final newLayout = widget.snapshot?.layout ?? widget.layout;
+    final layoutChanged = newLayout != oldLayout;
 
     final selectionChanged = widget.selectedNodeId != oldWidget.selectedNodeId;
 
@@ -175,7 +182,7 @@ class _GraphView3DState extends State<GraphView3D> {
   /// las vistas 2D y 3D.
   void _injectData() {
     final payload = layoutResultToJson(
-      widget.layout,
+      _effectiveLayout,
       selectedNodeId: widget.selectedNodeId,
     );
 
@@ -232,7 +239,7 @@ class _GraphView3DState extends State<GraphView3D> {
       return _buildLoadingState();
     }
 
-    if (widget.layout.nodes.isEmpty) {
+    if (_effectiveLayout.nodes.isEmpty) {
       return _buildEmptyState();
     }
 
