@@ -1,6 +1,8 @@
 import 'package:equatable/equatable.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 
+enum BleDeviceKind { nodos, genericBle, unknown }
+
 class BleDevice extends Equatable {
   final String deviceId;
   final String? deviceUuid;
@@ -30,6 +32,8 @@ class BleDevice extends Equatable {
   /// Calculado por DeviceClassifier a partir de serviceUuids y manufacturerId.
   final String? deviceType;
 
+  final BleDeviceKind kind;
+
   const BleDevice({
     required this.deviceId,
     this.deviceUuid,
@@ -43,6 +47,7 @@ class BleDevice extends Equatable {
     this.connectable = false,
     this.serviceUuids,
     this.deviceType,
+    this.kind = BleDeviceKind.unknown,
   });
 
   @override
@@ -59,5 +64,6 @@ class BleDevice extends Equatable {
     connectable,
     serviceUuids,
     deviceType,
+    kind,
   ];
 }

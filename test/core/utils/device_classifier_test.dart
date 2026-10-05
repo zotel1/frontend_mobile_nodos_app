@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/device_classifier.dart';
+import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart';
 
 /// Tests unitarios para DeviceClassifier.
 ///
@@ -9,6 +11,26 @@ import 'package:frontend_mobile_nodos_app/core/utils/device_classifier.dart';
 /// POR QUÉ: DeviceClassifier es una utilidad estática pura (0 estado,
 /// 0 dependencias), ideal para test unitario sin mocks.
 void main() {
+  group('Nodos discovery classification', () {
+    test('accepts casing and equivalent UUID formatting', () {
+      expect(
+        DeviceClassifier.isNodosServiceUuid(
+          '{URN:UUID:4FAFC2011FB5459E8FCCC5C9C331914B}',
+        ),
+        isTrue,
+      );
+      expect(DeviceClassifier.classifyKind([serviceUuid]), BleDeviceKind.nodos);
+    });
+
+    test('does not infer Nodos from manufacturer or device name', () {
+      expect(
+        DeviceClassifier.classifyKind([], manufacturerId: 0x0075),
+        BleDeviceKind.genericBle,
+      );
+      expect(DeviceClassifier.isNodosServiceUuid('4faf'), isFalse);
+    });
+  });
+
   group('DeviceClassifier.classify — por service UUIDs', () {
     test('S3.1: Heart Rate (0x180D) → "Reloj/Fitness"', () {
       // El GUID completo para 0x180D es 0000180d-0000-1000-8000-00805f9b34fb
@@ -168,11 +190,14 @@ void main() {
     });
 
     // PR2: UUID Nodos detectado sin otros servicios — caso advertising real
-    test('Nodos UUID único en lista de services → "Nodo" (advertising real)', () {
-      final type = DeviceClassifier.classify([
-        '4fafc201-1fb5-459e-8fcc-c5c9c331914b',
-      ], null);
-      expect(type, 'Nodo');
-    });
+    test(
+      'Nodos UUID único en lista de services → "Nodo" (advertising real)',
+      () {
+        final type = DeviceClassifier.classify([
+          '4fafc201-1fb5-459e-8fcc-c5c9c331914b',
+        ], null);
+        expect(type, 'Nodo');
+      },
+    );
   });
 }

@@ -21,6 +21,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_r
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remote_relation_repository.dart';
 
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/active_graph_exchange_service.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/services/ble_identity_discovery_service.dart';
 
 import 'package:frontend_mobile_nodos_app/features/ble/domain/usecases/start_ble_advertise.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/usecases/start_ble_scan.dart';
@@ -193,6 +194,13 @@ Future<void> initDependencies() async {
     ),
   );
 
+  sl.registerFactory<BleIdentityDiscoveryService>(
+    () => BleIdentityDiscoveryService(
+      gatt: sl<BleGattDataSource>(),
+      nodeRepository: sl<NodeRepository>(),
+    ),
+  );
+
   // ── BLE use cases ──
 
   sl.registerLazySingleton(() => StartBleScan(sl<BleRepository>()));
@@ -269,6 +277,7 @@ Future<void> initDependencies() async {
       remoteRelationRepository: sl<RemoteRelationRepository>(),
       nodeRepository: sl<NodeRepository>(),
       connectionRepository: sl<BleConnectionRepository>(),
+      identityDiscovery: sl<BleIdentityDiscoveryService>(),
     ),
   );
 

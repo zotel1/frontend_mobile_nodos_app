@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_advertiser_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_scanner_datasource.dart';
+import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/scan_session/domain/repositories/scan_session_repository.dart';
@@ -23,15 +24,9 @@ class BleRepositoryImpl implements BleRepository, BleRuntimeLifecycle {
   @override
   Stream<List<BleDevice>> get scanResults => _scanner.scanResults;
 
-  /// Inicia escaneo promiscuo sin filtro UUID para detectar
-  /// cualquier dispositivo BLE en rango, no solo los que anuncian
-  /// el UUID Nodos.
-  ///
-  /// QUÉ cambió: serviceUuids: null en lugar de [serviceUuid].
-  /// POR QUÉ: el escaneo promiscuo permite detectar tanto instalaciones
-  /// Nodos como dispositivos BLE genéricos.
+  /// Solicita a la plataforma únicamente anuncios del protocolo Nodos.
   @override
-  Future<void> startScan() => _scanner.startScan(serviceUuids: null);
+  Future<void> startScan() => _scanner.startScan(serviceUuids: [serviceUuid]);
 
   @override
   Future<void> stopScan() => _scanner.stopScan();

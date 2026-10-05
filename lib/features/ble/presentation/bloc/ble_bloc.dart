@@ -10,6 +10,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_lin
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_connection_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remote_relation_repository.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/services/ble_identity_discovery_service.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
@@ -22,6 +23,7 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   final RemoteRelationRepository remoteRelationRepository;
   final NodeRepository nodeRepository;
   final BleConnectionRepository connectionRepository;
+  final BleIdentityDiscoveryService? identityDiscovery;
 
   StreamSubscription<List<BleDevice>>? _scanSubscription;
   StreamSubscription<bool>? _btSubscription;
@@ -116,6 +118,7 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     required this.remoteRelationRepository,
     required this.nodeRepository,
     required this.connectionRepository,
+    this.identityDiscovery,
     Duration? dutyCyclePeriod,
   }) : _dutyCyclePeriod =
            dutyCyclePeriod ?? dutyCycleScanDuration + dutyCyclePauseDuration,
@@ -721,6 +724,13 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     }
 
     emit(BleScanning(devices: accumulated));
+
+    final discovery = identityDiscovery;
+    if (discovery != null) {
+      for (final device in accumulated) {
+        unawaited(discovery.identify(device));
+      }
+    }
   }
 
   /// Limpia dispositivos stale del acumulador sin nuevos datos BLE.
@@ -772,6 +782,8 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     _awaitingPeerGraphUuid = null;
 
     await _linkRequestController.close();
+
+    identityDiscovery?.dispose();
 
     return super.close();
   }
