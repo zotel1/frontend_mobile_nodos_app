@@ -3,9 +3,14 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart';
+import 'package:frontend_mobile_nodos_app/core/di/injection_container.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/bloc/node_list_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/widgets/proximity_badge.dart';
+import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_link_repository.dart';
+import 'package:frontend_mobile_nodos_app/features/nodes/presentation/models/node_interaction_state.dart';
 import 'package:frontend_mobile_nodos_app/features/user/presentation/bloc/user_bloc.dart';
 
 /// Detail screen for a single BLE node.
@@ -60,6 +65,90 @@ class NodeDetailPage extends StatelessWidget {
   }
 
   Widget _buildDetail(BuildContext context, Node node) {
+    final bleBloc = _maybeBleBloc(context);
+    final linkStream = sl.isRegistered<NodeLinkRepository>()
+        ? sl<NodeLinkRepository>().observeLinkedNodeIds()
+        : Stream<Set<int>>.value(const <int>{});
+
+    return StreamBuilder<Set<int>>(
+      stream: linkStream,
+      initialData: const <int>{},
+      builder: (context, linkSnapshot) {
+        Widget buildForBleState(BleState bleState) {
+          final connectionBloc = _maybeConnectionBloc(context);
+          final visibleIds = bleBloc == null && node.bleAddress != null
+              ? {node.bleAddress!}
+              : bleState is BleScanning
+              ? bleState.devices.map((device) => device.deviceId).toSet()
+              : const <String>{};
+          final interaction = NodeInteractionState.fromNode(
+            node: node,
+            visibleDeviceIds: visibleIds,
+            linkedNodeIds: linkSnapshot.data ?? const <int>{},
+            connectedRemoteIds: _safeRemoteIds(
+              () => connectionBloc?.connectedRemoteIds,
+            ),
+            connectingRemoteIds: _safeRemoteIds(
+              () => connectionBloc?.connectingRemoteIds,
+            ),
+            bluetoothAvailable: bleBloc == null || bleState is! BluetoothOff,
+          );
+          return _buildDetailContent(context, node, interaction);
+        }
+
+        if (bleBloc == null) {
+          final connectionBloc = _maybeConnectionBloc(context);
+          return connectionBloc == null
+              ? buildForBleState(const BleInitial())
+              : BlocBuilder<BleConnectionBloc, BleConnectionState>(
+                  builder: (context, _) => buildForBleState(const BleInitial()),
+                );
+        }
+        final connectionBloc = _maybeConnectionBloc(context);
+        Widget withConnection(BleState state) {
+          return connectionBloc == null
+              ? buildForBleState(state)
+              : BlocBuilder<BleConnectionBloc, BleConnectionState>(
+                  builder: (context, _) => buildForBleState(state),
+                );
+        }
+
+        return BlocBuilder<BleBloc, BleState>(
+          builder: (context, bleState) => withConnection(bleState),
+        );
+      },
+    );
+  }
+
+  Set<String> _safeRemoteIds(Set<String>? Function() read) {
+    try {
+      return read() ?? const <String>{};
+    } on Object {
+      return const <String>{};
+    }
+  }
+
+  BleBloc? _maybeBleBloc(BuildContext context) {
+    try {
+      return context.read<BleBloc>();
+    } on Object {
+      return null;
+    }
+  }
+
+  BleConnectionBloc? _maybeConnectionBloc(BuildContext context) {
+    try {
+      return context.read<BleConnectionBloc>();
+    } on Object {
+      return null;
+    }
+  }
+
+  Widget _buildDetailContent(
+    BuildContext context,
+    Node node,
+    NodeInteractionState interaction,
+  ) {
     final proximity = node.rssiHistory.isNotEmpty
         ? rssiToProximity(node.rssiHistory.last)
         : ProximityLevel.far;
@@ -161,17 +250,22 @@ class NodeDetailPage extends StatelessWidget {
         // El self-node nunca puede conectarse consigo mismo.
         // Tampoco mostramos la acción si no existe una dirección BLE
         // utilizable o si el dispositivo fue marcado como no conectable.
-        if (!node.isSelf && node.bleAddress != null && node.connectable)
+        if (interaction.actionLabel != null)
           Padding(
             padding: const EdgeInsets.only(top: 24),
             child: SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () {
-                  _connectToNode(context, node);
-                },
-                icon: const Icon(Icons.link),
-                label: const Text('Enlazar'),
+                onPressed:
+                    interaction.action == NodeInteractionAction.connecting
+                    ? null
+                    : () => _performAction(context, node, interaction),
+                icon: Icon(
+                  interaction.action == NodeInteractionAction.disconnect
+                      ? Icons.link_off
+                      : Icons.link,
+                ),
+                label: Text(interaction.actionLabel!),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
@@ -212,6 +306,19 @@ class NodeDetailPage extends StatelessWidget {
     context.read<BleConnectionBloc>().add(
       ConnectToDevice(bleAddress, myNodeId: localNodeId),
     );
+  }
+
+  void _performAction(
+    BuildContext context,
+    Node node,
+    NodeInteractionState interaction,
+  ) {
+    if (node.bleAddress == null) return;
+    if (interaction.action == NodeInteractionAction.disconnect) {
+      context.read<BleConnectionBloc>().add(DisconnectDevice(node.bleAddress!));
+      return;
+    }
+    _connectToNode(context, node);
   }
 
   String _formatDate(DateTime dt) {
