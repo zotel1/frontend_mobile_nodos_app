@@ -2,14 +2,13 @@ import 'dart:async';
 
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:permission_handler/permission_handler.dart';
-
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_connection_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remote_relation_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/active_graph_exchange_service.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/graph_exchange_session_manager.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/services/ble_connection_handshake_coordinator.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/services/live_graph_sync_service.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/platform/ble_permission_policy.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/repositories/user_repository.dart';
 
@@ -161,6 +160,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
   final ActiveGraphExchangeService _activeGraphExchange;
   final RemoteRelationRepository _remoteRelationRepository;
   final GraphExchangeSessionManager _sessionManager;
+  final BlePermissionPolicy _permissionPolicy;
   late final BleConnectionHandshakeCoordinator _handshakeCoordinator;
 
   final Map<String, StreamSubscription<bool>> _stateSubscriptions =
@@ -194,12 +194,15 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     GraphExchangeSessionManager? sessionManager,
     BleConnectionHandshakeCoordinator? handshakeCoordinator,
     LiveGraphSyncService? liveGraphSync,
+    BlePermissionPolicy? permissionPolicy,
   }) : _connectionRepo = connectionRepository,
        _nodeRepository = nodeRepository,
        _userRepository = userRepository,
        _activeGraphExchange = activeGraphExchange,
        _remoteRelationRepository = remoteRelationRepository,
        _sessionManager = sessionManager ?? GraphExchangeSessionManager(),
+       _permissionPolicy =
+           permissionPolicy ?? const AllowAllBlePermissionPolicy(),
        super(const BleConnectionInitial()) {
     _handshakeCoordinator =
         handshakeCoordinator ??
@@ -243,21 +246,18 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
 
     emit(BleConnecting(remoteId: remoteId));
 
-    try {
-      final permission = await Permission.bluetoothConnect.request();
+    final permissionGranted = await _permissionPolicy
+        .requestConnectionPermissions();
 
-      if (!permission.isGranted) {
-        _connectingRemoteIds.remove(remoteId);
-        emit(
-          const BleConnectionError(
-            message: 'Permiso BLUETOOTH_CONNECT requerido',
-            retryable: false,
-          ),
-        );
-        return;
-      }
-    } catch (_) {
-      // Entornos sin platform channel.
+    if (!permissionGranted) {
+      _connectingRemoteIds.remove(remoteId);
+      emit(
+        const BleConnectionError(
+          message: 'Permiso Bluetooth requerido',
+          retryable: false,
+        ),
+      );
+      return;
     }
 
     try {

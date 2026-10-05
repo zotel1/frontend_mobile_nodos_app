@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:android_intent_plus/android_intent.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:frontend_mobile_nodos_app/core/di/injection_container.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/platform/ble_permission_policy.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/platform/ble_settings_navigator.dart';
 import 'package:frontend_mobile_nodos_app/features/user/presentation/bloc/user_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/user/presentation/widgets/color_picker.dart';
 
@@ -20,13 +21,32 @@ import 'package:frontend_mobile_nodos_app/features/user/presentation/widgets/col
 /// POR QUÉ: en primera ejecución, la app necesita permisos, BT activo
 /// y un perfil de usuario antes de comenzar a escanear nodos.
 class OnboardingPage extends StatefulWidget {
-  const OnboardingPage({super.key});
+  const OnboardingPage({
+    super.key,
+    this.permissionPolicy,
+    this.settingsNavigator,
+  });
+
+  final BlePermissionPolicy? permissionPolicy;
+  final BleSettingsNavigator? settingsNavigator;
 
   @override
   State<OnboardingPage> createState() => _OnboardingPageState();
 }
 
 class _OnboardingPageState extends State<OnboardingPage> {
+  BlePermissionPolicy get _permissionPolicy =>
+      widget.permissionPolicy ??
+      (sl.isRegistered<BlePermissionPolicy>()
+          ? sl<BlePermissionPolicy>()
+          : const AllowAllBlePermissionPolicy());
+
+  BleSettingsNavigator get _settingsNavigator =>
+      widget.settingsNavigator ??
+      (sl.isRegistered<BleSettingsNavigator>()
+          ? sl<BleSettingsNavigator>()
+          : const UnsupportedBleSettingsNavigator());
+
   /// Índice del paso actual (0 = Permisos, 1 = Bluetooth, 2 = Perfil).
   int _currentStep = 0;
 
@@ -48,25 +68,18 @@ class _OnboardingPageState extends State<OnboardingPage> {
     super.dispose();
   }
 
-  /// Solicita permisos de Bluetooth Scan y Connect.
-  ///
-  /// QUÉ: llama a [Permission.bluetoothScan.request] y
-  /// [Permission.bluetoothConnect.request] y avanza al paso 2
-  /// si ambos son concedidos o si la plataforma no está disponible
-  /// (entorno de test).
-  ///
-  /// POR QUÉ: sin estos permisos, la app no puede escanear ni
-  /// conectarse a dispositivos BLE cercanos.
+  /// Solicita los permisos requeridos por la política de la plataforma.
   Future<void> _requestPermissions() async {
     setState(() => _isLoading = true);
 
     try {
-      final scanStatus = await Permission.bluetoothScan.request();
-      final connectStatus = await Permission.bluetoothConnect.request();
+      final scanGranted = await _permissionPolicy.requestScanPermissions();
+      final connectionGranted = await _permissionPolicy
+          .requestConnectionPermissions();
 
       if (!mounted) return;
 
-      if (scanStatus.isGranted && connectStatus.isGranted) {
+      if (scanGranted && connectionGranted) {
         setState(() {
           _permissionsDenied = false;
           _isLoading = false;
@@ -78,26 +91,18 @@ class _OnboardingPageState extends State<OnboardingPage> {
           _isLoading = false;
         });
       }
-    } catch (e) {
-      // En entorno de test o si la plataforma no está disponible,
-      // avanzamos al paso 2 directamente.
+    } catch (_) {
       if (!mounted) return;
       setState(() {
-        _permissionsDenied = false;
-        _currentStep = 1;
+        _permissionsDenied = true;
         _isLoading = false;
       });
     }
   }
 
-  /// Abre la configuración de Bluetooth del sistema.
-  ///
-  /// QUÉ: lanza un Android Intent para abrir la pantalla de
-  /// configuración de Bluetooth del dispositivo.
-  ///
-  /// POR QUÉ: permite al usuario activar BT sin salir de la app.
-  void _openBluetoothSettings() {
-    const AndroidIntent(action: 'android.settings.BLUETOOTH_SETTINGS').launch();
+  /// Abre la configuración disponible para la plataforma actual.
+  Future<void> _openBluetoothSettings() async {
+    await _settingsNavigator.openBluetoothSettings();
   }
 
   /// Verifica si Bluetooth está encendido según el estado del BleBloc.
