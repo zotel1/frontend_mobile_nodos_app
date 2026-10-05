@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
 import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_advertiser_datasource.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_peripheral_adapter.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_peripheral_platform.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_identity.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/transport/ble_frame_codec.dart';
 
@@ -32,7 +34,18 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/transport/ble_fram
 /// No interpreta LinkRequest, LinkResponse ni NodosGraphPayload y tampoco
 /// decide si una solicitud debe aceptarse o rechazarse.
 class FlutterBlePeripheralDataSource implements BleAdvertiserDataSource {
-  final FlutterBlePeripheral _peripheral = FlutterBlePeripheral();
+  FlutterBlePeripheralDataSource({
+    BlePeripheralAdapter? peripheral,
+    BlePeripheralPlatform? platform,
+    BlePeripheralPlatformConfigBuilder? configBuilder,
+  }) : _peripheral = peripheral ?? FlutterBlePeripheralAdapter(),
+       _platform = platform ?? BlePeripheralPlatformDetection.current,
+       _configBuilder =
+           configBuilder ?? const BlePeripheralPlatformConfigBuilder();
+
+  final BlePeripheralAdapter _peripheral;
+  final BlePeripheralPlatform _platform;
+  final BlePeripheralPlatformConfigBuilder _configBuilder;
 
   final StreamController<BleGattWrite> _incomingLinkRequestsController =
       StreamController<BleGattWrite>.broadcast();
@@ -59,6 +72,29 @@ class FlutterBlePeripheralDataSource implements BleAdvertiserDataSource {
     final identity = NodosIdentity(uuid: deviceUuid, name: name, color: color);
 
     return Uint8List.fromList(identity.toBytes());
+  }
+
+  /// Builds the platform-neutral Nodos GATT layout.
+  @visibleForTesting
+  static GattServerSettings buildGattServer() {
+    return const GattServerSettings(
+      serviceUuid: serviceUuid,
+      characteristics: [
+        GattCharacteristic.notify(identityCharacteristicUUID),
+        GattCharacteristic.notify(graphCharacteristicUUID),
+        GattCharacteristic(
+          uuid: linkCharacteristicUUID,
+          properties: {
+            GattCharacteristicProperty.read,
+            GattCharacteristicProperty.write,
+            GattCharacteristicProperty.writeWithoutResponse,
+            GattCharacteristicProperty.notify,
+            GattCharacteristicProperty.indicate,
+          },
+        ),
+        GattCharacteristic.write(peerGraphCharacteristicUUID),
+      ],
+    );
   }
 
   @override
@@ -155,40 +191,16 @@ class FlutterBlePeripheralDataSource implements BleAdvertiserDataSource {
     //
     // La identidad, handshake y grafos se intercambian posteriormente
     // mediante las características GATT.
-    const advertiseData = AndroidAdvertiseData(
-      serviceUuid: serviceUuid,
-      serviceUuids: [serviceUuid],
-      includeDeviceName: false,
-    );
-
-    // Característica de control del handshake.
-    //
-    // Debe aceptar escrituras del central y permitir al periférico responder
-    // mediante NOTIFY sobre la misma característica.
-    const linkCharacteristic = GattCharacteristic(
-      uuid: linkCharacteristicUUID,
-      properties: {
-        GattCharacteristicProperty.read,
-        GattCharacteristicProperty.write,
-        GattCharacteristicProperty.writeWithoutResponse,
-        GattCharacteristicProperty.notify,
-        GattCharacteristicProperty.indicate,
-      },
-    );
-
-    const gattServer = GattServerSettings(
-      serviceUuid: serviceUuid,
-      characteristics: [
-        GattCharacteristic.notify(identityCharacteristicUUID),
-        GattCharacteristic.notify(graphCharacteristicUUID),
-        linkCharacteristic,
-        GattCharacteristic.write(peerGraphCharacteristicUUID),
-      ],
+    final platformConfig = _configBuilder.build(
+      platform: _platform,
+      localName: name,
     );
 
     await _peripheral.start(
-      advertiseData: advertiseData,
-      gattServer: gattServer,
+      advertiseData: platformConfig.advertiseData,
+      gattServer: buildGattServer(),
+      androidSettings: platformConfig.androidSettings,
+      darwinSettings: platformConfig.darwinSettings,
     );
   }
 
