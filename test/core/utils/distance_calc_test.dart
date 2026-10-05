@@ -46,24 +46,18 @@ void main() {
       expect(distance, closeTo(1.0, 0.1));
     });
 
-    // ─── T1.1: txPowerLevel paramétrico ─────────────────────────
-    // QUÉ: Si se pasa txPowerLevel, la fórmula usa ese valor en lugar
-    // del config txPower (-50). Si no se pasa, usa el fallback -50.
-    // POR QUÉ: los dispositivos BLE pueden anunciar su propio
-    // txPowerLevel en advertisementData, que da distancia más precisa.
+    // ─── T1.1: referencia común ─────────────────────────────────
+    // El parámetro legado se conserva por compatibilidad, pero no se usa
+    // como RSSI calibrado porque no representa una medición común a 1m.
 
-    test('usa txPowerLevel=-40 en vez del default -50 cuando se pasa', () {
-      // Con default txPower=-50, RSSI=-60 → ~3.16m
-      // Con txPowerLevel=-40, RSSI=-60 → ~10m
+    test('ignora txPowerLevel y conserva la referencia común', () {
       final distance = rssiToDistance(-60, txPowerLevel: -40);
-      expect(distance, closeTo(10.0, 0.5));
+      expect(distance, closeTo(3.16, 0.2));
     });
 
-    test('usa txPowerLevel=-30 en vez del default cuando se pasa', () {
-      // Con default txPower=-50, RSSI=-70 → ~10m
-      // Con txPowerLevel=-30, RSSI=-70 → ~100m
+    test('ignora txPowerLevel incluso con una referencia extrema', () {
       final distance = rssiToDistance(-70, txPowerLevel: -30);
-      expect(distance, closeTo(100.0, 5.0));
+      expect(distance, closeTo(10.0, 0.5));
     });
 
     test('txPowerLevel null hace fallback al config txPower (-50)', () {

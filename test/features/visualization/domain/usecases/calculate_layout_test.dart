@@ -140,8 +140,9 @@ void main() {
         priorLayout: priorLayout,
       );
 
-      // Con cache de posiciones, debería usar menos iteraciones (30 vs 100)
-      expect(mock.lastParams!['iterations'], 30);
+      // Con cache de posiciones, el algoritmo vigente usa 45 iteraciones
+      // para grafos pequeños y conserva menos movimiento visual.
+      expect(mock.lastParams!['iterations'], 45);
       // Las posiciones iniciales vienen del priorLayout
       final nodes = mock.lastParams!['nodes'] as List;
       expect(nodes[0]['x'], 50.0);
