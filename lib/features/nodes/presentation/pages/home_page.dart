@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:android_intent_plus/android_intent.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_link_request.dart';
@@ -13,6 +12,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_eve
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/widgets/bluetooth_off_banner.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/widgets/bluetooth_off_dialog.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/platform/ble_settings_navigator.dart';
 import 'package:frontend_mobile_nodos_app/core/di/injection_container.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/bloc/node_list_bloc.dart';
@@ -45,14 +45,21 @@ import 'package:frontend_mobile_nodos_app/features/nodes/presentation/services/n
 /// Escucha [NodeListBloc] para cambios en la lista y
 /// [VisualizationBloc] para el estado del grafo.
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, this.settingsNavigator});
+
+  final BleSettingsNavigator? settingsNavigator;
 
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
-  /// true = grafo, false = lista.
+  BleSettingsNavigator get _settingsNavigator =>
+      widget.settingsNavigator ??
+      (sl.isRegistered<BleSettingsNavigator>()
+          ? sl<BleSettingsNavigator>()
+          : const UnsupportedBleSettingsNavigator());
+
   bool _showingGraph = false;
 
   /// Controla si el grafo se renderiza en 3D o 2D.
@@ -591,10 +598,7 @@ class _HomePageState extends State<HomePage> {
                     builder: (ctx) => BluetoothOffDialog(
                       onGoToSettings: () {
                         _dialogVisible = false;
-
-                        const AndroidIntent(
-                          action: 'android.settings.BLUETOOTH_SETTINGS',
-                        ).launch();
+                        unawaited(_settingsNavigator.openBluetoothSettings());
                       },
                       onCancel: () {
                         _dialogVisible = false;
@@ -713,9 +717,9 @@ class _HomePageState extends State<HomePage> {
                         if (bleState is BluetoothOff)
                           BluetoothOffBanner(
                             onGoToSettings: () {
-                              const AndroidIntent(
-                                action: 'android.settings.BLUETOOTH_SETTINGS',
-                              ).launch();
+                              unawaited(
+                                _settingsNavigator.openBluetoothSettings(),
+                              );
                             },
                           ),
                         BlocBuilder<NodeListBloc, NodeListState>(

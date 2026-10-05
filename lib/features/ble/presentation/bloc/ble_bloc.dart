@@ -15,6 +15,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/services/graph_exc
 import 'package:frontend_mobile_nodos_app/features/ble/domain/transport/ble_message_reassembler.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/platform/ble_permission_policy.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/repositories/user_repository.dart';
@@ -40,6 +41,7 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   NodosLinkRequest? _pendingLinkRequest;
 
   final GraphExchangeSessionManager _sessionManager;
+  final BlePermissionPolicy _permissionPolicy;
 
   /// Stream utilizado exclusivamente para avisar a la UI que debe mostrar
   /// una solicitud de enlace.
@@ -114,9 +116,12 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     this.identityDiscovery,
     Duration? dutyCyclePeriod,
     GraphExchangeSessionManager? sessionManager,
+    BlePermissionPolicy? permissionPolicy,
   }) : _dutyCyclePeriod =
            dutyCyclePeriod ?? dutyCycleScanDuration + dutyCyclePauseDuration,
        _sessionManager = sessionManager ?? GraphExchangeSessionManager(),
+       _permissionPolicy =
+           permissionPolicy ?? const AllowAllBlePermissionPolicy(),
        super(const BleInitial()) {
     on<StartScan>(_onStartScan);
     on<StopScan>(_onStopScan);
@@ -257,6 +262,13 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     StartAdvertise event,
     Emitter<BleState> emit,
   ) async {
+    final permissionGranted = await _permissionPolicy
+        .requestAdvertisingPermissions();
+    if (!permissionGranted) {
+      emit(const BleError('Permiso Bluetooth requerido para publicar.'));
+      return;
+    }
+
     await repository.startAdvertise(event.deviceUuid, event.name, event.color);
 
     emit(const BleAdvertising());
