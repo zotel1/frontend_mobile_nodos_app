@@ -12,6 +12,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_lin
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_connection_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remote_relation_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/active_graph_exchange_service.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/services/graph_exchange_session_manager.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/repositories/user_repository.dart';
@@ -163,6 +164,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
   final UserRepository _userRepository;
   final ActiveGraphExchangeService _activeGraphExchange;
   final RemoteRelationRepository _remoteRelationRepository;
+  final GraphExchangeSessionManager _sessionManager;
 
   final Map<String, StreamSubscription<bool>> _stateSubscriptions =
       <String, StreamSubscription<bool>>{};
@@ -179,11 +181,13 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     required UserRepository userRepository,
     required ActiveGraphExchangeService activeGraphExchange,
     required RemoteRelationRepository remoteRelationRepository,
+    GraphExchangeSessionManager? sessionManager,
   }) : _connectionRepo = connectionRepository,
        _nodeRepository = nodeRepository,
        _userRepository = userRepository,
        _activeGraphExchange = activeGraphExchange,
        _remoteRelationRepository = remoteRelationRepository,
+       _sessionManager = sessionManager ?? GraphExchangeSessionManager(),
        super(const BleConnectionInitial()) {
     on<ConnectToDevice>(_onConnect);
     on<DisconnectDevice>(_onDisconnect);
@@ -372,6 +376,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
 
     // ── 4. Registrar identidad estable Nodos ──
     _reporterUuids[remoteId] = identity.uuid;
+    _sessionManager.registerPending(identity.uuid, remoteId: remoteId);
 
     // ── 5. Reconciliar identidad estable ──
     final Node? canonicalRemoteNode;
@@ -572,6 +577,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     // Esto ocurre únicamente después de haber persistido correctamente el
     // enlace local.
     await _safeMarkConnected(remoteId);
+    _sessionManager.activate(identity.uuid, remoteId: remoteId);
 
     // ── 13. Enviar nuestro snapshot activo al peer ──
     await _trySendLocalGraph(remoteId);
@@ -679,6 +685,10 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     required String remoteId,
     required NodosIdentity identity,
   }) async {
+    if (!_sessionManager.isAuthorized(identity.uuid)) {
+      return;
+    }
+
     try {
       final graphBytes = await _connectionRepo.readCharacteristic(
         remoteId,
@@ -777,6 +787,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     _localNodeIds.clear();
     _connectedRemoteIds.clear();
     _reporterUuids.clear();
+    _sessionManager.clear();
 
     try {
       await _activeGraphExchange.clear();
@@ -801,6 +812,8 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
 
   Future<void> _handleInactiveRemote(String remoteId) async {
     await _safeMarkDisconnected(remoteId);
+
+    _sessionManager.invalidateByRemoteId(remoteId);
 
     final reporterUuid = _reporterUuids.remove(remoteId);
 
@@ -863,6 +876,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     _localNodeIds.clear();
     _reporterUuids.clear();
     _connectedRemoteIds.clear();
+    _sessionManager.clear();
 
     for (final subscription in subscriptions) {
       await subscription.cancel();

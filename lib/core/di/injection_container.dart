@@ -22,6 +22,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remot
 
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/active_graph_exchange_service.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/ble_identity_discovery_service.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/services/graph_exchange_session_manager.dart';
 
 import 'package:frontend_mobile_nodos_app/features/ble/domain/usecases/start_ble_advertise.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/usecases/start_ble_scan.dart';
@@ -201,6 +202,10 @@ Future<void> initDependencies() async {
     ),
   );
 
+  sl.registerLazySingleton<GraphExchangeSessionManager>(
+    GraphExchangeSessionManager.new,
+  );
+
   // ── BLE use cases ──
 
   sl.registerLazySingleton(() => StartBleScan(sl<BleRepository>()));
@@ -278,6 +283,7 @@ Future<void> initDependencies() async {
       nodeRepository: sl<NodeRepository>(),
       connectionRepository: sl<BleConnectionRepository>(),
       identityDiscovery: sl<BleIdentityDiscoveryService>(),
+      sessionManager: sl<GraphExchangeSessionManager>(),
     ),
   );
 
@@ -294,6 +300,7 @@ Future<void> initDependencies() async {
       userRepository: sl<UserRepository>(),
       activeGraphExchange: sl<ActiveGraphExchangeService>(),
       remoteRelationRepository: sl<RemoteRelationRepository>(),
+      sessionManager: sl<GraphExchangeSessionManager>(),
     ),
   );
 
