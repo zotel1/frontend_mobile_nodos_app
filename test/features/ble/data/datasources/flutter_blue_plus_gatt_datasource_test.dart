@@ -11,6 +11,21 @@ import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/flutter_
 /// FlutterBluePlus en tests unitarios (Extract-Before-Mock).
 void main() {
   group('FlutterBluePlusGattDataSource', () {
+    test('mtu expone la capacidad negociada inyectada', () async {
+      final datasource = FlutterBluePlusGattDataSource.test(
+        connectFn: (_) async {},
+        disconnectFn: (_) async {},
+        connectionStateFn: (_) => const Stream.empty(),
+        discoverServicesFn: (_) async => [],
+        readCharacteristicFn: (_, _) async => null,
+        mtuFn: (_) async => 185,
+        writeCharacteristicFn: (_, _, _) async => true,
+        writeAndWaitForResponseFn: (_, _, _, _) async => null,
+      );
+
+      expect(await datasource.mtu('peer'), 185);
+    });
+
     // ─────────────── connect ───────────────
 
     test(

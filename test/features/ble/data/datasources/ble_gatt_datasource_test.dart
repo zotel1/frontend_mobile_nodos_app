@@ -61,6 +61,9 @@ class _StubGattDataSource extends BleGattDataSource {
   ) => const Stream<List<int>>.empty();
 
   @override
+  Future<int> mtu(String remoteId) async => 23;
+
+  @override
   Future<List<BleServiceInfo>> discoverServices(String remoteId) async {
     lastDiscoverServicesRemoteId = remoteId;
     return _discoverServicesResult;

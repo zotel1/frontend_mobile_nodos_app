@@ -29,6 +29,7 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
   _readCharacteristicFn;
   final Stream<List<int>> Function(String remoteId, String characteristicUuid)
   _characteristicValueStreamFn;
+  final Future<int> Function(String remoteId) _mtuFn;
   final Future<bool> Function(
     String remoteId,
     String characteristicUuid,
@@ -56,6 +57,7 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
       _discoverServicesFn = _defaultDiscoverServices,
       _readCharacteristicFn = _defaultReadCharacteristic,
       _characteristicValueStreamFn = _defaultCharacteristicValueStream,
+      _mtuFn = _defaultMtu,
       _writeCharacteristicFn = _defaultWriteCharacteristic,
       _writeAndWaitForResponseFn = _defaultWriteAndWaitForResponse;
 
@@ -77,6 +79,7 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
     readCharacteristicFn,
     Stream<List<int>> Function(String remoteId, String characteristicUuid)?
     characteristicValueStreamFn,
+    Future<int> Function(String remoteId)? mtuFn,
     required Future<bool> Function(
       String remoteId,
       String characteristicUuid,
@@ -98,6 +101,7 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
        _characteristicValueStreamFn =
            characteristicValueStreamFn ??
            ((_, _) => const Stream<List<int>>.empty()),
+       _mtuFn = mtuFn ?? ((_) async => 23),
        _writeCharacteristicFn = writeCharacteristicFn,
        _writeAndWaitForResponseFn = writeAndWaitForResponseFn;
 
@@ -121,6 +125,12 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
   static Future<void> _defaultDisconnect(String remoteId) async {
     final device = BluetoothDevice.fromId(remoteId);
     await device.disconnect();
+  }
+
+  static Future<int> _defaultMtu(String remoteId) async {
+    final device = BluetoothDevice.fromId(remoteId);
+    final negotiated = device.mtuNow;
+    return negotiated < 23 ? 23 : negotiated;
   }
 
   /// Stream del estado de conexión del dispositivo.
@@ -418,6 +428,9 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
     String remoteId,
     String characteristicUuid,
   ) => _characteristicValueStreamFn(remoteId, characteristicUuid);
+
+  @override
+  Future<int> mtu(String remoteId) => _mtuFn(remoteId);
 
   @override
   Future<bool> writeCharacteristic(

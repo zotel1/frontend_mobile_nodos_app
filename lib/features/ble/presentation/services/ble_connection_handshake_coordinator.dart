@@ -10,6 +10,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remot
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/active_graph_exchange_service.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/graph_exchange_session_manager.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/services/live_graph_sync_service.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/transport/ble_message_reassembler.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/repositories/user_repository.dart';
@@ -73,6 +74,7 @@ class BleConnectionHandshakeCoordinator {
   final LiveGraphSyncService? _liveGraphSync;
   final Map<String, StreamSubscription<List<int>>> _graphSubscriptions =
       <String, StreamSubscription<List<int>>>{};
+  final BleMessageReassembler _remoteGraphReassembler = BleMessageReassembler();
 
   BleConnectionHandshakeCoordinator({
     required BleConnectionRepository connectionRepository,
@@ -411,7 +413,10 @@ class BleConnectionHandshakeCoordinator {
     }
 
     try {
-      final payload = NodosGraphPayload.fromBytes(graphBytes);
+      final completeBytes = _remoteGraphReassembler.add(graphBytes);
+      if (completeBytes == null) return;
+
+      final payload = NodosGraphPayload.fromBytes(completeBytes);
       if (payload.ownerUuid != identity.uuid) return;
 
       await _remoteRelationRepository.replaceSnapshot(
@@ -434,6 +439,7 @@ class BleConnectionHandshakeCoordinator {
     for (final subscription in subscriptions) {
       await subscription.cancel();
     }
+    _remoteGraphReassembler.dispose();
   }
 }
 

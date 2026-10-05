@@ -6,6 +6,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_gra
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_connection_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/active_graph_exchange_service.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/graph_exchange_session_manager.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/transport/ble_frame_codec.dart';
 
 /// Publishes local active snapshots to currently authorized central peers.
 ///
@@ -16,6 +17,7 @@ class LiveGraphSyncService {
   final ActiveGraphExchangeService _activeGraphExchange;
   final GraphExchangeSessionManager _sessionManager;
   final BleConnectionRepository _connectionRepository;
+  final BleMessageFramer _framer;
 
   StreamSubscription<NodosGraphPayload>? _snapshotSubscription;
   Future<void> _operationQueue = Future<void>.value();
@@ -28,9 +30,11 @@ class LiveGraphSyncService {
     required ActiveGraphExchangeService activeGraphExchange,
     required GraphExchangeSessionManager sessionManager,
     required BleConnectionRepository connectionRepository,
+    BleMessageFramer? framer,
   }) : _activeGraphExchange = activeGraphExchange,
        _sessionManager = sessionManager,
-       _connectionRepository = connectionRepository;
+       _connectionRepository = connectionRepository,
+       _framer = framer ?? BleMessageFramer();
 
   void start() {
     if (_started || _disposed) return;
@@ -97,18 +101,35 @@ class LiveGraphSyncService {
       return;
     }
 
-    final written = await _connectionRepository.writeCharacteristic(
-      normalizedRemoteId,
-      peerGraphCharacteristicUUID,
-      payload.toBytes(),
+    final payloadBytes = payload.toBytes();
+    final frames = _framer.frame(
+      payloadBytes,
+      mtu: await _connectionRepository.mtu(normalizedRemoteId),
     );
 
-    if (written) {
-      _lastSentByRemoteId[normalizedRemoteId] = _SentSnapshot(
-        payloadKey: payloadKey,
-        sessionUpdatedAt: session.updatedAt,
+    for (final frame in frames) {
+      final current = _sessionManager.byRemoteId(normalizedRemoteId);
+      if (current == null ||
+          current.state != GraphExchangeSessionState.active ||
+          !current.connected ||
+          current.updatedAt != session.updatedAt) {
+        return;
+      }
+
+      final written = await _connectionRepository.writeCharacteristic(
+        normalizedRemoteId,
+        peerGraphCharacteristicUUID,
+        frame,
       );
+      if (!written) {
+        throw StateError('BLE frame write rejected for $normalizedRemoteId');
+      }
     }
+
+    _lastSentByRemoteId[normalizedRemoteId] = _SentSnapshot(
+      payloadKey: payloadKey,
+      sessionUpdatedAt: session.updatedAt,
+    );
   }
 
   Future<void> _run(Future<void> Function() operation) => operation();

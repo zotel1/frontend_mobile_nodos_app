@@ -5,6 +5,7 @@ import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
 import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_advertiser_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_identity.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/transport/ble_frame_codec.dart';
 
 /// Implementación del periférico BLE de Nodos.
 ///
@@ -44,6 +45,8 @@ class FlutterBlePeripheralDataSource implements BleAdvertiserDataSource {
 
   Uint8List? _identityPayload;
   Uint8List? _graphPayload;
+  final BleMessageFramer _graphFramer = BleMessageFramer();
+  Future<void> _graphSendQueue = Future<void>.value();
 
   /// Serializa la identidad Nodos utilizando la entidad oficial
   /// del protocolo.
@@ -112,14 +115,7 @@ class FlutterBlePeripheralDataSource implements BleAdvertiserDataSource {
           return;
         }
 
-        try {
-          await _peripheral.sendData(
-            payload,
-            characteristicUuid: graphCharacteristicUUID,
-          );
-        } catch (error) {
-          debugPrint('Nodos GATT: no se pudo enviar el grafo: $error');
-        }
+        _enqueueGraphSend(payload);
       }
     });
 
@@ -203,6 +199,34 @@ class FlutterBlePeripheralDataSource implements BleAdvertiserDataSource {
     _graphPayload = Uint8List.fromList(payload);
   }
 
+  void _enqueueGraphSend(Uint8List payload) {
+    final next = _graphSendQueue.then<void>(
+      (_) => _sendGraphFrames(payload),
+      onError: (Object error, StackTrace stackTrace) =>
+          _sendGraphFrames(payload),
+    );
+    _graphSendQueue = next.catchError((Object error, StackTrace stackTrace) {
+      debugPrint('Nodos GATT: no se pudo enviar el grafo: $error');
+    });
+  }
+
+  Future<void> _sendGraphFrames(Uint8List payload) async {
+    try {
+      final frames = _graphFramer.frame(
+        payload,
+        mtu: BleTransportLimits.defaultMtu,
+      );
+      for (final frame in frames) {
+        await _peripheral.sendData(
+          frame,
+          characteristicUuid: graphCharacteristicUUID,
+        );
+      }
+    } catch (error) {
+      debugPrint('Nodos GATT: no se pudo enviar el grafo: $error');
+    }
+  }
+
   @override
   Future<void> sendLinkResponse(Uint8List payload) async {
     if (payload.isEmpty) {
@@ -232,6 +256,7 @@ class FlutterBlePeripheralDataSource implements BleAdvertiserDataSource {
 
     _identityPayload = null;
     _graphPayload = null;
+    _graphSendQueue = Future<void>.value();
 
     await _peripheral.stop();
   }

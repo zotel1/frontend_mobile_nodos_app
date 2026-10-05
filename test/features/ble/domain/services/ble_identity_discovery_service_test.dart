@@ -95,6 +95,9 @@ class _FakeGatt implements BleGattDataSource {
   ) => Stream<List<int>>.empty();
 
   @override
+  Future<int> mtu(String remoteId) async => 23;
+
+  @override
   Future<List<BleServiceInfo>> discoverServices(String remoteId) async {
     calls.add('discover');
     return const [];

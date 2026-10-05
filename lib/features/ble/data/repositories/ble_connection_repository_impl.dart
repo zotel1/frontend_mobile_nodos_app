@@ -60,6 +60,9 @@ class BleConnectionRepositoryImpl implements BleConnectionRepository {
   ) => _gatt.characteristicValueStream(remoteId, characteristicUuid);
 
   @override
+  Future<int> mtu(String remoteId) => _gatt.mtu(remoteId);
+
+  @override
   Future<bool> writeCharacteristic(
     String remoteId,
     String characteristicUuid,

@@ -12,6 +12,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_r
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remote_relation_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/ble_identity_discovery_service.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/graph_exchange_session_manager.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/transport/ble_message_reassembler.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
@@ -30,6 +31,7 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   StreamSubscription<bool>? _btSubscription;
   StreamSubscription<BleIncomingGattWrite>? _linkRequestSubscription;
   StreamSubscription<BleIncomingGattWrite>? _peerGraphSubscription;
+  final BleMessageReassembler _peerGraphReassembler = BleMessageReassembler();
 
   /// Solicitud de enlace Nodos actualmente pendiente de decisión local.
   ///
@@ -175,7 +177,14 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     _peerGraphSubscription = repository.incomingPeerGraphPayloads.listen(
       (write) {
         if (!isClosed) {
-          add(_PeerGraphReceived(write.payload));
+          try {
+            final payload = _peerGraphReassembler.add(write.payload);
+            if (payload != null) {
+              add(_PeerGraphReceived(payload));
+            }
+          } catch (error) {
+            debugPrint('[BleBloc] Fragmento peer graph inválido: $error');
+          }
         }
       },
       onError: (Object error) {
@@ -261,6 +270,7 @@ class BleBloc extends Bloc<BleEvent, BleState> {
 
     _pendingLinkRequest = null;
     _sessionManager.clear();
+    _peerGraphReassembler.dispose();
 
     emit(const BleStopped());
   }

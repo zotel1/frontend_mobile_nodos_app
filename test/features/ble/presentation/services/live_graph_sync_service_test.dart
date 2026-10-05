@@ -9,6 +9,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_r
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/active_graph_exchange_service.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/graph_exchange_session_manager.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/services/live_graph_sync_service.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/transport/ble_message_reassembler.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/entities/user.dart';
@@ -55,6 +56,26 @@ void main() {
 
     expect(connectionRepository.writes, hasLength(1));
     expect(connectionRepository.writes.single.remoteId, 'remote-a');
+  });
+
+  test('frames a large graph according to the negotiated MTU', () async {
+    connectionRepository.mtuValue = 23;
+    for (var index = 0; index < 30; index++) {
+      nodeRepository.nodes['remote-$index'] = _node('remote-$index', index + 2);
+    }
+    sessions.activate('peer-a', remoteId: 'remote-a');
+
+    await activeGraph.markConnected('remote-a');
+    await _flushAsyncWork();
+
+    final reassembler = BleMessageReassembler(scheduleCleanup: false);
+    Uint8List? payload;
+    for (final write in connectionRepository.writes) {
+      payload = reassembler.add(write.payload);
+    }
+
+    expect(connectionRepository.writes.length, greaterThan(1));
+    expect(payload, isNotNull);
   });
 
   test('does not resend an identical snapshot', () async {
@@ -339,6 +360,7 @@ class FakeBleRepository implements BleRepository {
 class FakeBleConnectionRepository implements BleConnectionRepository {
   final List<GraphWrite> writes = <GraphWrite>[];
   final Set<String> failingRemoteIds = <String>{};
+  int mtuValue = 512;
 
   @override
   Future<void> connect(String remoteId) async {}
@@ -351,6 +373,9 @@ class FakeBleConnectionRepository implements BleConnectionRepository {
     String remoteId,
     String characteristicUuid,
   ) => Stream<List<int>>.empty();
+
+  @override
+  Future<int> mtu(String remoteId) async => mtuValue;
 
   @override
   Future<void> disconnect(String remoteId) async {}

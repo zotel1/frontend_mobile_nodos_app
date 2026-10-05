@@ -193,6 +193,9 @@ class TestBleGattDataSource implements BleGattDataSource {
   ) => const Stream<List<int>>.empty();
 
   @override
+  Future<int> mtu(String remoteId) async => 23;
+
+  @override
   Future<List<BleServiceInfo>> discoverServices(String remoteId) async {
     return const [];
   }
@@ -247,6 +250,9 @@ class TestBleConnectionRepository implements BleConnectionRepository {
     String remoteId,
     String characteristicUuid,
   ) => const Stream<List<int>>.empty();
+
+  @override
+  Future<int> mtu(String remoteId) async => 23;
 
   @override
   Future<void> discoverServices(String remoteId) async {}
