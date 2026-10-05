@@ -217,17 +217,35 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
     }
 
     if (target.properties.notify || target.properties.indicate) {
+      final values = StreamController<List<int>>();
+      final valueSubscription = target.onValueReceived.listen(
+        (bytes) {
+          if (bytes.isNotEmpty && !values.isClosed) {
+            values.add(List<int>.from(bytes));
+          }
+        },
+        onError: (Object error, StackTrace stackTrace) {
+          if (!values.isClosed) {
+            values.addError(error, stackTrace);
+          }
+        },
+      );
+
       try {
+        // Attach the listener before enabling notifications. Darwin may
+        // deliver the initial value immediately from didSubscribeTo.
         await target.setNotifyValue(true);
 
-        final value = await target.onValueReceived
-            .firstWhere((bytes) => bytes.isNotEmpty)
-            .timeout(const Duration(seconds: 3));
+        final value = await values.stream.first.timeout(
+          const Duration(seconds: 3),
+        );
 
         return value;
       } on TimeoutException {
         // Si el periférico no envía nada, intentamos READ como fallback.
       } finally {
+        await valueSubscription.cancel();
+        await values.close();
         try {
           await target.setNotifyValue(false);
         } catch (_) {
@@ -256,15 +274,33 @@ class FlutterBluePlusGattDataSource implements BleGattDataSource {
       return;
     }
 
-    await target.setNotifyValue(true);
+    final values = StreamController<List<int>>();
+    final valueSubscription = target.onValueReceived.listen(
+      (bytes) {
+        if (bytes.isNotEmpty && !values.isClosed) {
+          values.add(List<int>.from(bytes));
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (!values.isClosed) {
+          values.addError(error, stackTrace);
+        }
+      },
+      onDone: () {
+        if (!values.isClosed) {
+          values.close();
+        }
+      },
+    );
 
     try {
-      await for (final bytes in target.onValueReceived) {
-        if (bytes.isNotEmpty) {
-          yield List<int>.from(bytes);
-        }
-      }
+      // Keep the subscription alive before enabling notifications so an
+      // immediate Darwin update cannot be lost.
+      await target.setNotifyValue(true);
+      yield* values.stream;
     } finally {
+      await valueSubscription.cancel();
+      await values.close();
       try {
         await target.setNotifyValue(false);
       } catch (_) {
