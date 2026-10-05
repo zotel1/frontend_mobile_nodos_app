@@ -50,6 +50,21 @@ void main() {
     expect(manager.byRemoteId('remote-a')!.connected, isFalse);
   });
 
+  test('updates the runtime transport id without changing peer identity', () {
+    final manager = GraphExchangeSessionManager();
+    manager.activate('peer-a', remoteId: 'AA:BB:CC:DD:EE:FF');
+
+    final updated = manager.activate(
+      'peer-a',
+      remoteId: '6A7B0E4D-1234-4EAB-9ABC-1234567890AB',
+    );
+
+    expect(updated.peerUuid, 'peer-a');
+    expect(updated.remoteId, '6A7B0E4D-1234-4EAB-9ABC-1234567890AB');
+    expect(manager.byRemoteId('AA:BB:CC:DD:EE:FF'), isNull);
+    expect(manager.isAuthorized('peer-a'), isTrue);
+  });
+
   test('clear invalidates every active session idempotently', () {
     final manager = GraphExchangeSessionManager();
     manager.activate('peer-a', remoteId: 'remote-a');

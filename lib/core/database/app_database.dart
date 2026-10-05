@@ -15,7 +15,11 @@ class Nodes extends Table {
   /// Nullable para dispositivos BLE genéricos que no ejecutan Nodos.
   TextColumn get deviceUuid => text().nullable().unique()();
 
-  /// Identificador BLE observado localmente (remoteId).
+  /// Último identificador de transporte BLE observado localmente (remoteId).
+  ///
+  /// El nombre de columna se conserva por compatibilidad histórica. Puede
+  /// ser una MAC en Android o un UUID efímero de CoreBluetooth en iOS; nunca
+  /// representa la identidad durable de un dispositivo Nodos.
   ///
   /// Nullable porque el nodo propio existe aunque no se descubra
   /// a sí mismo mediante escaneo.
