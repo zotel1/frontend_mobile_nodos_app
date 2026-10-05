@@ -25,8 +25,11 @@ abstract class NodeLocalDataSource {
 
   /// Asocia una identidad Nodos estable a un nodo detectado por BLE.
   ///
-  /// Si [deviceUuid] ya pertenece a otra fila de nodes, ambas filas
-  /// representan el mismo dispositivo físico y deben reconciliarse.
+  /// Si [deviceUuid] ya pertenece a otra fila y el nodo actual aún no tiene
+  /// una identidad estable diferente, ambas filas pueden representar el
+  /// mismo dispositivo físico y deben reconciliarse. Si el transporte fue
+  /// reciclado por otro dispositivo Nodos, las identidades se conservan
+  /// separadas.
   ///
   /// La implementación debe preservar:
   /// - connections;

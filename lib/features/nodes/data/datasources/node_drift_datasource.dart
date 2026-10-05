@@ -190,6 +190,21 @@ class NodeDriftDataSource implements NodeLocalDataSource {
                 ..limit(1))
               .getSingleOrNull();
 
+      // A transport identifier can be recycled by the platform (or reused
+      // by another device). If the current row already has a different
+      // stable identity, this is a transport collision, not a duplicate
+      // identity. Keep the old node and move the current transport to the
+      // incoming identity instead of merging their connections.
+      if (current.deviceUuid != null && current.deviceUuid != deviceUuid) {
+        return _reconcileTransportCollision(
+          current: current,
+          canonical: canonical,
+          deviceUuid: deviceUuid,
+          name: name,
+          color: color,
+        );
+      }
+
       // ─────────────────────────────────────────────────────
       // CASO 1
       // El UUID todavía no pertenece a otro Node.
@@ -357,6 +372,62 @@ class NodeDriftDataSource implements NodeLocalDataSource {
 
       return _toDomain(reconciled);
     });
+  }
+
+  Future<Node?> _reconcileTransportCollision({
+    required NodeRow current,
+    required NodeRow? canonical,
+    required String deviceUuid,
+    required String name,
+    required String color,
+  }) async {
+    final currentDomain = _toDomain(current);
+    final transportId = current.bleAddress;
+
+    // Release the unique transport value before assigning it to the new
+    // canonical row. The old Node and its connections remain untouched.
+    await (_db.update(_db.nodes)..where((t) => t.id.equals(current.id))).write(
+      const NodesCompanion(bleAddress: Value(null)),
+    );
+
+    if (canonical != null) {
+      await (_db.update(
+        _db.nodes,
+      )..where((t) => t.id.equals(canonical.id))).write(
+        NodesCompanion(
+          deviceUuid: Value(deviceUuid),
+          bleAddress: Value(transportId),
+          name: Value(name),
+          color: Value(color),
+          lastSeen: Value(current.lastSeen),
+          connectable: Value(current.connectable),
+          estimatedDistance: Value(current.estimatedDistance),
+        ),
+      );
+
+      final updated = await (_db.select(
+        _db.nodes,
+      )..where((t) => t.id.equals(canonical.id))).getSingle();
+      return _toDomain(updated);
+    }
+
+    final newNode = currentDomain.copyWith(
+      id: null,
+      deviceUuid: deviceUuid,
+      bleAddress: transportId,
+      clearRemoteRef: true,
+      isSelf: false,
+      name: name,
+      color: color,
+    );
+    final newId = await _db
+        .into(_db.nodes)
+        .insert(_toCompanion(newNode, isInsert: true));
+
+    final inserted = await (_db.select(
+      _db.nodes,
+    )..where((t) => t.id.equals(newId))).getSingle();
+    return _toDomain(inserted);
   }
 
   @override
