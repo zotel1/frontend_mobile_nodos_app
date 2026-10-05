@@ -133,6 +133,9 @@ class RemoteRelationDriftDataSource {
         .go();
   }
 
+  /// `remote_relations` es una caché del estado conectado, no historial.
+  Future<void> clearAllSnapshots() => _db.delete(_db.remoteRelations).go();
+
   /// Devuelve las relaciones actualmente almacenadas para [reporterUuid].
   ///
   /// Será útil posteriormente para integrar estos snapshots en la

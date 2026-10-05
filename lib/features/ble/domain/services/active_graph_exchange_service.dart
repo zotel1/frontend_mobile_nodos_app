@@ -51,6 +51,12 @@ class ActiveGraphExchangeService {
   /// el [Node] correspondiente.
   final Set<String> _activeRemoteIds = <String>{};
 
+  final StreamController<NodosGraphPayload> _snapshotChangesController =
+      StreamController<NodosGraphPayload>.broadcast();
+
+  StreamSubscription<List<Node>>? _nodeSubscription;
+  String? _lastPublishedPayloadKey;
+
   /// Serializa modificaciones/publicaciones del snapshot.
   ///
   /// Evita que dos cambios rápidos de conexión reconstruyan y publiquen
@@ -70,11 +76,16 @@ class ActiveGraphExchangeService {
   /// Se devuelve una copia inmutable para impedir modificaciones externas.
   Set<String> get activeRemoteIds => Set<String>.unmodifiable(_activeRemoteIds);
 
+  /// Emits only when the effective local active snapshot changes.
+  Stream<NodosGraphPayload> get snapshotChanges =>
+      _snapshotChangesController.stream;
+
   /// Indica que [remoteId] pasó al estado conectado.
   ///
   /// Si ya estaba activo, simplemente vuelve a publicar el snapshot.
   Future<void> markConnected(String remoteId) {
     return _enqueue(() async {
+      _ensureNodeSubscription();
       final normalizedRemoteId = remoteId.trim();
 
       if (normalizedRemoteId.isEmpty) {
@@ -94,6 +105,7 @@ class ActiveGraphExchangeService {
   /// en el snapshot activo.
   Future<void> markDisconnected(String remoteId) {
     return _enqueue(() async {
+      _ensureNodeSubscription();
       final normalizedRemoteId = remoteId.trim();
 
       if (normalizedRemoteId.isEmpty) {
@@ -113,6 +125,7 @@ class ActiveGraphExchangeService {
   /// ciclo BLE completo se reinicia.
   Future<void> clear() {
     return _enqueue(() async {
+      _ensureNodeSubscription();
       _activeRemoteIds.clear();
 
       await _publishCurrentSnapshot();
@@ -125,7 +138,21 @@ class ActiveGraphExchangeService {
   /// grafo tenga desde el principio un payload válido, incluso cuando el
   /// conjunto de conexiones sea vacío.
   Future<void> publishCurrentSnapshot() {
+    _ensureNodeSubscription();
     return _enqueue(_publishCurrentSnapshot);
+  }
+
+  void _ensureNodeSubscription() {
+    if (_nodeSubscription != null) return;
+
+    _nodeSubscription = _nodeRepository.observeNodes().listen(
+      (_) {
+        unawaited(_enqueue(_publishCurrentSnapshot));
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        // A node projection error must not terminate active BLE tracking.
+      },
+    );
   }
 
   /// Construye el payload correspondiente al grafo BLE activo actual.
@@ -192,18 +219,18 @@ class ActiveGraphExchangeService {
   /// prácticamente al mismo tiempo. Sin serialización podría terminar
   /// publicándose después un snapshot construido con estado anterior.
   Future<void> _enqueue(Future<void> Function() operation) {
-    final completer = Completer<void>();
+    final next = _operationQueue.then<void>(
+      (_) => operation(),
+      onError: (Object error, StackTrace stackTrace) => operation(),
+    );
 
-    _operationQueue = _operationQueue.then((_) async {
-      try {
-        await operation();
-        completer.complete();
-      } catch (error, stackTrace) {
-        completer.completeError(error, stackTrace);
-      }
+    // Keep the queue usable after an individual operation fails while still
+    // returning the original Future to the caller.
+    _operationQueue = next.catchError((Object error, StackTrace stackTrace) {
+      // Intentionally swallowed for queue continuity.
     });
 
-    return completer.future;
+    return next;
   }
 
   /// Construye y publica el snapshot activo actual.
@@ -213,10 +240,20 @@ class ActiveGraphExchangeService {
   /// las mismas reglas de identidad y filtrado.
   Future<void> _publishCurrentSnapshot() async {
     final payload = await buildCurrentPayload();
+    final payloadKey = payload.toJsonString();
+
+    if (payloadKey == _lastPublishedPayloadKey) {
+      return;
+    }
 
     await _bleRepository.updateGraphPayload(
       Uint8List.fromList(payload.toBytes()),
     );
+
+    _lastPublishedPayloadKey = payloadKey;
+    if (!_snapshotChangesController.isClosed) {
+      _snapshotChangesController.add(payload);
+    }
   }
 
   /// Convierte un Node local en una referencia segura para intercambio.

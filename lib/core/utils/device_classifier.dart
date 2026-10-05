@@ -1,4 +1,5 @@
 import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart';
 
 /// Clasificador estático de dispositivos BLE por service UUIDs y manufacturer ID.
 ///
@@ -62,7 +63,7 @@ class DeviceClassifier {
   static String? classify(List<String> serviceUuids, int? manufacturerId) {
     // 1. Prioridad máxima: Nodos UUID (R3.3)
     for (final uuid in serviceUuids) {
-      if (uuid == serviceUuid) return 'Nodo';
+      if (isNodosServiceUuid(uuid)) return 'Nodo';
     }
 
     // 2. Buscar service UUID conocido (primer match gana)
@@ -79,6 +80,34 @@ class DeviceClassifier {
 
     // 4. Nada reconocible
     return null;
+  }
+
+  static BleDeviceKind classifyKind(
+    List<String> serviceUuids, {
+    int? manufacturerId,
+  }) {
+    if (serviceUuids.any(isNodosServiceUuid)) {
+      return BleDeviceKind.nodos;
+    }
+    if (serviceUuids.any((uuid) => _matchServiceUuid(uuid) != null) ||
+        (manufacturerId != null &&
+            _manufacturerMap.containsKey(manufacturerId))) {
+      return BleDeviceKind.genericBle;
+    }
+    return BleDeviceKind.unknown;
+  }
+
+  static bool isNodosServiceUuid(String uuid) {
+    return _canonicalUuid(uuid) == _canonicalUuid(serviceUuid);
+  }
+
+  static String _canonicalUuid(String uuid) {
+    var normalized = uuid.trim().toLowerCase();
+    normalized = normalized.replaceAll('{', '').replaceAll('}', '');
+    if (normalized.startsWith('urn:uuid:')) {
+      normalized = normalized.substring('urn:uuid:'.length);
+    }
+    return normalized.replaceAll('-', '');
   }
 
   /// Intenta hacer match de un service UUID contra el mapa conocido.

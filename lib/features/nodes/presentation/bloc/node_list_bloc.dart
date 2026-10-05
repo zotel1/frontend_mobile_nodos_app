@@ -206,6 +206,31 @@ class NodeListError extends NodeListState {
 class NodeListBloc extends Bloc<NodeListEvent, NodeListState> {
   static const int _maxRssiSamples = 20;
 
+  /// Proyecta el catálogo persistido sobre la presencia BLE runtime actual.
+  ///
+  /// [knownNodes] continúa proviniendo de `nodes` y conserva el historial.
+  /// Solamente los nodos cuyo `bleAddress` aparece en [visibleDeviceIds]
+  /// forman parte de la lista visible. La capa que conoce el estado BLE
+  /// runtime es responsable de construir ese conjunto.
+  static List<Node> visibleNodesForDeviceIds(
+    List<Node> knownNodes,
+    Iterable<String> visibleDeviceIds,
+  ) {
+    final visibleIds = visibleDeviceIds.toSet();
+
+    if (visibleIds.isEmpty) {
+      return const <Node>[];
+    }
+
+    return knownNodes
+        .where(
+          (node) =>
+              node.bleAddress != null &&
+              visibleIds.contains(node.bleAddress),
+        )
+        .toList(growable: false);
+  }
+
   final ObserveNodes observeNodes;
   final UpdateNodeMetadata updateNodeMetadata;
   final NodeRepository _nodeRepository;

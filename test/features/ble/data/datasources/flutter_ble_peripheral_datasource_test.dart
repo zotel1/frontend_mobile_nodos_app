@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_advertiser_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/flutter_ble_peripheral_datasource.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_identity.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -45,8 +46,8 @@ void main() {
   // ManufacturerData para que otros dispositivos Nodos los lean.
 
   group('PR6a — buildIdentityPayload (función pura)', () {
-    /// SC-PR6a-001: El payload contiene uuid, name y color.
-    test('construye payload JSON con uuid, name y color', () {
+    /// SC-PR6a-001: El payload contiene la versión y los campos de identidad.
+    test('construye payload JSON versionado con uuid, name y color', () {
       final payload = FlutterBlePeripheralDataSource.buildIdentityPayload(
         'abc-123',
         'Mi Nodo',
@@ -56,19 +57,24 @@ void main() {
       final decoded = utf8.decode(payload);
       final json = jsonDecode(decoded) as Map<String, dynamic>;
 
+      expect(json['version'], NodosIdentity.currentVersion);
       expect(json['uuid'], 'abc-123');
       expect(json['name'], 'Mi Nodo');
       expect(json['color'], '#FF5722');
-      expect(json.length, 3);
+      expect(json.length, 4);
     });
 
     /// Triangulación: diferentes valores producen JSON distinto.
     test('payload varía según los parámetros (triangulación)', () {
       final payload1 = FlutterBlePeripheralDataSource.buildIdentityPayload(
-        'uuid-a', 'Dispositivo A', '#000000',
+        'uuid-a',
+        'Dispositivo A',
+        '#000000',
       );
       final payload2 = FlutterBlePeripheralDataSource.buildIdentityPayload(
-        'uuid-b', 'Dispositivo B', '#FFFFFF',
+        'uuid-b',
+        'Dispositivo B',
+        '#FFFFFF',
       );
 
       final json1 = jsonDecode(utf8.decode(payload1));
@@ -84,7 +90,9 @@ void main() {
     /// Edge case: nombre vacío
     test('soporta nombre vacío sin crash', () {
       final payload = FlutterBlePeripheralDataSource.buildIdentityPayload(
-        'uuid-1', '', '#000000',
+        'uuid-1',
+        '',
+        '#000000',
       );
 
       final json = jsonDecode(utf8.decode(payload));
@@ -94,7 +102,9 @@ void main() {
     /// El payload es Uint8List (no null, no vacío).
     test('payload no es vacío', () {
       final payload = FlutterBlePeripheralDataSource.buildIdentityPayload(
-        'test', 'test', '#000',
+        'test',
+        'test',
+        '#000',
       );
       expect(payload, isA<Uint8List>());
       expect(payload, isNotEmpty);

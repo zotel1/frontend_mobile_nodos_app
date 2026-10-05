@@ -7,10 +7,26 @@
 import 'dart:async' as _i3;
 import 'dart:typed_data' as _i5;
 
+import 'package:frontend_mobile_nodos_app/core/database/app_database.dart'
+    as _i13;
 import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/ble_device.dart'
     as _i4;
+import 'package:frontend_mobile_nodos_app/features/ble/domain/entities/nodos_graph_payload.dart'
+    as _i12;
+import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_connection_repository.dart'
+    as _i6;
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_repository.dart'
     as _i2;
+import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remote_relation_repository.dart'
+    as _i11;
+import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.dart'
+    as _i8;
+import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart'
+    as _i7;
+import 'package:frontend_mobile_nodos_app/features/user/domain/entities/user.dart'
+    as _i10;
+import 'package:frontend_mobile_nodos_app/features/user/domain/repositories/user_repository.dart'
+    as _i9;
 import 'package:mockito/mockito.dart' as _i1;
 
 // ignore_for_file: type=lint
@@ -41,6 +57,26 @@ class MockBleRepository extends _i1.Mock implements _i2.BleRepository {
             returnValueForMissingStub: _i3.Stream<List<_i4.BleDevice>>.empty(),
           )
           as _i3.Stream<List<_i4.BleDevice>>);
+
+  @override
+  _i3.Stream<_i2.BleIncomingGattWrite> get incomingLinkRequests =>
+      (super.noSuchMethod(
+            Invocation.getter(#incomingLinkRequests),
+            returnValue: _i3.Stream<_i2.BleIncomingGattWrite>.empty(),
+            returnValueForMissingStub:
+                _i3.Stream<_i2.BleIncomingGattWrite>.empty(),
+          )
+          as _i3.Stream<_i2.BleIncomingGattWrite>);
+
+  @override
+  _i3.Stream<_i2.BleIncomingGattWrite> get incomingPeerGraphPayloads =>
+      (super.noSuchMethod(
+            Invocation.getter(#incomingPeerGraphPayloads),
+            returnValue: _i3.Stream<_i2.BleIncomingGattWrite>.empty(),
+            returnValueForMissingStub:
+                _i3.Stream<_i2.BleIncomingGattWrite>.empty(),
+          )
+          as _i3.Stream<_i2.BleIncomingGattWrite>);
 
   @override
   _i3.Stream<bool> get bluetoothState =>
@@ -92,6 +128,15 @@ class MockBleRepository extends _i1.Mock implements _i2.BleRepository {
           as _i3.Future<void>);
 
   @override
+  _i3.Future<void> sendLinkResponse(_i5.Uint8List? payload) =>
+      (super.noSuchMethod(
+            Invocation.method(#sendLinkResponse, [payload]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
   _i3.Future<void> stopAdvertise() =>
       (super.noSuchMethod(
             Invocation.method(#stopAdvertise, []),
@@ -108,4 +153,317 @@ class MockBleRepository extends _i1.Mock implements _i2.BleRepository {
             returnValueForMissingStub: _i3.Future<void>.value(),
           )
           as _i3.Future<void>);
+}
+
+/// A class which mocks [BleConnectionRepository].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockBleConnectionRepository extends _i1.Mock
+    implements _i6.BleConnectionRepository {
+  @override
+  _i3.Future<void> connect(String? remoteId) =>
+      (super.noSuchMethod(
+            Invocation.method(#connect, [remoteId]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Future<void> disconnect(String? remoteId) =>
+      (super.noSuchMethod(
+            Invocation.method(#disconnect, [remoteId]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Stream<bool> connectionState(String? remoteId) =>
+      (super.noSuchMethod(
+            Invocation.method(#connectionState, [remoteId]),
+            returnValue: _i3.Stream<bool>.empty(),
+            returnValueForMissingStub: _i3.Stream<bool>.empty(),
+          )
+          as _i3.Stream<bool>);
+
+  @override
+  _i3.Future<void> discoverServices(String? remoteId) =>
+      (super.noSuchMethod(
+            Invocation.method(#discoverServices, [remoteId]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Future<List<int>?> readCharacteristic(
+    String? remoteId,
+    String? characteristicUuid,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#readCharacteristic, [
+              remoteId,
+              characteristicUuid,
+            ]),
+            returnValue: _i3.Future<List<int>?>.value(),
+            returnValueForMissingStub: _i3.Future<List<int>?>.value(),
+          )
+          as _i3.Future<List<int>?>);
+
+  @override
+  _i3.Future<bool> writeCharacteristic(
+    String? remoteId,
+    String? characteristicUuid,
+    List<int>? payload,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#writeCharacteristic, [
+              remoteId,
+              characteristicUuid,
+              payload,
+            ]),
+            returnValue: _i3.Future<bool>.value(false),
+            returnValueForMissingStub: _i3.Future<bool>.value(false),
+          )
+          as _i3.Future<bool>);
+
+  @override
+  _i3.Future<List<int>?> writeAndWaitForResponse(
+    String? remoteId,
+    String? characteristicUuid,
+    List<int>? requestPayload, {
+    Duration? timeout = const Duration(seconds: 30),
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(
+              #writeAndWaitForResponse,
+              [remoteId, characteristicUuid, requestPayload],
+              {#timeout: timeout},
+            ),
+            returnValue: _i3.Future<List<int>?>.value(),
+            returnValueForMissingStub: _i3.Future<List<int>?>.value(),
+          )
+          as _i3.Future<List<int>?>);
+
+  @override
+  _i3.Future<void> saveConnection(int? fromNodeId, int? toNodeId) =>
+      (super.noSuchMethod(
+            Invocation.method(#saveConnection, [fromNodeId, toNodeId]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+}
+
+/// A class which mocks [NodeRepository].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockNodeRepository extends _i1.Mock implements _i7.NodeRepository {
+  @override
+  _i3.Stream<List<_i8.Node>> observeNodes() =>
+      (super.noSuchMethod(
+            Invocation.method(#observeNodes, []),
+            returnValue: _i3.Stream<List<_i8.Node>>.empty(),
+            returnValueForMissingStub: _i3.Stream<List<_i8.Node>>.empty(),
+          )
+          as _i3.Stream<List<_i8.Node>>);
+
+  @override
+  _i3.Future<_i8.Node?> getNodeById(int? id) =>
+      (super.noSuchMethod(
+            Invocation.method(#getNodeById, [id]),
+            returnValue: _i3.Future<_i8.Node?>.value(),
+            returnValueForMissingStub: _i3.Future<_i8.Node?>.value(),
+          )
+          as _i3.Future<_i8.Node?>);
+
+  @override
+  _i3.Future<_i8.Node?> getNodeByBleAddress(String? bleAddress) =>
+      (super.noSuchMethod(
+            Invocation.method(#getNodeByBleAddress, [bleAddress]),
+            returnValue: _i3.Future<_i8.Node?>.value(),
+            returnValueForMissingStub: _i3.Future<_i8.Node?>.value(),
+          )
+          as _i3.Future<_i8.Node?>);
+
+  @override
+  _i3.Future<_i8.Node?> getNodeByDeviceUuid(String? deviceUuid) =>
+      (super.noSuchMethod(
+            Invocation.method(#getNodeByDeviceUuid, [deviceUuid]),
+            returnValue: _i3.Future<_i8.Node?>.value(),
+            returnValueForMissingStub: _i3.Future<_i8.Node?>.value(),
+          )
+          as _i3.Future<_i8.Node?>);
+
+  @override
+  _i3.Future<_i8.Node?> getNodeByRemoteRef(String? remoteRef) =>
+      (super.noSuchMethod(
+            Invocation.method(#getNodeByRemoteRef, [remoteRef]),
+            returnValue: _i3.Future<_i8.Node?>.value(),
+            returnValueForMissingStub: _i3.Future<_i8.Node?>.value(),
+          )
+          as _i3.Future<_i8.Node?>);
+
+  @override
+  _i3.Future<_i8.Node?> getSelfNode() =>
+      (super.noSuchMethod(
+            Invocation.method(#getSelfNode, []),
+            returnValue: _i3.Future<_i8.Node?>.value(),
+            returnValueForMissingStub: _i3.Future<_i8.Node?>.value(),
+          )
+          as _i3.Future<_i8.Node?>);
+
+  @override
+  _i3.Future<void> upsertNode(_i8.Node? node) =>
+      (super.noSuchMethod(
+            Invocation.method(#upsertNode, [node]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Future<_i8.Node?> reconcileNodeIdentity(
+    int? nodeId, {
+    required String? deviceUuid,
+    required String? name,
+    required String? color,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(
+              #reconcileNodeIdentity,
+              [nodeId],
+              {#deviceUuid: deviceUuid, #name: name, #color: color},
+            ),
+            returnValue: _i3.Future<_i8.Node?>.value(),
+            returnValueForMissingStub: _i3.Future<_i8.Node?>.value(),
+          )
+          as _i3.Future<_i8.Node?>);
+
+  @override
+  _i3.Future<void> updateNodeMetadata(int? id, {String? name, String? color}) =>
+      (super.noSuchMethod(
+            Invocation.method(
+              #updateNodeMetadata,
+              [id],
+              {#name: name, #color: color},
+            ),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Future<void> clearAllNodes() =>
+      (super.noSuchMethod(
+            Invocation.method(#clearAllNodes, []),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+}
+
+/// A class which mocks [UserRepository].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockUserRepository extends _i1.Mock implements _i9.UserRepository {
+  @override
+  _i3.Future<_i10.User?> getUserProfile() =>
+      (super.noSuchMethod(
+            Invocation.method(#getUserProfile, []),
+            returnValue: _i3.Future<_i10.User?>.value(),
+            returnValueForMissingStub: _i3.Future<_i10.User?>.value(),
+          )
+          as _i3.Future<_i10.User?>);
+
+  @override
+  _i3.Future<void> updateName(String? name) =>
+      (super.noSuchMethod(
+            Invocation.method(#updateName, [name]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Future<void> updateColor(String? color) =>
+      (super.noSuchMethod(
+            Invocation.method(#updateColor, [color]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Future<void> createUser(_i10.User? user) =>
+      (super.noSuchMethod(
+            Invocation.method(#createUser, [user]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Future<void> setLocalNodeId(int? nodeId) =>
+      (super.noSuchMethod(
+            Invocation.method(#setLocalNodeId, [nodeId]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+}
+
+/// A class which mocks [RemoteRelationRepository].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockRemoteRelationRepository extends _i1.Mock
+    implements _i11.RemoteRelationRepository {
+  @override
+  _i3.Future<void> replaceSnapshot({
+    required String? reporterUuid,
+    required List<_i12.NodosGraphConnection>? connections,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(#replaceSnapshot, [], {
+              #reporterUuid: reporterUuid,
+              #connections: connections,
+            }),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Future<void> clearSnapshot(String? reporterUuid) =>
+      (super.noSuchMethod(
+            Invocation.method(#clearSnapshot, [reporterUuid]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
+  _i3.Future<List<_i13.RemoteRelation>> getSnapshot(String? reporterUuid) =>
+      (super.noSuchMethod(
+            Invocation.method(#getSnapshot, [reporterUuid]),
+            returnValue: _i3.Future<List<_i13.RemoteRelation>>.value(
+              <_i13.RemoteRelation>[],
+            ),
+            returnValueForMissingStub:
+                _i3.Future<List<_i13.RemoteRelation>>.value(
+                  <_i13.RemoteRelation>[],
+                ),
+          )
+          as _i3.Future<List<_i13.RemoteRelation>>);
+
+  @override
+  _i3.Stream<List<_i13.RemoteRelation>> watchAll() =>
+      (super.noSuchMethod(
+            Invocation.method(#watchAll, []),
+            returnValue: _i3.Stream<List<_i13.RemoteRelation>>.empty(),
+            returnValueForMissingStub:
+                _i3.Stream<List<_i13.RemoteRelation>>.empty(),
+          )
+          as _i3.Stream<List<_i13.RemoteRelation>>);
 }

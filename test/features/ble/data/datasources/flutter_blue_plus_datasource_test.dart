@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:frontend_mobile_nodos_app/core/config/app_config.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/ble_scanner_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/data/datasources/flutter_blue_plus_datasource.dart';
@@ -17,6 +18,7 @@ void main() {
     double distance = 1.0,
     ProximityLevel proximity = ProximityLevel.close,
     DateTime? timestamp,
+    bool nodos = true,
   }) {
     return BleDevice(
       deviceId: deviceId,
@@ -25,6 +27,11 @@ void main() {
       distance: distance,
       proximity: proximity,
       timestamp: timestamp ?? now,
+      serviceUuids: nodos
+          ? [serviceUuid]
+          : const ['0000180d-0000-1000-8000-00805f9b34fb'],
+      deviceType: nodos ? 'Nodo' : 'Reloj/Fitness',
+      kind: nodos ? BleDeviceKind.nodos : BleDeviceKind.genericBle,
     );
   }
 
@@ -109,6 +116,32 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       expect(emitted, isEmpty);
+
+      await subscription.cancel();
+    });
+
+    test('scanner exposes only Nodos devices from a mixed batch', () async {
+      final dataSource = FlutterBluePlusDataSource.test(
+        streamController.stream,
+      );
+      final emitted = <List<BleDevice>>[];
+      final subscription = dataSource.scanResults.listen(emitted.add);
+
+      streamController.add([
+        ...List.generate(
+          10,
+          (index) => createBleDevice(deviceId: 'generic-$index', nodos: false),
+        ),
+        createBleDevice(deviceId: 'nodos-a'),
+        createBleDevice(deviceId: 'nodos-b'),
+      ]);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        emitted.single.map((device) => device.deviceId),
+        containsAll(<String>['nodos-a', 'nodos-b']),
+      );
+      expect(emitted.single, hasLength(2));
 
       await subscription.cancel();
     });
@@ -378,18 +411,21 @@ void main() {
       );
     }
 
-    test('T1.2: pasa txPowerLevel a rssiToDistance y lo almacena', () {
-      final scan = scanResult(
-        remoteId: '01:02:03:04:05:06',
-        txPowerLevel: -40,
-        rssi: -60,
-      );
+    test(
+      'T1.2: conserva txPowerLevel pero usa la referencia común de distancia',
+      () {
+        final scan = scanResult(
+          remoteId: '01:02:03:04:05:06',
+          txPowerLevel: -40,
+          rssi: -60,
+        );
 
-      final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
+        final device = FlutterBluePlusDataSource.mapScanResultToDevice(scan);
 
-      expect(device.txPowerLevel, -40);
-      expect(device.distance, closeTo(10.0, 0.5));
-    });
+        expect(device.txPowerLevel, -40);
+        expect(device.distance, closeTo(3.16, 0.2));
+      },
+    );
 
     test('T1.2: txPowerLevel null → usa fallback -50', () {
       final scan = scanResult(

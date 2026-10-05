@@ -68,3 +68,9 @@ abstract class BleRepository {
   /// permanentemente, distorsionando estadísticas de historial.
   Future<void> endScanSession();
 }
+
+/// Capacidad opcional para liberar recursos de infraestructura al cerrar la
+/// aplicación o reinicializar el contenedor.
+abstract class BleRuntimeLifecycle {
+  Future<void> disposeRuntime();
+}

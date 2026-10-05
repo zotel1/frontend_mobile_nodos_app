@@ -63,6 +63,16 @@ abstract class BleGattDataSource {
     String characteristicUuid,
   );
 
+  /// Emits subsequent NOTIFY/INDICATE values from a characteristic until the
+  /// returned stream is cancelled or the connection ends.
+  Stream<List<int>> characteristicValueStream(
+    String remoteId,
+    String characteristicUuid,
+  );
+
+  /// Effective negotiated ATT MTU, or the portable BLE minimum when unknown.
+  Future<int> mtu(String remoteId);
+
   /// Escribe [payload] en la característica [characteristicUuid] del
   /// dispositivo identificado por [remoteId].
   ///

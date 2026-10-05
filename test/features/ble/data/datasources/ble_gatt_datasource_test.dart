@@ -15,6 +15,8 @@ class _StubGattDataSource extends BleGattDataSource {
   String? lastDiscoverServicesRemoteId;
   String? lastReadCharRemoteId;
   String? lastReadCharUuid;
+  String? lastWriteCharRemoteId;
+  String? lastWriteCharUuid;
 
   final _connectCompleter = Completer<void>();
   final _disconnectCompleter = Completer<void>();
@@ -26,6 +28,7 @@ class _StubGattDataSource extends BleGattDataSource {
 
   /// Resultado configurable para readCharacteristic.
   List<int>? _readCharResult;
+  bool _writeCharResult = true;
 
   @override
   Future<void> connect(String remoteId) async {
@@ -52,6 +55,15 @@ class _StubGattDataSource extends BleGattDataSource {
   }
 
   @override
+  Stream<List<int>> characteristicValueStream(
+    String remoteId,
+    String characteristicUuid,
+  ) => const Stream<List<int>>.empty();
+
+  @override
+  Future<int> mtu(String remoteId) async => 23;
+
+  @override
   Future<List<BleServiceInfo>> discoverServices(String remoteId) async {
     lastDiscoverServicesRemoteId = remoteId;
     return _discoverServicesResult;
@@ -59,9 +71,34 @@ class _StubGattDataSource extends BleGattDataSource {
 
   @override
   Future<List<int>?> readCharacteristic(
-      String remoteId, String characteristicUuid) async {
+    String remoteId,
+    String characteristicUuid,
+  ) async {
     lastReadCharRemoteId = remoteId;
     lastReadCharUuid = characteristicUuid;
+    return _readCharResult;
+  }
+
+  @override
+  Future<bool> writeCharacteristic(
+    String remoteId,
+    String characteristicUuid,
+    List<int> payload,
+  ) async {
+    lastWriteCharRemoteId = remoteId;
+    lastWriteCharUuid = characteristicUuid;
+    return _writeCharResult;
+  }
+
+  @override
+  Future<List<int>?> writeAndWaitForResponse(
+    String remoteId,
+    String characteristicUuid,
+    List<int> requestPayload, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    lastWriteCharRemoteId = remoteId;
+    lastWriteCharUuid = characteristicUuid;
     return _readCharResult;
   }
 }

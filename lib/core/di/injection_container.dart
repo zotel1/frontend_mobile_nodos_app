@@ -21,6 +21,8 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_r
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remote_relation_repository.dart';
 
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/active_graph_exchange_service.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/services/ble_identity_discovery_service.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/domain/services/graph_exchange_session_manager.dart';
 
 import 'package:frontend_mobile_nodos_app/features/ble/domain/usecases/start_ble_advertise.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/usecases/start_ble_scan.dart';
@@ -29,6 +31,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/usecases/stop_ble_
 
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/presentation/services/live_graph_sync_service.dart';
 
 import 'package:frontend_mobile_nodos_app/features/history/data/datasources/history_drift_datasource.dart';
 import 'package:frontend_mobile_nodos_app/features/history/data/repositories/history_repository_impl.dart';
@@ -193,6 +196,25 @@ Future<void> initDependencies() async {
     ),
   );
 
+  sl.registerFactory<BleIdentityDiscoveryService>(
+    () => BleIdentityDiscoveryService(
+      gatt: sl<BleGattDataSource>(),
+      nodeRepository: sl<NodeRepository>(),
+    ),
+  );
+
+  sl.registerLazySingleton<GraphExchangeSessionManager>(
+    GraphExchangeSessionManager.new,
+  );
+
+  sl.registerLazySingleton<LiveGraphSyncService>(
+    () => LiveGraphSyncService(
+      activeGraphExchange: sl<ActiveGraphExchangeService>(),
+      sessionManager: sl<GraphExchangeSessionManager>(),
+      connectionRepository: sl<BleConnectionRepository>(),
+    ),
+  );
+
   // ── BLE use cases ──
 
   sl.registerLazySingleton(() => StartBleScan(sl<BleRepository>()));
@@ -269,6 +291,8 @@ Future<void> initDependencies() async {
       remoteRelationRepository: sl<RemoteRelationRepository>(),
       nodeRepository: sl<NodeRepository>(),
       connectionRepository: sl<BleConnectionRepository>(),
+      identityDiscovery: sl<BleIdentityDiscoveryService>(),
+      sessionManager: sl<GraphExchangeSessionManager>(),
     ),
   );
 
@@ -285,6 +309,8 @@ Future<void> initDependencies() async {
       userRepository: sl<UserRepository>(),
       activeGraphExchange: sl<ActiveGraphExchangeService>(),
       remoteRelationRepository: sl<RemoteRelationRepository>(),
+      sessionManager: sl<GraphExchangeSessionManager>(),
+      liveGraphSync: sl<LiveGraphSyncService>(),
     ),
   );
 

@@ -37,6 +37,16 @@ abstract class BleConnectionRepository {
     String characteristicUuid,
   );
 
+  /// Emits subsequent graph characteristic notifications from a connected
+  /// peer until the connection is invalidated.
+  Stream<List<int>> characteristicValueStream(
+    String remoteId,
+    String characteristicUuid,
+  );
+
+  /// Effective negotiated ATT MTU, or the portable BLE minimum when unknown.
+  Future<int> mtu(String remoteId);
+
   /// Escribe [payload] en una característica GATT del dispositivo conectado.
   ///
   /// Retorna `true` cuando la característica existe y la escritura pudo
