@@ -27,14 +27,19 @@ class HistoryRepositoryImpl implements HistoryRepository {
     try {
       final rows = await _dataSource.querySessions();
 
-      final sessions = rows.map((row) {
-        return ScanSession(
-          id: row.read<int>('id'),
-          startedAt: row.read<DateTime>('started_at'),
-          endedAt: row.read<DateTime?>('ended_at'),
-          nodeCount: row.read<int>('node_count'),
+      final sessions = <ScanSession>[];
+      for (final row in rows) {
+        final id = row.read<int>('id');
+        sessions.add(
+          ScanSession(
+            id: id,
+            startedAt: row.read<DateTime>('started_at'),
+            endedAt: row.read<DateTime?>('ended_at'),
+            nodeCount: row.read<int>('node_count'),
+            nodeNames: await _dataSource.querySessionNodeNames(id),
+          ),
         );
-      }).toList();
+      }
 
       return Right(sessions);
     } catch (e) {

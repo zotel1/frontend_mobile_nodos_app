@@ -24,6 +24,7 @@ import 'package:frontend_mobile_nodos_app/features/visualization/presentation/bl
 import 'package:frontend_mobile_nodos_app/features/history/presentation/bloc/history_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/history/presentation/pages/history_tab.dart';
 import 'package:frontend_mobile_nodos_app/features/history/presentation/pages/stats_tab.dart';
+import 'package:frontend_mobile_nodos_app/features/history/presentation/pages/session_detail_page.dart';
 import 'package:frontend_mobile_nodos_app/features/scan_session/presentation/bloc/scan_session_bloc.dart';
 
 /// Scaffold con BottomNavigationBar de 3 tabs usando StatefulShellRoute.
@@ -40,8 +41,15 @@ import 'package:frontend_mobile_nodos_app/features/scan_session/presentation/blo
 /// se pausa al cambiar a otras tabs.
 class ScaffoldWithNavBar extends StatelessWidget {
   final StatefulNavigationShell navigationShell;
+  final HistoryBloc? historyBloc;
+  final ScanSessionBloc? scanSessionBloc;
 
-  const ScaffoldWithNavBar({super.key, required this.navigationShell});
+  const ScaffoldWithNavBar({
+    super.key,
+    required this.navigationShell,
+    this.historyBloc,
+    this.scanSessionBloc,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -56,18 +64,31 @@ class ScaffoldWithNavBar extends StatelessWidget {
     ///
     /// POR QUÉ: sin este listener el dispositivo nunca anuncia el UUID
     /// Nodos, por lo que otros dispositivos no pueden detectarlo.
-    return BlocListener<UserBloc, UserState>(
-      listener: (context, userState) {
-        if (userState is UserLoaded) {
-          bleBloc.add(
-            StartAdvertise(
-              userState.user.uuid,
-              userState.user.name,
-              userState.user.color,
-            ),
-          );
-        }
-      },
+    return MultiBlocListener(
+      listeners: [
+        BlocListener<UserBloc, UserState>(
+          listener: (context, userState) {
+            if (userState is UserLoaded) {
+              bleBloc.add(
+                StartAdvertise(
+                  userState.user.uuid,
+                  userState.user.name,
+                  userState.user.color,
+                ),
+              );
+            }
+          },
+        ),
+        if (scanSessionBloc != null)
+          BlocListener<ScanSessionBloc, ScanSessionState>(
+            bloc: scanSessionBloc,
+            listener: (context, state) {
+              if (state is SessionEnded) {
+                historyBloc?.add(const RefreshHistory());
+              }
+            },
+          ),
+      ],
       child: Scaffold(
         body: navigationShell,
         bottomNavigationBar: BottomNavigationBar(
@@ -80,6 +101,9 @@ class ScaffoldWithNavBar extends StatelessWidget {
               bleBloc.add(const StartScan());
             } else if (navigationShell.currentIndex == 0) {
               bleBloc.add(const StopScan());
+            }
+            if (index == 1 || index == 2) {
+              historyBloc?.add(const RefreshHistory());
             }
 
             navigationShell.goBranch(
@@ -121,7 +145,9 @@ class NodosApp extends StatelessWidget {
         BlocProvider<VisualizationBloc>(create: (_) => sl<VisualizationBloc>()),
         // HistoryBloc: orquesta el historial de sesiones y estadísticas.
         // Compartido entre HistoryTab y StatsTab via BlocProvider.
-        BlocProvider<HistoryBloc>(create: (_) => sl<HistoryBloc>()),
+        BlocProvider<HistoryBloc>(
+          create: (_) => sl<HistoryBloc>()..add(const LoadHistory()),
+        ),
         // ScanSessionBloc: gestiona el ciclo de vida de sesiones de escaneo.
         BlocProvider<ScanSessionBloc>(create: (_) => sl<ScanSessionBloc>()),
       ],
@@ -238,8 +264,11 @@ final _router = GoRouter(
     // T1.9: BottomNavigationBar con 3 tabs usando IndexedStack.
     // Cada tab preserva su estado al cambiar entre ellas.
     StatefulShellRoute.indexedStack(
-      builder: (context, state, navigationShell) =>
-          ScaffoldWithNavBar(navigationShell: navigationShell),
+      builder: (context, state, navigationShell) => ScaffoldWithNavBar(
+        navigationShell: navigationShell,
+        historyBloc: context.read<HistoryBloc>(),
+        scanSessionBloc: context.read<ScanSessionBloc>(),
+      ),
       branches: [
         // Tab 0: Home — escaneo BLE y lista/grafo de nodos.
         StatefulShellBranch(
@@ -266,5 +295,10 @@ final _router = GoRouter(
           NodeDetailPage(id: int.parse(state.pathParameters['id']!)),
     ),
     GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
+    GoRoute(
+      path: '/history/session/:id',
+      builder: (_, state) =>
+          SessionDetailPage(sessionId: int.parse(state.pathParameters['id']!)),
+    ),
   ],
 );

@@ -43,11 +43,16 @@ class EndSession extends ScanSessionEvent {
 class AddNodesToSession extends ScanSessionEvent {
   final int sessionId;
   final List<int> nodeIds;
+  final Map<int, int> rssiByNode;
 
-  const AddNodesToSession(this.sessionId, this.nodeIds);
+  const AddNodesToSession(
+    this.sessionId,
+    this.nodeIds, {
+    this.rssiByNode = const {},
+  });
 
   @override
-  List<Object> get props => [sessionId, nodeIds];
+  List<Object> get props => [sessionId, nodeIds, rssiByNode];
 }
 
 // ── Estados ──────────────────────────────────────────────────────
@@ -170,10 +175,18 @@ class ScanSessionBloc extends Bloc<ScanSessionEvent, ScanSessionState> {
   ) async {
     try {
       final uniqueNodeIds = event.nodeIds.toSet();
-      await _repository.addNodesToSession(
-        event.sessionId,
-        uniqueNodeIds.toList(),
-      );
+      if (event.rssiByNode.isEmpty) {
+        await _repository.addNodesToSession(
+          event.sessionId,
+          uniqueNodeIds.toList(),
+        );
+      } else {
+        await _repository.addNodesToSession(
+          event.sessionId,
+          uniqueNodeIds.toList(),
+          rssiByNode: event.rssiByNode,
+        );
+      }
 
       final currentState = state;
       if (currentState is SessionActive) {

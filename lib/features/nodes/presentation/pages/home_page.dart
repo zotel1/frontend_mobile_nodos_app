@@ -34,16 +34,6 @@ import 'package:frontend_mobile_nodos_app/features/nodes/presentation/services/n
 import 'package:frontend_mobile_nodos_app/features/nodes/presentation/services/node_interaction_action_dispatcher.dart';
 
 /// Pantalla principal: alterna entre lista de nodos y grafo.
-///
-/// Actualmente:
-/// - Con 1 o más nodos activa la vista de grafo.
-/// - Con 0 nodos vuelve a la vista de lista.
-/// - Las vistas 2D y 3D permanecen montadas mediante Stack + Offstage.
-/// - Escucha solicitudes de enlace Nodos recibidas por BLE.
-/// - Permite aceptar o rechazar explícitamente un enlace Nodos.
-///
-/// Escucha [NodeListBloc] para cambios en la lista y
-/// [VisualizationBloc] para el estado del grafo.
 class HomePage extends StatefulWidget {
   const HomePage({super.key, this.settingsNavigator});
 
@@ -62,7 +52,6 @@ class _HomePageState extends State<HomePage> {
 
   bool _showingGraph = false;
 
-  /// Controla si el grafo se renderiza en 3D o 2D.
   final ValueNotifier<bool> _is3D = ValueNotifier<bool>(false);
 
   /// Previene múltiples BluetoothOffDialog superpuestos.
@@ -130,6 +119,14 @@ class _HomePageState extends State<HomePage> {
         : const <String>[];
 
     return NodeListBloc.visibleNodesForDeviceIds(knownNodes, visibleDeviceIds);
+  }
+
+  Map<int, int> _rssiByNode(Iterable<Node> nodes) {
+    return {
+      for (final node in nodes)
+        if (node.id != null && node.rssiHistory.isNotEmpty)
+          node.id!: node.rssiHistory.last,
+    };
   }
 
   NodeInteractionState _interactionFor(Node node) {
@@ -646,9 +643,6 @@ class _HomePageState extends State<HomePage> {
                     context.read<BleBloc>().state,
                   );
 
-                  // NodeListLoaded representa el catálogo persistente completo.
-                  // Solo los nodos que también están en la ventana BLE actual
-                  // pueden pertenecer a esta sesión de escaneo.
                   if (visibleNodes.isNotEmpty) {
                     final sessionBloc = context.read<ScanSessionBloc>();
                     final sessionState = sessionBloc.state;
@@ -664,7 +658,11 @@ class _HomePageState extends State<HomePage> {
 
                       if (nodeIds.isNotEmpty) {
                         sessionBloc.add(
-                          AddNodesToSession(sessionState.sessionId, nodeIds),
+                          AddNodesToSession(
+                            sessionState.sessionId,
+                            nodeIds,
+                            rssiByNode: _rssiByNode(visibleNodes),
+                          ),
                         );
                       }
                     }
@@ -681,10 +679,6 @@ class _HomePageState extends State<HomePage> {
                       '${sessionState.nodeCount} nodos',
                     );
 
-                    // El primer NodeListLoaded puede llegar mientras
-                    // StartSession todavía está en vuelo. Reproyectamos la
-                    // ventana BLE actual cuando la sesión queda disponible,
-                    // sin sleeps ni polling.
                     if (_sessionStartPending && sessionState.nodeCount == 0) {
                       _sessionStartPending = false;
                       final visibleNodeIds = _visibleNodes(
@@ -697,6 +691,12 @@ class _HomePageState extends State<HomePage> {
                           AddNodesToSession(
                             sessionState.sessionId,
                             visibleNodeIds,
+                            rssiByNode: _rssiByNode(
+                              _visibleNodes(
+                                _currentNodes,
+                                context.read<BleBloc>().state,
+                              ),
+                            ),
                           ),
                         );
                       }
