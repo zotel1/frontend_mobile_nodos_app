@@ -31,6 +31,18 @@ class HistoryDriftDataSource {
     return query.get();
   }
 
+  Future<List<String>> querySessionNodeNames(int sessionId) async {
+    final rows = await _db
+        .customSelect(
+          'SELECT n.name FROM scan_session_nodes sn '
+          'JOIN nodes n ON sn.node_id = n.id '
+          'WHERE sn.session_id = ? AND n.name IS NOT NULL',
+          variables: [Variable.withInt(sessionId)],
+        )
+        .get();
+    return rows.map((row) => row.read<String>('name')).toList();
+  }
+
   /// Retorna los nodos detectados en una sesión con su nombre y RSSI.
   Future<List<QueryRow>> querySessionDetail(int sessionId) {
     final query = _db.customSelect(

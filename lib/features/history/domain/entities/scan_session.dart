@@ -21,17 +21,28 @@ class ScanSession extends Equatable {
   /// Lista de nodos con RSSI (poblada solo en consultas de detalle).
   final List<SessionNode> nodes;
 
+  /// Names observed in this session, used by the history search filter.
+  final List<String> nodeNames;
+
   const ScanSession({
     required this.id,
     required this.startedAt,
     this.endedAt,
     required this.nodeCount,
     this.nodes = const [],
+    this.nodeNames = const [],
   });
 
   /// Duración de la sesión si tiene [endedAt].
   Duration? get duration => endedAt?.difference(startedAt);
 
   @override
-  List<Object?> get props => [id, startedAt, endedAt, nodeCount, nodes];
+  List<Object?> get props => [
+    id,
+    startedAt,
+    endedAt,
+    nodeCount,
+    nodes,
+    nodeNames,
+  ];
 }

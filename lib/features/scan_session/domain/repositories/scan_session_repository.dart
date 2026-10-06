@@ -17,7 +17,11 @@ abstract class ScanSessionRepository {
   /// Registra nodos detectados en una sesión activa.
   /// Usa insertOrIgnore para evitar duplicados (mismo nodo en la misma sesión).
   /// Actualiza el contador `nodesDetected` en la tabla scan_sessions.
-  Future<void> addNodesToSession(int sessionId, List<int> nodeIds);
+  Future<void> addNodesToSession(
+    int sessionId,
+    List<int> nodeIds, {
+    Map<int, int> rssiByNode = const {},
+  });
 
   /// Retorna el ID de la sesión activa (con `endedAt = null`), o null si no hay.
   Future<int?> getActiveSession();

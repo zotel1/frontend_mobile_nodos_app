@@ -142,9 +142,17 @@ class MockScanSessionRepository extends _i1.Mock
           as _i3.Future<void>);
 
   @override
-  _i3.Future<void> addNodesToSession(int? sessionId, List<int>? nodeIds) =>
+  _i3.Future<void> addNodesToSession(
+    int? sessionId,
+    List<int>? nodeIds, {
+    Map<int, int>? rssiByNode,
+  }) =>
       (super.noSuchMethod(
-            Invocation.method(#addNodesToSession, [sessionId, nodeIds]),
+            Invocation.method(
+              #addNodesToSession,
+              [sessionId, nodeIds],
+              {#rssiByNode: rssiByNode},
+            ),
             returnValue: _i3.Future<void>.value(),
             returnValueForMissingStub: _i3.Future<void>.value(),
           )

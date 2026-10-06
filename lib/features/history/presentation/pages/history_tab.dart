@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import 'package:frontend_mobile_nodos_app/features/history/domain/entities/scan_session.dart';
 import 'package:frontend_mobile_nodos_app/features/history/presentation/bloc/history_bloc.dart';
 
@@ -33,7 +34,7 @@ class HistoryTab extends StatelessWidget {
     return BlocBuilder<HistoryBloc, HistoryState>(
       builder: (context, state) {
         if (state is HistoryInitial) {
-          return const SizedBox.shrink();
+          return const Center(child: CircularProgressIndicator());
         }
         if (state is HistoryLoading) {
           return const Center(child: CircularProgressIndicator());
@@ -43,7 +44,7 @@ class HistoryTab extends StatelessWidget {
         }
         if (state is HistoryLoaded) {
           return _HistoryContent(
-            sessions: state.sessions,
+            sessions: _filterSessions(state.sessions, state.filters),
             filters: state.filters,
           );
         }
@@ -51,6 +52,31 @@ class HistoryTab extends StatelessWidget {
       },
     );
   }
+}
+
+List<ScanSession> _filterSessions(
+  List<ScanSession> sessions,
+  HistoryFilters filters,
+) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  return sessions.where((session) {
+    final dateMatch = switch (filters.dateRange) {
+      DateRange.today => !session.startedAt.isBefore(today),
+      DateRange.last7Days => !session.startedAt.isBefore(
+        now.subtract(const Duration(days: 7)),
+      ),
+      DateRange.last30Days => !session.startedAt.isBefore(
+        now.subtract(const Duration(days: 30)),
+      ),
+      DateRange.all => true,
+    };
+    final query = filters.nameQuery?.trim().toLowerCase() ?? '';
+    final nameMatch =
+        query.isEmpty ||
+        session.nodeNames.any((name) => name.toLowerCase().contains(query));
+    return dateMatch && nameMatch;
+  }).toList();
 }
 
 class _HistoryContent extends StatelessWidget {
@@ -161,6 +187,7 @@ class _SessionCard extends StatelessWidget {
             context,
           ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
         ),
+        onTap: () => context.push('/history/session/${session.id}'),
       ),
     );
   }
