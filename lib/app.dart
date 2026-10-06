@@ -10,6 +10,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_con
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/services/ble_lifecycle_coordinator.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/services/live_graph_sync_service.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/platform/ble_background_policy.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remote_relation_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/services/active_graph_exchange_service.dart';
@@ -164,6 +165,7 @@ class _NodosAppBodyState extends State<_NodosAppBody> {
         bleBloc: context.read<BleBloc>(),
         connectionBloc: context.read<BleConnectionBloc>(),
         liveGraphSync: sl<LiveGraphSyncService>(),
+        backgroundPolicy: sl<BleBackgroundPolicy>(),
       );
     }
     // Despachar LoadProfile en el primer frame para que el UserBloc

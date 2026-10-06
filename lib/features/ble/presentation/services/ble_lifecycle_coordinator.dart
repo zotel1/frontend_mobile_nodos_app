@@ -7,6 +7,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remot
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/services/live_graph_sync_service.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/platform/ble_background_policy.dart';
 
 /// Centraliza la invalidación del runtime BLE.
 ///
@@ -19,6 +20,7 @@ class BleLifecycleCoordinator {
   final BleBloc _bleBloc;
   final BleConnectionBloc _connectionBloc;
   final LiveGraphSyncService? _liveGraphSync;
+  final BleBackgroundPolicy _backgroundPolicy;
 
   StreamSubscription<bool>? _adapterSubscription;
   Future<void>? _cleanupFuture;
@@ -31,13 +33,19 @@ class BleLifecycleCoordinator {
     required BleBloc bleBloc,
     required BleConnectionBloc connectionBloc,
     LiveGraphSyncService? liveGraphSync,
+    BleBackgroundPolicy? backgroundPolicy,
   }) : _bleRepository = bleRepository,
        _remoteRelationRepository = remoteRelationRepository,
        _bleBloc = bleBloc,
        _connectionBloc = connectionBloc,
-       _liveGraphSync = liveGraphSync;
+       _liveGraphSync = liveGraphSync,
+       _backgroundPolicy = backgroundPolicy ?? BleBackgroundPolicy.platform;
 
   Future<void> initialize() async {
+    debugPrint(
+      '[BleLifecycle] initialize backgroundPolicy='
+      '${_backgroundPolicy.keepRuntimeOnBackground ? 'capable' : 'foregroundOnly'}',
+    );
     _runtimeInvalidated = false;
     _liveGraphSync?.start();
     // Los snapshots no sobreviven una ejecución: no se pueden considerar
@@ -65,13 +73,30 @@ class BleLifecycleCoordinator {
   /// transient transition (Control Center, calls, permission dialogs).
   void onInactive() {}
 
-  Future<void> onBackground() => invalidateRuntime(bluetoothOn: true);
+  Future<void> onBackground() async {
+    debugPrint(
+      '[BleLifecycle] background '
+      '${_backgroundPolicy.keepRuntimeOnBackground ? 'preserve-capable-runtime' : 'invalidate-runtime'}',
+    );
+
+    if (_backgroundPolicy.keepRuntimeOnBackground) {
+      // The native BLE stack may continue or wake the process, but Dart is
+      // not assumed to run continuously. Stop proactive local publications;
+      // retain native GATT/advertising capability for the system to manage.
+      await _liveGraphSync?.pause();
+      return;
+    }
+
+    await invalidateRuntime(bluetoothOn: true);
+  }
 
   Future<void> onDetached() => invalidateRuntime(bluetoothOn: true);
 
   Future<void> onForeground() async {
     final isOn = _lastAdapterState ?? await _bleRepository.bluetoothState.first;
     _runtimeInvalidated = false;
+    _liveGraphSync?.start();
+    debugPrint('[BleLifecycle] foreground adapterOn=$isOn');
     if (!isOn) {
       await invalidateRuntime(bluetoothOn: false);
     }

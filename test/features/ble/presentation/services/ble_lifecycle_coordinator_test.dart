@@ -15,6 +15,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_blo
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_state.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/services/ble_lifecycle_coordinator.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/platform/ble_background_policy.dart';
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/repositories/user_repository.dart';
 
@@ -179,5 +180,21 @@ void main() {
     verify(bleRepository.stopScan()).called(1);
     verify(bleRepository.stopAdvertise()).called(1);
     verify(activeGraphExchange.clear()).called(1);
+  });
+
+  test('background-capable policy does not run foreground cleanup', () async {
+    final backgroundCapableCoordinator = BleLifecycleCoordinator(
+      bleRepository: bleRepository,
+      remoteRelationRepository: remoteRelations,
+      bleBloc: bleBloc,
+      connectionBloc: connectionBloc,
+      backgroundPolicy: const BleBackgroundPolicy.iosBackgroundCapable(),
+    );
+
+    await backgroundCapableCoordinator.onBackground();
+
+    verifyNever(bleRepository.stopScan());
+    verifyNever(bleRepository.stopAdvertise());
+    verifyNever(activeGraphExchange.clear());
   });
 }
