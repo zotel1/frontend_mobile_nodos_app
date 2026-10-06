@@ -8,47 +8,37 @@ import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities
 import 'package:frontend_mobile_nodos_app/features/visualization/domain/entities/graph_layout_snapshot.dart';
 import 'package:frontend_mobile_nodos_app/core/utils/distance_calc.dart';
 import 'package:frontend_mobile_nodos_app/features/visualization/presentation/widgets/graph_view_3d.dart';
-
 // ─── Stub de WebViewPlatform para tests widget ──────────────────────
 // Permite que WebViewWidget y WebViewController se instancien en tests
 // sin una plataforma nativa real.
-
 class _StubWebViewWidget extends PlatformWebViewWidget {
   _StubWebViewWidget(super.params) : super.implementation();
-
   @override
   Widget build(BuildContext context) {
     return const SizedBox(key: Key('stub_webview'));
   }
 }
-
 class _StubWebViewController extends PlatformWebViewController {
   _StubWebViewController(super.params) : super.implementation();
-
   final List<String> loadedAssets = [];
   final List<JavaScriptChannelParams> channels = [];
   final List<String> executedJs = [];
   JavaScriptMode? javaScriptMode;
-
   /// Callback que simula onPageFinished desde el stub.
   void Function(String)? onPageFinished;
   void Function(WebResourceError)? onWebResourceError;
-
   @override
   Future<void> loadFlutterAsset(String key) async {
     loadedAssets.add(key);
   }
-
   @override
   Future<void> addJavaScriptChannel(JavaScriptChannelParams params) async {
     channels.add(params);
   }
-
   @override
   Future<void> removeJavaScriptChannel(String channelName) async {
     channels.removeWhere((channel) => channel.name == channelName);
   }
-
   @override
   Future<void> runJavaScript(String javaScript) async {
     executedJs.add(javaScript);
@@ -70,7 +60,7 @@ class _StubWebViewController extends PlatformWebViewController {
   Future<void> setPlatformNavigationDelegate(
     PlatformNavigationDelegate handler,
   ) async {
-    // Captura el delegate y extrae el callback onPageFinished
+    // Captura el callback onPageFinished para simular eventos nativos.
     if (handler is _StubNavigationDelegate) {
       onPageFinished = handler.onPageFinished;
     }
@@ -880,4 +870,5 @@ void main() {
       expect((payload['nodes'] as List<dynamic>)[98]['z'], 2.0);
     });
   });
+
 }
