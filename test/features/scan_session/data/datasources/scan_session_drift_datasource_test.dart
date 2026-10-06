@@ -178,6 +178,34 @@ void main() {
       },
     );
 
+    test('addNodesToSession conserva el último RSSI observado', () async {
+      final sessionId = await repository.startSession();
+      final nodeId = await database
+          .into(database.nodes)
+          .insert(
+            NodesCompanion(
+              bleAddress: const Value('RS:SI:HI:ST:OR:01'),
+              firstSeen: Value(DateTime.now()),
+              lastSeen: Value(DateTime.now()),
+            ),
+          );
+
+      await repository.addNodesToSession(
+        sessionId,
+        [nodeId],
+        rssiByNode: {nodeId: -48},
+      );
+      await repository.addNodesToSession(
+        sessionId,
+        [nodeId],
+        rssiByNode: {nodeId: -72},
+      );
+
+      final rows = await database.select(database.scanSessionNodes).get();
+      expect(rows, hasLength(1));
+      expect(rows.single.rssi, -72);
+    });
+
     test('endSession actualiza endedAt correctamente', () async {
       final sessionId = await repository.startSession();
 

@@ -23,6 +23,9 @@ class StatsTab extends StatelessWidget {
         if (state is HistoryLoading) {
           return const Center(child: CircularProgressIndicator());
         }
+        if (state is HistoryInitial) {
+          return const Center(child: CircularProgressIndicator());
+        }
         if (state is HistoryLoaded) {
           return _StatsContent(stats: state.stats);
         }

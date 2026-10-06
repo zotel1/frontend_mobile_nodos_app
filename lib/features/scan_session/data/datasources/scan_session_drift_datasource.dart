@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart' hide Column;
+import 'dart:convert';
 import 'package:frontend_mobile_nodos_app/core/database/app_database.dart';
 import 'package:frontend_mobile_nodos_app/features/scan_session/domain/repositories/scan_session_repository.dart';
 
@@ -11,6 +12,7 @@ import 'package:frontend_mobile_nodos_app/features/scan_session/domain/repositor
 /// El dominio no necesita saber que usamos Drift ni cómo se mapean
 /// las tablas — solo conoce la interfaz [ScanSessionRepository].
 class ScanSessionRepositoryImpl implements ScanSessionRepository {
+  static const _unknownRssiFallback = -100;
   final AppDatabase _db;
 
   ScanSessionRepositoryImpl(this._db);
@@ -41,22 +43,39 @@ class ScanSessionRepositoryImpl implements ScanSessionRepository {
   }
 
   @override
-  Future<void> addNodesToSession(int sessionId, List<int> nodeIds) async {
+  Future<void> addNodesToSession(
+    int sessionId,
+    List<int> nodeIds, {
+    Map<int, int> rssiByNode = const {},
+  }) async {
     // R17: envolver inserts + count update en una transaction
     // para garantizar atomicidad. Si cualquier operación falla,
     // todas las escrituras hacen rollback automáticamente.
     await _db.transaction(() async {
       for (final nodeId in nodeIds) {
-        await _db
-            .into(_db.scanSessionNodes)
-            .insert(
-              ScanSessionNodesCompanion.insert(
-                sessionId: sessionId,
-                nodeId: nodeId,
-                rssi: -100,
-              ),
-              mode: InsertMode.insertOrIgnore,
-            );
+        final rssi = rssiByNode[nodeId] ?? await _fallbackRssi(nodeId);
+        final existing =
+            await (_db.select(_db.scanSessionNodes)..where(
+                  (row) =>
+                      row.sessionId.equals(sessionId) &
+                      row.nodeId.equals(nodeId),
+                ))
+                .getSingleOrNull();
+        if (existing == null) {
+          await _db
+              .into(_db.scanSessionNodes)
+              .insert(
+                ScanSessionNodesCompanion.insert(
+                  sessionId: sessionId,
+                  nodeId: nodeId,
+                  rssi: rssi,
+                ),
+              );
+        } else {
+          await (_db.update(_db.scanSessionNodes)
+                ..where((row) => row.id.equals(existing.id)))
+              .write(ScanSessionNodesCompanion(rssi: Value(rssi)));
+        }
       }
 
       // Actualizar el contador de nodos en la sesión
@@ -69,6 +88,20 @@ class ScanSessionRepositoryImpl implements ScanSessionRepository {
       await (_db.update(_db.scanSessions)..where((t) => t.id.equals(sessionId)))
           .write(ScanSessionsCompanion(nodesDetected: Value(count)));
     });
+  }
+
+  Future<int> _fallbackRssi(int nodeId) async {
+    final node = await (_db.select(
+      _db.nodes,
+    )..where((row) => row.id.equals(nodeId))).getSingleOrNull();
+    if (node?.lastRssi != null) return node!.lastRssi!;
+    if (node?.rssiHistory != null) {
+      final values = jsonDecode(node!.rssiHistory!) as List<dynamic>;
+      if (values.isNotEmpty) return (values.last as num).round();
+    }
+    // Legacy callers may not have an observation yet. Keep the historical
+    // far-distance fallback, while production scanning passes the real RSSI.
+    return _unknownRssiFallback;
   }
 
   @override
