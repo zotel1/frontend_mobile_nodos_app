@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -33,6 +34,7 @@ import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_blo
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/services/live_graph_sync_service.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/platform/ble_permission_policy.dart';
+import 'package:frontend_mobile_nodos_app/features/ble/platform/ble_background_policy.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/platform/ble_platform_capabilities.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/platform/ble_settings_navigator.dart';
 
@@ -81,6 +83,9 @@ final sl = GetIt.instance;
 
 Future<void> initDependencies() async {
   sl.registerLazySingleton<BlePermissionPolicy>(BlePermissionPolicy.platform);
+  sl.registerLazySingleton<BleBackgroundPolicy>(
+    () => BleBackgroundPolicy.platform,
+  );
   sl.registerLazySingleton<BleSettingsNavigator>(BleSettingsNavigator.platform);
   sl.registerLazySingleton<BlePlatformCapabilities>(
     BlePlatformCapabilities.platform,
@@ -88,6 +93,11 @@ Future<void> initDependencies() async {
 
   // ── BLE Platform Config ──
   // R5.6: Modo de cola de operaciones por dispositivo.
+  // Must run before the first FlutterBluePlus adapter operation so iOS can
+  // opt into CoreBluetooth central state restoration.
+  if (defaultTargetPlatform == TargetPlatform.iOS) {
+    await FlutterBluePlus.setOptions(restoreState: true);
+  }
   FlutterBluePlus.setOperationQueueMode(OperationQueueMode.perDevice);
 
   // ── Database ──
