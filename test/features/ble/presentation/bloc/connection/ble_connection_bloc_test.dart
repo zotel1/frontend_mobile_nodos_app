@@ -31,6 +31,7 @@ void main() {
   late MockUserRepository mockUserRepository;
   late MockRemoteRelationRepository mockRemoteRelationRepository;
   late StreamController<bool> stateController;
+  late Completer<void> pendingConnect;
 
   setUp(() async {
     mockRepo = MockBleConnectionRepository();
@@ -175,6 +176,37 @@ void main() {
       expect: () => [isA<BleConnecting>()],
       verify: (_) {
         verify(mockRepo.connect('duplicate-device')).called(1);
+      },
+    );
+
+    blocTest<BleConnectionBloc, BleConnectionState>(
+      'un connect tardío no revive CONNECTED después de invalidar runtime',
+      build: () {
+        pendingConnect = Completer<void>();
+        when(mockRepo.connect(any)).thenAnswer((_) => pendingConnect.future);
+        when(
+          mockRepo.connectionState(any),
+        ).thenAnswer((_) => stateController.stream);
+        when(mockRepo.disconnect(any)).thenAnswer((_) async {});
+        return BleConnectionBloc(
+          connectionRepository: mockRepo,
+          nodeRepository: mockNodeRepo,
+          activeGraphExchange: mockActiveGraphExchange,
+          userRepository: mockUserRepository,
+          remoteRelationRepository: mockRemoteRelationRepository,
+        );
+      },
+      act: (bloc) async {
+        bloc.add(const ConnectToDevice('late-device', myNodeId: 1));
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        await bloc.invalidateRuntime();
+        pendingConnect.complete();
+        stateController.add(true);
+      },
+      wait: const Duration(milliseconds: 50),
+      expect: () => [isA<BleConnecting>(), isA<BleConnectionInitial>()],
+      verify: (bloc) {
+        expect(bloc.connectedRemoteIds, isEmpty);
       },
     );
 

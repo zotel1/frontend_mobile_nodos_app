@@ -45,6 +45,12 @@ class ResetActiveConnections extends BleConnectionEvent {
   const ResetActiveConnections();
 }
 
+class _InvalidateConnectionRuntime extends BleConnectionEvent {
+  final Completer<void> completion;
+
+  const _InvalidateConnectionRuntime(this.completion);
+}
+
 // ──────────────────────── States ────────────────────────
 
 sealed class BleConnectionState extends Equatable {
@@ -172,6 +178,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
 
   final Set<String> _connectedRemoteIds = <String>{};
   final Set<String> _connectingRemoteIds = <String>{};
+  int _runtimeGeneration = 0;
 
   /// Runtime projections consumed by the interaction UI. They are never
   /// reconstructed from persistent LINKED relationships.
@@ -218,7 +225,18 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     on<ConnectToDevice>(_onConnect);
     on<DisconnectDevice>(_onDisconnect);
     on<ResetActiveConnections>(_onResetActiveConnections);
+    on<_InvalidateConnectionRuntime>(_onInvalidateRuntime);
     on<_ConnectionStateChanged>(_onConnectionStateChanged);
+  }
+
+  Future<void> invalidateRuntime() {
+    final completion = Completer<void>();
+    if (isClosed) {
+      completion.complete();
+      return completion.future;
+    }
+    add(_InvalidateConnectionRuntime(completion));
+    return completion.future;
   }
 
   Future<void> _onConnect(
@@ -226,6 +244,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     Emitter<BleConnectionState> emit,
   ) async {
     final remoteId = event.remoteId.trim();
+    final generation = _runtimeGeneration;
 
     if (remoteId.isEmpty) {
       emit(
@@ -248,6 +267,11 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
 
     final permissionGranted = await _permissionPolicy
         .requestConnectionPermissions();
+
+    if (generation != _runtimeGeneration) {
+      _connectingRemoteIds.remove(remoteId);
+      return;
+    }
 
     if (!permissionGranted) {
       _connectingRemoteIds.remove(remoteId);
@@ -277,6 +301,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
                   _ConnectionStateChanged(
                     remoteId: remoteId,
                     connected: connected,
+                    generation: generation,
                   ),
                 );
               }
@@ -284,13 +309,21 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
             onError: (Object error) {
               if (!isClosed) {
                 add(
-                  _ConnectionStateChanged(remoteId: remoteId, connected: false),
+                  _ConnectionStateChanged(
+                    remoteId: remoteId,
+                    connected: false,
+                    generation: generation,
+                  ),
                 );
               }
             },
           );
 
       await _connectionRepo.connect(remoteId);
+
+      if (generation != _runtimeGeneration) {
+        await _abortNodosHandshake(remoteId);
+      }
     } catch (e) {
       _connectingRemoteIds.remove(remoteId);
       await _cancelSubscription(remoteId);
@@ -314,6 +347,11 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     Emitter<BleConnectionState> emit,
   ) async {
     final remoteId = event.remoteId;
+    final generation = event.generation;
+
+    if (event.generation != _runtimeGeneration) {
+      return;
+    }
 
     if (!event.connected) {
       _connectingRemoteIds.remove(remoteId);
@@ -368,7 +406,13 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
           }
         },
         abort: _abortNodosHandshake,
+        isRuntimeCurrent: () => generation == _runtimeGeneration,
       );
+
+      if (generation != _runtimeGeneration) {
+        await _abortNodosHandshake(remoteId);
+        return;
+      }
 
       if (result.genericDevice) {
         emit(RemoteIdentityUnavailable(remoteId: remoteId));
@@ -426,8 +470,27 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
     ResetActiveConnections event,
     Emitter<BleConnectionState> emit,
   ) async {
+    _runtimeGeneration++;
     await _resetActiveConnections();
     emit(const BleConnectionInitial());
+  }
+
+  Future<void> _onInvalidateRuntime(
+    _InvalidateConnectionRuntime event,
+    Emitter<BleConnectionState> emit,
+  ) async {
+    try {
+      _runtimeGeneration++;
+      await _resetActiveConnections();
+      emit(const BleConnectionInitial());
+      if (!event.completion.isCompleted) {
+        event.completion.complete();
+      }
+    } catch (error, stackTrace) {
+      if (!event.completion.isCompleted) {
+        event.completion.completeError(error, stackTrace);
+      }
+    }
   }
 
   Future<void> _resetActiveConnections() async {
@@ -531,6 +594,7 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
 
   @override
   Future<void> close() async {
+    _runtimeGeneration++;
     await _resetActiveConnections();
     await _handshakeCoordinator.dispose();
 
@@ -554,12 +618,14 @@ class BleConnectionBloc extends Bloc<BleConnectionEvent, BleConnectionState> {
 class _ConnectionStateChanged extends BleConnectionEvent {
   final String remoteId;
   final bool connected;
+  final int generation;
 
   const _ConnectionStateChanged({
     required this.remoteId,
     required this.connected,
+    required this.generation,
   });
 
   @override
-  List<Object> get props => [remoteId, connected];
+  List<Object> get props => [remoteId, connected, generation];
 }

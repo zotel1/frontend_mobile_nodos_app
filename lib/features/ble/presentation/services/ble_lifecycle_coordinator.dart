@@ -4,10 +4,8 @@ import 'package:flutter/material.dart';
 
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/ble_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/domain/repositories/remote_relation_repository.dart';
-import 'package:frontend_mobile_nodos_app/features/ble/domain/services/active_graph_exchange_service.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_bloc.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_connection_bloc.dart';
-import 'package:frontend_mobile_nodos_app/features/ble/presentation/bloc/ble_event.dart';
 import 'package:frontend_mobile_nodos_app/features/ble/presentation/services/live_graph_sync_service.dart';
 
 /// Centraliza la invalidación del runtime BLE.
@@ -18,30 +16,29 @@ import 'package:frontend_mobile_nodos_app/features/ble/presentation/services/liv
 class BleLifecycleCoordinator {
   final BleRepository _bleRepository;
   final RemoteRelationRepository _remoteRelationRepository;
-  final ActiveGraphExchangeService _activeGraphExchange;
   final BleBloc _bleBloc;
   final BleConnectionBloc _connectionBloc;
   final LiveGraphSyncService? _liveGraphSync;
 
   StreamSubscription<bool>? _adapterSubscription;
-  bool _cleanupInProgress = false;
+  Future<void>? _cleanupFuture;
   bool? _lastAdapterState;
+  bool _runtimeInvalidated = false;
 
   BleLifecycleCoordinator({
     required BleRepository bleRepository,
     required RemoteRelationRepository remoteRelationRepository,
-    required ActiveGraphExchangeService activeGraphExchange,
     required BleBloc bleBloc,
     required BleConnectionBloc connectionBloc,
     LiveGraphSyncService? liveGraphSync,
   }) : _bleRepository = bleRepository,
        _remoteRelationRepository = remoteRelationRepository,
-       _activeGraphExchange = activeGraphExchange,
        _bleBloc = bleBloc,
        _connectionBloc = connectionBloc,
        _liveGraphSync = liveGraphSync;
 
   Future<void> initialize() async {
+    _runtimeInvalidated = false;
     _liveGraphSync?.start();
     // Los snapshots no sobreviven una ejecución: no se pueden considerar
     // activos sin una conexión GATT observada en esta ejecución.
@@ -54,35 +51,58 @@ class BleLifecycleCoordinator {
         firstAdapterState.complete(isOn);
       }
       if (!isOn) {
-        unawaited(invalidateRuntime());
+        unawaited(invalidateRuntime(bluetoothOn: false));
       }
     });
 
     final isOn = await firstAdapterState.future;
-    _bleBloc.add(BluetoothStateChanged(isOn));
+    if (!isOn) {
+      await invalidateRuntime(bluetoothOn: false);
+    }
   }
 
-  Future<void> onBackground() => invalidateRuntime();
+  /// `inactive` is intentionally not routed here: on iOS it is commonly a
+  /// transient transition (Control Center, calls, permission dialogs).
+  void onInactive() {}
+
+  Future<void> onBackground() => invalidateRuntime(bluetoothOn: true);
+
+  Future<void> onDetached() => invalidateRuntime(bluetoothOn: true);
 
   Future<void> onForeground() async {
     final isOn = _lastAdapterState ?? await _bleRepository.bluetoothState.first;
-    _bleBloc.add(BluetoothStateChanged(isOn));
+    _runtimeInvalidated = false;
+    if (!isOn) {
+      await invalidateRuntime(bluetoothOn: false);
+    }
+    // Resume only reconciles the adapter. It deliberately does not scan,
+    // advertise, reconnect, or restore a Graph Exchange session.
   }
 
-  Future<void> invalidateRuntime() async {
-    if (_cleanupInProgress) return;
-    _cleanupInProgress = true;
+  Future<void> invalidateRuntime({bool bluetoothOn = true}) {
+    if (_runtimeInvalidated) return Future<void>.value();
+    final inFlight = _cleanupFuture;
+    if (inFlight != null) return inFlight;
 
+    final operation = _performRuntimeInvalidation(bluetoothOn: bluetoothOn);
+    _cleanupFuture = operation;
+    return operation.whenComplete(() {
+      if (identical(_cleanupFuture, operation)) {
+        _cleanupFuture = null;
+        _runtimeInvalidated = true;
+      }
+    });
+  }
+
+  Future<void> _performRuntimeInvalidation({required bool bluetoothOn}) async {
     try {
-      _bleBloc.add(const BluetoothStateChanged(false));
-      _connectionBloc.add(const ResetActiveConnections());
-
-      // Ambos servicios son idempotentes; se ejecutan aquí además del BLoC
-      // para que la política global no dependa de un único evento GATT.
-      await _activeGraphExchange.clear();
-      await _clearAllRemoteSnapshots();
-    } finally {
-      _cleanupInProgress = false;
+      await _liveGraphSync?.pause();
+      await _bleBloc.invalidateRuntime(bluetoothOn: bluetoothOn);
+      await _connectionBloc.invalidateRuntime();
+    } catch (_) {
+      // A lifecycle transition must remain best-effort at the platform
+      // boundary; the next transition can retry the cleanup.
+      rethrow;
     }
   }
 
@@ -97,7 +117,7 @@ class BleLifecycleCoordinator {
   Future<void> dispose() async {
     await _adapterSubscription?.cancel();
     _adapterSubscription = null;
-    await invalidateRuntime();
+    await invalidateRuntime(bluetoothOn: true);
 
     if (_bleRepository is BleRuntimeLifecycle) {
       await (_bleRepository as BleRuntimeLifecycle).disposeRuntime();
@@ -137,11 +157,12 @@ class _BleLifecycleHostState extends State<BleLifecycleHost>
       case AppLifecycleState.resumed:
         unawaited(widget.coordinator.onForeground());
       case AppLifecycleState.inactive:
-      case AppLifecycleState.paused:
-      case AppLifecycleState.detached:
-        unawaited(widget.coordinator.onBackground());
+        widget.coordinator.onInactive();
       case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
         unawaited(widget.coordinator.onBackground());
+      case AppLifecycleState.detached:
+        unawaited(widget.coordinator.onDetached());
     }
   }
 

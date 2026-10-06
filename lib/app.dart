@@ -161,7 +161,6 @@ class _NodosAppBodyState extends State<_NodosAppBody> {
       _bleLifecycleCoordinator = BleLifecycleCoordinator(
         bleRepository: sl<BleRepository>(),
         remoteRelationRepository: sl<RemoteRelationRepository>(),
-        activeGraphExchange: sl<ActiveGraphExchangeService>(),
         bleBloc: context.read<BleBloc>(),
         connectionBloc: context.read<BleConnectionBloc>(),
         liveGraphSync: sl<LiveGraphSyncService>(),

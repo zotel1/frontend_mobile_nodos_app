@@ -20,6 +20,16 @@ import 'package:frontend_mobile_nodos_app/features/nodes/domain/entities/node.da
 import 'package:frontend_mobile_nodos_app/features/nodes/domain/repositories/node_repository.dart';
 import 'package:frontend_mobile_nodos_app/features/user/domain/repositories/user_repository.dart';
 
+class _InvalidateBleRuntime extends BleEvent {
+  final bool bluetoothOn;
+  final Completer<void> completion;
+
+  const _InvalidateBleRuntime({
+    required this.bluetoothOn,
+    required this.completion,
+  });
+}
+
 class BleBloc extends Bloc<BleEvent, BleState> {
   final BleRepository repository;
   final UserRepository userRepository;
@@ -95,6 +105,8 @@ class BleBloc extends Bloc<BleEvent, BleState> {
 
   /// Timer para duty cycling de escaneo BLE.
   Timer? _dutyCycleTimer;
+  int _runtimeGeneration = 0;
+  Future<void>? _runtimeInvalidation;
 
   /// Duración máxima desde el último avistamiento antes de evicción.
   static const _staleThreshold = Duration(seconds: 30);
@@ -135,6 +147,7 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     on<_ScanResultsUpdated>(_onScanResultsUpdated);
     on<_ScanError>(_onScanError);
     on<EvictStaleDevices>(_onEvictStaleDevices);
+    on<_InvalidateBleRuntime>(_onInvalidateRuntime);
 
     /// Timer de evicción periódica.
     _evictionTimer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -198,6 +211,20 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     );
   }
 
+  /// Invalidates foreground BLE runtime and waits until scan/advertising
+  /// cleanup has completed. Persistent nodes and LINKED connections remain.
+  Future<void> invalidateRuntime({required bool bluetoothOn}) {
+    final completion = Completer<void>();
+    if (isClosed) {
+      completion.complete();
+      return completion.future;
+    }
+    add(
+      _InvalidateBleRuntime(bluetoothOn: bluetoothOn, completion: completion),
+    );
+    return completion.future;
+  }
+
   Future<void> _onStartScan(StartScan event, Emitter<BleState> emit) async {
     if (state is BluetoothOff) {
       emit(
@@ -208,6 +235,7 @@ class BleBloc extends Bloc<BleEvent, BleState> {
       return;
     }
 
+    final generation = _runtimeGeneration;
     _dutyCycleTimer?.cancel();
 
     try {
@@ -230,6 +258,11 @@ class BleBloc extends Bloc<BleEvent, BleState> {
 
       await repository.startScan();
 
+      if (generation != _runtimeGeneration) {
+        await _stopScanRuntime();
+        return;
+      }
+
       emit(const BleScanning());
 
       _dutyCycleTimer = Timer.periodic(_dutyCyclePeriod, (_) {
@@ -243,17 +276,8 @@ class BleBloc extends Bloc<BleEvent, BleState> {
   }
 
   Future<void> _onStopScan(StopScan event, Emitter<BleState> emit) async {
-    _dutyCycleTimer?.cancel();
-    _dutyCycleTimer = null;
-
-    await _scanSubscription?.cancel();
-    _scanSubscription = null;
-
-    await repository.stopScan();
-
-    await repository.endScanSession();
-
-    _scanSessionId = null;
+    _runtimeGeneration++;
+    await _stopScanRuntime();
 
     emit(const BleStopped());
   }
@@ -262,6 +286,7 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     StartAdvertise event,
     Emitter<BleState> emit,
   ) async {
+    final generation = _runtimeGeneration;
     final permissionGranted = await _permissionPolicy
         .requestAdvertisingPermissions();
     if (!permissionGranted) {
@@ -270,6 +295,11 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     }
 
     await repository.startAdvertise(event.deviceUuid, event.name, event.color);
+
+    if (generation != _runtimeGeneration) {
+      await repository.stopAdvertise();
+      return;
+    }
 
     emit(const BleAdvertising());
   }
@@ -282,7 +312,7 @@ class BleBloc extends Bloc<BleEvent, BleState> {
 
     _pendingLinkRequest = null;
     _sessionManager.clear();
-    _peerGraphReassembler.dispose();
+    _peerGraphReassembler.clear();
 
     emit(const BleStopped());
   }
@@ -294,35 +324,76 @@ class BleBloc extends Bloc<BleEvent, BleState> {
     if (event.isOn) {
       emit(const BleStopped());
     } else {
-      _dutyCycleTimer?.cancel();
-      _dutyCycleTimer = null;
-      await _scanSubscription?.cancel();
-      _scanSubscription = null;
-      _accumulatedDevices.clear();
-
-      try {
-        await repository.stopScan();
-      } catch (_) {
-        // El adaptador ya puede haber detenido el scan.
-      }
-
-      try {
-        await repository.endScanSession();
-      } catch (_) {
-        // No hay sesión activa o el datasource ya fue cerrado.
-      }
-
-      try {
-        await repository.stopAdvertise();
-      } catch (_) {
-        // Advertising puede no haber sido iniciado.
-      }
-
-      _scanSessionId = null;
-      _pendingLinkRequest = null;
-      _sessionManager.clear();
+      await _invalidateRuntime();
       emit(const BluetoothOff());
     }
+  }
+
+  Future<void> _onInvalidateRuntime(
+    _InvalidateBleRuntime event,
+    Emitter<BleState> emit,
+  ) async {
+    try {
+      await _invalidateRuntime();
+      emit(event.bluetoothOn ? const BleStopped() : const BluetoothOff());
+      if (!event.completion.isCompleted) {
+        event.completion.complete();
+      }
+    } catch (error, stackTrace) {
+      if (!event.completion.isCompleted) {
+        event.completion.completeError(error, stackTrace);
+      }
+    }
+  }
+
+  Future<void> _invalidateRuntime() async {
+    final inFlight = _runtimeInvalidation;
+    if (inFlight != null) {
+      return inFlight;
+    }
+
+    final operation = _performRuntimeInvalidation();
+    _runtimeInvalidation = operation;
+    try {
+      await operation;
+    } finally {
+      if (identical(_runtimeInvalidation, operation)) {
+        _runtimeInvalidation = null;
+      }
+    }
+  }
+
+  Future<void> _performRuntimeInvalidation() async {
+    _runtimeGeneration++;
+    await _stopScanRuntime();
+    _pendingLinkRequest = null;
+    _sessionManager.clear();
+    _peerGraphReassembler.clear();
+
+    try {
+      await repository.stopAdvertise();
+    } catch (_) {
+      // Advertising may already have stopped at the platform boundary.
+    }
+  }
+
+  Future<void> _stopScanRuntime() async {
+    _dutyCycleTimer?.cancel();
+    _dutyCycleTimer = null;
+    await _scanSubscription?.cancel();
+    _scanSubscription = null;
+    _accumulatedDevices.clear();
+    try {
+      await repository.stopScan();
+    } catch (_) {
+      // The adapter may already have stopped scanning.
+    }
+    try {
+      await repository.endScanSession();
+    } catch (_) {
+      // No active session or the datasource has already been closed.
+    }
+    _scanSessionId = null;
   }
 
   /// Procesa una solicitud Nodos recibida mediante GATT.

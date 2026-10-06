@@ -97,9 +97,14 @@ class BleConnectionHandshakeCoordinator {
     required int? myNodeId,
     required void Function(BleConnectionHandshakeProgress progress) onProgress,
     required Future<void> Function(String remoteId) abort,
+    bool Function()? isRuntimeCurrent,
   }) async {
     try {
       await _connectionRepo.discoverServices(remoteId);
+      if (!isRuntimeCurrentNow(isRuntimeCurrent)) {
+        await abort(remoteId);
+        return const BleConnectionHandshakeResult(genericDevice: false);
+      }
     } catch (error) {
       await abort(remoteId);
       throw BleConnectionHandshakeFailure(
@@ -114,6 +119,10 @@ class BleConnectionHandshakeCoordinator {
         remoteId,
         identityCharacteristicUUID,
       );
+      if (!isRuntimeCurrentNow(isRuntimeCurrent)) {
+        await abort(remoteId);
+        return const BleConnectionHandshakeResult(genericDevice: false);
+      }
     } catch (error) {
       await abort(remoteId);
       throw BleConnectionHandshakeFailure(
@@ -123,6 +132,10 @@ class BleConnectionHandshakeCoordinator {
     }
 
     if (identityBytes == null) {
+      if (!isRuntimeCurrentNow(isRuntimeCurrent)) {
+        await abort(remoteId);
+        return const BleConnectionHandshakeResult(genericDevice: true);
+      }
       await _safeMarkConnected(remoteId);
       await _persistGenericConnection(
         remoteId: remoteId,
@@ -181,6 +194,10 @@ class BleConnectionHandshakeCoordinator {
     );
 
     final localUser = await _userRepository.getUserProfile();
+    if (!isRuntimeCurrentNow(isRuntimeCurrent)) {
+      await abort(remoteId);
+      return const BleConnectionHandshakeResult(genericDevice: false);
+    }
     if (localUser == null || localUser.uuid.trim().isEmpty) {
       await abort(remoteId);
       throw const BleConnectionHandshakeFailure(
@@ -212,6 +229,10 @@ class BleConnectionHandshakeCoordinator {
         request.toBytes(),
         timeout: const Duration(seconds: 30),
       );
+      if (!isRuntimeCurrentNow(isRuntimeCurrent)) {
+        await abort(remoteId);
+        return const BleConnectionHandshakeResult(genericDevice: false);
+      }
     } on TimeoutException {
       await abort(remoteId);
       throw const BleConnectionHandshakeFailure(
@@ -263,6 +284,11 @@ class BleConnectionHandshakeCoordinator {
       return const BleConnectionHandshakeResult(genericDevice: false);
     }
 
+    if (!isRuntimeCurrentNow(isRuntimeCurrent)) {
+      await abort(remoteId);
+      return const BleConnectionHandshakeResult(genericDevice: false);
+    }
+
     try {
       await _persistNodosConnection(
         myNodeId: myNodeId,
@@ -277,6 +303,10 @@ class BleConnectionHandshakeCoordinator {
     }
 
     onProgress(ConnectionPersisted(remoteId));
+    if (!isRuntimeCurrentNow(isRuntimeCurrent)) {
+      await abort(remoteId);
+      return const BleConnectionHandshakeResult(genericDevice: false);
+    }
     await _safeMarkConnected(remoteId);
     _sessionManager.activate(identity.uuid, remoteId: remoteId);
     await _trySendLocalGraph(remoteId);
@@ -285,6 +315,9 @@ class BleConnectionHandshakeCoordinator {
 
     return const BleConnectionHandshakeResult(genericDevice: false);
   }
+
+  bool isRuntimeCurrentNow(bool Function()? isRuntimeCurrent) =>
+      isRuntimeCurrent?.call() ?? true;
 
   Future<void> _persistGenericConnection({
     required String remoteId,

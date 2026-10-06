@@ -48,6 +48,17 @@ class LiveGraphSyncService {
     );
   }
 
+  /// Stops foreground publications without making the service terminal.
+  ///
+  /// Runtime sessions are invalidated by the lifecycle coordinator; clearing
+  /// the dedupe cache prevents a stale snapshot from being reused after resume.
+  Future<void> pause() async {
+    await _snapshotSubscription?.cancel();
+    _snapshotSubscription = null;
+    _started = false;
+    _lastSentByRemoteId.clear();
+  }
+
   /// Sends the snapshot produced during the handshake to one central peer.
   ///
   /// The write is deduplicated with later live updates for the same runtime
@@ -152,9 +163,7 @@ class LiveGraphSyncService {
 
   Future<void> dispose() async {
     _disposed = true;
-    await _snapshotSubscription?.cancel();
-    _snapshotSubscription = null;
-    _lastSentByRemoteId.clear();
+    await pause();
   }
 }
 
