@@ -100,7 +100,6 @@ void main() {
     coordinator = BleLifecycleCoordinator(
       bleRepository: bleRepository,
       remoteRelationRepository: remoteRelations,
-      activeGraphExchange: activeGraphExchange,
       bleBloc: bleBloc,
       connectionBloc: connectionBloc,
     );
@@ -137,11 +136,8 @@ void main() {
       await coordinator.invalidateRuntime();
       await coordinator.invalidateRuntime();
 
-      expect(
-        verify(activeGraphExchange.clear()).callCount,
-        greaterThanOrEqualTo(2),
-      );
-      expect(remoteRelations.clearAllCalls, greaterThanOrEqualTo(3));
+      expect(verify(activeGraphExchange.clear()).callCount, 1);
+      expect(remoteRelations.clearAllCalls, 2);
     },
   );
 
@@ -155,5 +151,33 @@ void main() {
 
     verifyNever(bleRepository.startScan());
     verifyNever(bleRepository.startAdvertise(any, any, any));
+  });
+
+  test('inactive is transient and does not invalidate BLE runtime', () async {
+    final initialization = coordinator.initialize();
+    await Future<void>.delayed(Duration.zero);
+    adapterStates.add(true);
+    await initialization;
+
+    coordinator.onInactive();
+
+    await Future<void>.delayed(Duration.zero);
+    verifyNever(bleRepository.stopScan());
+    verifyNever(bleRepository.stopAdvertise());
+    verifyNever(activeGraphExchange.clear());
+  });
+
+  test('background cleanup stops runtime and is idempotent', () async {
+    final initialization = coordinator.initialize();
+    await Future<void>.delayed(Duration.zero);
+    adapterStates.add(true);
+    await initialization;
+
+    await coordinator.onBackground();
+    await coordinator.onBackground();
+
+    verify(bleRepository.stopScan()).called(1);
+    verify(bleRepository.stopAdvertise()).called(1);
+    verify(activeGraphExchange.clear()).called(1);
   });
 }
