@@ -59,6 +59,9 @@ class _GraphView3DState extends State<GraphView3D> {
   /// termine de cargar, conservamos únicamente el estado más reciente.
   String? _pendingData;
 
+  /// Último estado visual conocido, reutilizable después de un reload.
+  String? _lastData;
+
   bool _isLoading = true;
   bool _hasError = false;
   String? _errorMessage;
@@ -104,13 +107,15 @@ class _GraphView3DState extends State<GraphView3D> {
     controller.setNavigationDelegate(
       NavigationDelegate(
         onPageFinished: (_) {
-          if (!mounted) {
+          if (!mounted || _disposed) {
             return;
           }
 
           setState(() {
             _pageLoaded = true;
             _isLoading = false;
+            _hasError = false;
+            _errorMessage = null;
           });
 
           _flushPendingData();
@@ -200,6 +205,7 @@ class _GraphView3DState extends State<GraphView3D> {
     );
 
     final json = jsonEncode(payload);
+    _lastData = json;
 
     if (!_pageLoaded) {
       _pendingData = json;
@@ -211,7 +217,7 @@ class _GraphView3DState extends State<GraphView3D> {
 
   /// Envía cualquier estado acumulado mientras cargaba el WebView.
   void _flushPendingData() {
-    final data = _pendingData;
+    final data = _pendingData ?? _lastData;
 
     if (data == null) {
       // Si por algún motivo todavía no existe payload pendiente,
@@ -236,6 +242,10 @@ class _GraphView3DState extends State<GraphView3D> {
     }
 
     try {
+      if (_disposed || !_pageLoaded) {
+        _pendingData = json;
+        return;
+      }
       await _controller.runJavaScript('window.loadGraphData($json);');
     } catch (e) {
       if (_disposed) {
@@ -325,6 +335,7 @@ class _GraphView3DState extends State<GraphView3D> {
     _disposed = true;
     _pageLoaded = false;
     _pendingData = null;
+    _lastData = null;
 
     // These platform calls are asynchronous. Attach the error handlers to
     // avoid an unhandled Future when a test or a platform is already torn
